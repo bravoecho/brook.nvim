@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+selfdir="$(dirname "$(readlink -f "$0")")"
+
+# Lists all the ripgrep named arguments (flags and options) listed by the
+# ripgrep help command, one per line.
+#
+# It assumes that they are always indented exactly by 4 spaces.
+all=$(
+  rg --help \
+    | rg --no-line-number --color=never --only-matching '^\s{4}(-.+$)' \
+    | sed 's/, /\n/g'
+)
+
+# NOTE: Ensure traditional byte-order sorting by setting LC_ALL=C
+
+# NOTE: There is no point in trying to indent within the replacement string,
+# ripgrep will ignore leading spaces.
+
+flags=$(
+  echo "$all" \
+    | rg --no-line-number --color=never '^([^ =]+)$' --replace "['\$1'] = true," \
+    | LC_ALL=C sort
+)
+
+options=$(
+  echo "$all" \
+    | rg --no-line-number --color=never '^(.+?)[ =].+' --replace "['\$1'] = true," \
+    | LC_ALL=C sort
+)
+
+# Generate Lua code containing a set of ripgrep options (named arguments that
+# take a value).
+read -r -d '' template <<'EOF' || true
+-- GENERATED FILE: see ../bin/generate-named-args
+
+--- List of ripgrep named arguments. Used for search pattern selection.
+local M = {}
+
+--- Set of ripgrep's named arguments that act like switches, don't take a value.
+M.flags = {
+  ${RG_FLAGS}
+}
+
+--- Set of ripgrep's named arguments that require a value.
+M.options = {
+  ${RG_OPTIONS}
+}
+
+return M
+EOF
+
+# Export variables for envsubst and output to stdout
+export RG_FLAGS="$flags"
+export RG_OPTIONS="$options"
+
+echo "$template" \
+  | envsubst \
+  | stylua --quote-style ForceSingle --indent-type Spaces --indent-width 2 - \
+  | tee "$selfdir/../rg_args.lua"

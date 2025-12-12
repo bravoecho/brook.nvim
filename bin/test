@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+selfdir="$(dirname "$(readlink -f "$0")")"
+
+echo -e "\n--- rg_to_vim_pattern ---\n"
+nvim --headless -c "luafile $selfdir/../tests/rg_to_vim_pattern_test.lua" -c "q"
+echo -e "\n--- select_rg_pattern ---\n"
+nvim --headless -c "luafile $selfdir/../tests/select_rg_pattern_test.lua" -c "q"
+echo -e "\n--- shell_unquote ---\n"
+nvim --headless -c "luafile $selfdir/../tests/shell_unquote_test.lua" -c "q"
+echo -e "\n--- tokenise ---\n"
+nvim --headless -c "luafile $selfdir/../tests/tokenise_test.lua" -c "q"
