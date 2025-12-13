@@ -10,15 +10,15 @@ local M = {}
 
 local POSITIONAL_SEPARATOR = '--'
 
---- Extracts search patterns and other related flags/options from a list of
---- ripgrep command-line tokens.
+--- Extracts search patterns and search-related flags from a list of ripgrep
+--- command-line tokens.
 ---
 --- Patterns can be specified either via the `-e`/`--regexp` options, or as the
 --- first positional argument. This function handles both cases, as well as
 --- stacked short arguments and quoted tokens.
 ---
 ---@param tokens string[]|nil A list of POSIX-like command-line tokens
----@return string[]|nil patterns One or more search patterns, or nil if malformed
+---@return brook.ParsedArgs|nil result Parsed arguments, or nil if malformed
 function M._parse_args(tokens)
   -- Step 1 (pre-processing): unquote all args
   --------------------------------------------

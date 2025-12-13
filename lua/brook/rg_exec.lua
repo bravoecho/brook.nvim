@@ -80,10 +80,19 @@ function M.rg_raw(cmd_args, plugin_opts)
     return
   end
 
-  local categorised_args = parse_args(tokens)
+  local parsed_args = parse_args(tokens)
+  if not parsed_args then
+    vim.notify("brook: malformed command", vim.log.levels.ERROR)
+    return
+  end
+
+  -- NOTE: Currently only the first pattern is returned (even when the original
+  -- command specified multiple with -e/--regexp). Support to combine multiple
+  -- patterns in an alternation for more accurate highlighting may be added in
+  -- the future.
   local rg_pattern = nil
-  if categorised_args and categorised_args.patterns and #(categorised_args.patterns) > 0 then
-    rg_pattern = categorised_args.patterns[1]
+  if parsed_args.patterns and #(parsed_args.patterns) > 0 then
+    rg_pattern = parsed_args.patterns[1]
   end
 
   -- Unquote each token (interprets shell quoting rules)
@@ -98,7 +107,7 @@ function M.rg_raw(cmd_args, plugin_opts)
   M._rg_exec(
     rg_args,
     rg_pattern,
-    { word = categorised_args.word, fixed = categorised_args.fixed },
+    { word = parsed_args.word, fixed = parsed_args.fixed },
     plugin_opts
   )
 end
@@ -250,18 +259,15 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
   end
 end
 
---- Currently only the first pattern is returned (even when the original command
---- specified multiple with -e/--regexp). Support to combine multiple patterns
---- in an alternation for more accurate highlighting may be added in the future.
 ---@param tokens string[] the 'args' string from the opts of the command callback
 function M._extract_rg_pattern(tokens)
   if not tokens or #tokens == 0 then
     return nil
   end
 
-  local categorised_args = parse_args(tokens)
-  if categorised_args and #(categorised_args.patterns) > 0 then
-    return categorised_args.patterns[1]
+  local parsed_args = parse_args(tokens)
+  if parsed_args and #(parsed_args.patterns) > 0 then
+    return parsed_args.patterns[1]
   end
 
   return nil

@@ -16,6 +16,12 @@
 ---@field word? boolean Whether to match whole words only (--word-regexp)
 ---@field fixed? boolean Whether to treat the pattern as a literal string (--fixed-strings)
 
---- @class brook.PluginOpts
---- @field keymap? string Keymap for triggering searches (default: '<leader>g')
---- @field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
+--- Result of parsing ripgrep command-line arguments.
+---@class brook.ParsedArgs
+---@field patterns string[] One or more search patterns
+---@field fixed boolean Whether --fixed-strings / -F was specified
+---@field word boolean Whether --word-regexp / -w was specified
+
+---@class brook.PluginOpts
+---@field keymap? string Keymap for triggering searches (default: '<leader>g')
+---@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
