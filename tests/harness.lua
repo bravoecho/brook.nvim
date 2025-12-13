@@ -16,11 +16,34 @@ function M.test(name, fn)
   end
 end
 
+-- function M.eq(got, want)
+--   if got ~= want then
+--     local got_str = got == nil and 'nil' or string.format('%q', got)
+--     local want_str = want == nil and 'nil' or string.format('%q', want)
+--     error(string.format('\n  got:  %s\n  want: %s', got_str, want_str), 2)
+--   end
+-- end
+
+local function display(s)
+  if s == nil then return 'nil' end
+  -- Only escape control characters and non-printables
+  return (s:gsub('[%c]', function(c)
+    local b = string.byte(c)
+    if c == '\n' then
+      return '\\n'
+    elseif c == '\t' then
+      return '\\t'
+    elseif c == '\r' then
+      return '\\r'
+    else
+      return string.format('\\x%02x', b)
+    end
+  end))
+end
+
 function M.eq(got, want)
   if got ~= want then
-    local got_str = got == nil and 'nil' or string.format('%q', got)
-    local want_str = want == nil and 'nil' or string.format('%q', want)
-    error(string.format('\n  got:  %s\n  want: %s', got_str, want_str), 2)
+    error(string.format('\n  got:  %s\n  want: %s', display(got), display(want)), 2)
   end
 end
 
