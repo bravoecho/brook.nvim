@@ -10,7 +10,7 @@ local current_job_id = nil
 local rg_to_vim_pattern = require('brook.rg_to_vim_pattern')._rg_to_vim_pattern
 local tokenise = require('brook.tokenise')._tokenise
 local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
-local select_rg_pattern = require('brook.select_rg_pattern')._select_rg_pattern
+local categorise_args = require('brook.categorise_args')._categorise_args
 
 local M = {}
 
@@ -71,21 +71,36 @@ end
 ---@param plugin_opts? brook.PluginOpts Plugin options
 function M.rg_raw(cmd_args, plugin_opts)
   plugin_opts = plugin_opts or {}
-  local rg_pattern = M._extract_rg_pattern(cmd_args)
 
-  -- Tokenise the command string (splits on whitespace, respects quotes)
+  -- Tokenise the command string (split on whitespace, respect quotes)
   local tokens = tokenise(cmd_args)
 
-  -- Unquote each token (interprets shell quoting rules)
-  local args = shell_unquote_all(tokens)
-
-  -- If any token was malformed (unterminated quotes), notify and bail out
-  if args == nil then
-    vim.notify("rg: malformed command", vim.log.levels.ERROR)
+  if not tokens or #tokens == 0 then
+    vim.notify("brook: no arguments provided", vim.log.levels.ERROR)
     return
   end
 
-  M._rg_exec(args, rg_pattern, { word = false, fixed = false }, plugin_opts)
+  local categorised_args = categorise_args(tokens)
+  local rg_pattern = nil
+  if categorised_args and #(categorised_args.patterns) > 0 then
+    rg_pattern = categorised_args.patterns[1]
+  end
+
+  -- Unquote each token (interprets shell quoting rules)
+  local rg_args = shell_unquote_all(tokens)
+
+  -- If any token was malformed (unterminated quotes), notify and bail out
+  if rg_args == nil then
+    vim.notify("brook: malformed command", vim.log.levels.ERROR)
+    return
+  end
+
+  M._rg_exec(
+    rg_args,
+    rg_pattern,
+    { word = false, fixed = categorised_args.fixed },
+    plugin_opts
+  )
 end
 
 --- Runs ripgrep with the given argument array.
@@ -235,15 +250,18 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
   end
 end
 
----@param cmd_args string the 'args' string from the opts of the command callback
-function M._extract_rg_pattern(cmd_args)
-  local tokens = tokenise(cmd_args)
+--- Currently only the first pattern is returned (even when the original command
+--- specified multiple with -e/--regexp). Support to combine multiple patterns
+--- in an alternation for more accurate highlighting may be added in the future.
+---@param tokens string[] the 'args' string from the opts of the command callback
+function M._extract_rg_pattern(tokens)
+  if not tokens or #tokens == 0 then
+    return nil
+  end
 
-  if tokens and #tokens > 0 then
-    local patterns = select_rg_pattern(tokens)
-    if patterns and #patterns > 0 then
-      return patterns[1]
-    end
+  local categorised_args = categorise_args(tokens)
+  if categorised_args and #(categorised_args.patterns) > 0 then
+    return categorised_args.patterns[1]
   end
 
   return nil

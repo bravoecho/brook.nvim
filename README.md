@@ -232,6 +232,11 @@ request.
 the quickfix list manageable. Increase or disable the limit with `max_results`
 in your configuration.
 
+**Multiple patterns are not highlighted.** At the moment only the first pattern
+is used to set the search register. This is because I suspect it would be
+a seldom used feature in the context of code editing. Support for multiple
+patterns may be added in the future.
+
 ## brook.nvim vs vim-grepper
 
 [vim-grepper](https://github.com/mhinz/vim-grepper) is an excellent,

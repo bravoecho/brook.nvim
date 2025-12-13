@@ -10,7 +10,8 @@ local M = {}
 
 local POSITIONAL_SEPARATOR = '--'
 
---- Extracts search patterns from a list of ripgrep command-line tokens.
+--- Extracts search patterns and other related flags/options from a list of
+--- ripgrep command-line tokens.
 ---
 --- Patterns can be specified either via the `-e`/`--regexp` options, or as the
 --- first positional argument. This function handles both cases, as well as
@@ -18,7 +19,7 @@ local POSITIONAL_SEPARATOR = '--'
 ---
 ---@param tokens string[]|nil A list of POSIX-like command-line tokens
 ---@return string[]|nil patterns One or more search patterns, or nil if malformed
-function M._select_rg_pattern(tokens)
+function M._categorise_args(tokens)
   -- Step 1 (pre-processing): unquote all args
   --------------------------------------------
   -- unquote the tokens, because even when quoted ripgrep will try to interpret
@@ -40,7 +41,10 @@ function M._select_rg_pattern(tokens)
   --------------------------------------------------------
   -- search for patterns specified with the -e or --regexp options
   local i = 1
-  local patterns = {}
+  local result = {
+    patterns = {},
+    fixed = false,
+  }
 
   while i <= #tokens do
     local token = tokens[i]
@@ -57,15 +61,18 @@ function M._select_rg_pattern(tokens)
         -- malformed
         return nil
       end
-      patterns[#patterns + 1] = pattern
+      table.insert(result.patterns, pattern)
       i = i + 2
+    elseif token == '-F' or token == '--fixed-strings' then
+      result.fixed = true
+      i = i + 1
     else
       i = i + 1
     end
   end
 
-  if #patterns > 0 then
-    return patterns
+  if #(result.patterns) > 0 then
+    return result
   end
 
   -- Step 4: categorise tokens and select first positional argument
@@ -87,7 +94,8 @@ function M._select_rg_pattern(tokens)
       if not pattern then
         return nil
       else
-        return { pattern }
+        result.patterns = { pattern }
+        return result
       end
     elseif M._is_unknown_named_arg(token) then
       -- if the flag is unknown, it's either
@@ -99,7 +107,8 @@ function M._select_rg_pattern(tokens)
       return nil
     else
       -- return the first positional argument
-      return { token }
+      result.patterns = { token }
+      return result
     end
   end
 end

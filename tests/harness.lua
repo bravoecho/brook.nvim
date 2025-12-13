@@ -24,7 +24,7 @@ end
 --   end
 -- end
 
-local function display(s)
+local function display_string(s)
   if s == nil then return 'nil' end
   -- Only escape control characters and non-printables
   return (s:gsub('[%c]', function(c)
@@ -43,23 +43,13 @@ end
 
 function M.eq(got, want)
   if got ~= want then
-    error(string.format('\n  got:  %s\n  want: %s', display(got), display(want)), 2)
+    error(string.format('\n  got:  %s\n  want: %s', display_string(got), display_string(want)), 2)
   end
 end
 
-function M.eq_list(got, want)
-  if got == nil and want == nil then
-    return
-  end
-
-  if got == nil or want == nil or #got ~= #want then
+function M.deep_eq(got, want)
+  if not vim.deep_equal(got, want) then
     M._fail_inspect(got, want)
-  end
-
-  for i, v in ipairs(got) do
-    if v ~= want[i] then
-      M._fail_inspect(got, want)
-    end
   end
 end
 
