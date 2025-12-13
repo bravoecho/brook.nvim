@@ -122,6 +122,9 @@ Path completion is supported.
 
 " Word boundaries
 :Rg '\bconfig\s*='
+
+" Non-greedy matching
+:Rg '<div.*?>'
 ```
 
 ### Filtering results
@@ -204,10 +207,11 @@ distinguishing flags from options that take values, handling stacked short flags
 separator.
 
 **Regex dialect translation.** Ripgrep uses Rust's regex syntax; Vim has its
-own. Brook translates between them so that `n`/`N` navigation highlights the
-correct matches—converting metacharacters, word boundaries (`\b` → `\<`/`\>`),
-and character class escaping rules. This is best-effort but should cover most
-real-world patterns.
+own. Brook translates patterns to Vim's "very magic" mode (`\v`), which closely
+mirrors ripgrep's syntax—most metacharacters pass through unchanged. The main
+transformations are non-greedy quantifiers (`+?` → `{-1,}`, `*?` → `{-}`) and
+word boundaries (`\b` → `(<|>)`). This is best-effort but covers most real-world
+patterns, enabling accurate `n`/`N` navigation and highlighting.
 
 **Argument classification.** Brook maintains a generated list of ripgrep flags
 and options (extracted from `rg --help`) to correctly classify arguments,

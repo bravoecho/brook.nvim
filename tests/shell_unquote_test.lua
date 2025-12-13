@@ -168,6 +168,10 @@ test('rg: pattern with pipe', function()
   eq(shell_unquote("'foo|bar'"), 'foo|bar')
 end)
 
+test('rg: escaped double quotes', function()
+  eq(shell_unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
+end)
+
 --------------------------------------------------------------------------------
 --- POSIX double-quote escapes ($ and `) --------------------------------------
 --------------------------------------------------------------------------------

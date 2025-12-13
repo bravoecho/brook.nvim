@@ -1,20 +1,10 @@
--- Some ripgrep metacharacters are instead literals in vimgrep.
-local vim_magic_literals = {
-  ['+'] = true,
-  ['?'] = true,
-  ['('] = true,
-  [')'] = true,
-  ['{'] = true,
-  ['}'] = true,
-  ['|'] = true,
-}
-
 local M = {}
 
 --- Translates a ripgrep pattern to Vim regex syntax.
 ---
 --- Best-effort translation to support results highlighting and navigation.
---- Only handles patterns that commonly appear in code searches.
+--- Targets very magic mode (\v) for closer semantic alignment with ripgrep's
+--- Rust regex syntax.
 ---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.SearchOpts Options affecting pattern translation
@@ -22,26 +12,19 @@ local M = {}
 function M._rg_to_vim_pattern(pattern, opts)
   opts = opts or {}
 
-  -- For literal (fixed-string) searches, translate to very-no-magic mode.
-  -- In very-no-magic mode, only backslash and delimiter (forward slash) need to
-  -- be escaped.
+  -- For literal (fixed-string) searches, use very-nomagic mode (\V).
+  -- Only backslash and the search delimiter (/) need escaping.
   if opts.fixed then
     local escaped = pattern:gsub('\\', '\\\\'):gsub('/', '\\/')
-    local vimgrep_pattern = '\\V' .. escaped
     if opts.word then
-      vimgrep_pattern = '\\<' .. vimgrep_pattern .. '\\>'
+      return '\\V\\<' .. escaped .. '\\>'
     end
-    return vimgrep_pattern
+    return '\\V' .. escaped
   end
 
-  -- a list of individual characters and metacharacters that will be joined at
-  -- the end
   local result = {}
   local len = #pattern
-  -- used to track whether we are parsing the symbols inside a character class
-  -- of the given regex, because escaping rules change in that case
   local in_char_class = false
-  -- the parsing cursor
   local i = 1
 
   while i <= len do
@@ -49,51 +32,32 @@ function M._rg_to_vim_pattern(pattern, opts)
     local next_char = pattern:sub(i + 1, i + 1)
 
     if char == '\\' and next_char ~= '' then
-      -- this is an escaped character, handling it as a unit
-      local escaped_char = next_char
-
+      -- Escaped character: handle as a unit
       if in_char_class then
+        -- Inside character class: pass through unchanged
         table.insert(result, '\\')
-        table.insert(result, escaped_char)
-      elseif vim_magic_literals[escaped_char] then
-        -- some ripgrep metacharacters need to be escaped to be considered
-        -- metacharacters in vimgrep
-        table.insert(result, escaped_char)
-      elseif escaped_char == 'b' then
-        -- we support word boundaries only at the beginning and end of the
-        -- pattern
-        if i == 1 then
-          table.insert(result, '\\<')
-        else
-          table.insert(result, '\\>')
-        end
-      elseif escaped_char == '\\' then
-        table.insert(result, '\\\\')
+        table.insert(result, next_char)
+      elseif next_char == 'b' then
+        -- Word boundary: \b -> (<|>) in very magic
+        table.insert(result, '(<|>)')
       else
-        -- pass through the other metacharacters, which work the same in ripgrep
-        -- and vimgrep
+        -- All other escapes pass through (very magic escaping matches ripgrep)
         table.insert(result, '\\')
-        table.insert(result, escaped_char)
+        table.insert(result, next_char)
       end
       i = i + 2
+    elseif (char == '<' or char == '>') and not in_char_class then
+      -- Angle brackets are literal in ripgrep but word boundaries in very magic
+      table.insert(result, '\\')
+      table.insert(result, char)
+      i = i + 1
     elseif char == '[' and not in_char_class then
-      -- We have detected the beginning of a character class in the ripgrep
-      -- pattern. Character classes boundaries are literal in both ripgrep and
-      -- vimgrep.
-      --
-      -- 1. mark the start of the character class processing section
+      -- Start of character class
       in_char_class = true
-      -- 2. add it as-is to the vimgrep pattern
       table.insert(result, '[')
-      -- 3. advance the cursor
       i = i + 1
 
-      -- Handle special situations in the first one or two positions of
-      -- a character class:
-      --
-      -- * negation '^'
-      -- * litaral, unescaped ']'
-      -- * negated literal bracket '^]`
+      -- Handle special positions: ^, ], ^]
       if pattern:sub(i, i) == '^' then
         table.insert(result, '^')
         i = i + 1
@@ -103,31 +67,39 @@ function M._rg_to_vim_pattern(pattern, opts)
         i = i + 1
       end
     elseif char == ']' and in_char_class then
-      -- we have detected the end of a character class pattern
+      -- End of character class
       in_char_class = false
       table.insert(result, ']')
       i = i + 1
-    elseif vim_magic_literals[char] and not in_char_class then
-      -- handle ripgrep metacharacters that need to be escaped to be interpreted
-      -- as vimgrep metacharacters
-      table.insert(result, '\\')
-      table.insert(result, char)
-      i = i + 1
+    elseif (char == '*' or char == '+' or char == '?')
+        and next_char == '?'
+        and not in_char_class
+        and i > 1 then
+      -- Non-greedy quantifier: *? +? ?? (as long as it's not the first
+      -- character).
+      if char == '*' then
+        table.insert(result, '{-}')
+      elseif char == '+' then
+        table.insert(result, '{-1,}')
+      else -- char == '?'
+        table.insert(result, '{-0,1}')
+      end
+      i = i + 2
     elseif char == '/' then
-      -- escape the search delimiter
-      table.insert(result, '\\')
-      table.insert(result, '/')
+      -- Escape search delimiter
+      table.insert(result, '\\/')
       i = i + 1
     else
+      -- Everything else passes through unchanged
       table.insert(result, char)
       i = i + 1
     end
   end
 
-  local vimgrep_pattern = table.concat(result)
+  local vimgrep_pattern = '\\v' .. table.concat(result)
 
   if opts.word then
-    vimgrep_pattern = '\\<' .. vimgrep_pattern .. '\\>'
+    vimgrep_pattern = '\\v<' .. table.concat(result) .. '>'
   end
 
   return vimgrep_pattern
