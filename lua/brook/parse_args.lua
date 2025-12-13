@@ -4,8 +4,6 @@ local rg_args = require('brook.rg_args')
 local rg_flags = rg_args.flags
 local rg_options = rg_args.options
 
-local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
-
 local M = {}
 
 local POSITIONAL_SEPARATOR = '--'
@@ -17,27 +15,23 @@ local POSITIONAL_SEPARATOR = '--'
 --- first positional argument. This function handles both cases, as well as
 --- stacked short arguments and quoted tokens.
 ---
----@param tokens string[]|nil A list of POSIX-like command-line tokens
+--- NOTE: The tokens must be already shell-unquoted (call shell_unquote_all to
+--- pre-process them).
+---
+---@param unquoted_tokens string[]|nil A list of shell-unquoted command-line tokens
 ---@return brook.ParsedArgs|nil result Parsed arguments, or nil if malformed
-function M._parse_args(tokens)
-  -- Step 1 (pre-processing): unquote all args
-  --------------------------------------------
-  -- unquote the tokens, because even when quoted ripgrep will try to interpret
-  -- each token as a named argument first
-  tokens = shell_unquote_all(tokens)
-
-  -- If any token was malformed, bail out
-  if tokens == nil then
+function M._parse_args(unquoted_tokens)
+  if unquoted_tokens == nil or #unquoted_tokens == 0 then
     return nil
   end
 
-  -- Step 2 (pre-processing): expand tokens
+  -- Step 1 (pre-processing): expand tokens
   -----------------------------------------
   -- Split into separate tokens all the tokens that contain multiple flags, an
   -- option and optionally a value.
-  tokens = M._expand_all(tokens)
+  unquoted_tokens = M._expand_all(unquoted_tokens)
 
-  -- Step 3 (short-circuit): use the search pattern option
+  -- Step 2 (short-circuit): use the search pattern option
   --------------------------------------------------------
   -- search for patterns specified with the -e or --regexp options
   local i = 1
@@ -47,8 +41,8 @@ function M._parse_args(tokens)
     word = false,
   }
 
-  while i <= #tokens do
-    local token = tokens[i]
+  while i <= #unquoted_tokens do
+    local token = unquoted_tokens[i]
     if token == POSITIONAL_SEPARATOR then
       -- we must NOT try to interpret tokens as named arguments after the
       -- positional separator
@@ -56,7 +50,7 @@ function M._parse_args(tokens)
     end
     if token == '-e' or token == '--regexp' then
       -- the pattern is the following token
-      local pattern = tokens[i + 1]
+      local pattern = unquoted_tokens[i + 1]
       if not pattern then
         -- if a pattern option if not followed by a pattern, then the command is
         -- malformed
@@ -79,14 +73,14 @@ function M._parse_args(tokens)
     return result
   end
 
-  -- Step 4: categorise tokens and select first positional argument
+  -- Step 3: categorise tokens and select first positional argument
   -----------------------------------------------------------------
   -- finally, if we still have no patterns, the pattern must be the first
-  -- positional argument
+  -- positional argument: start the search from the beginning
   i = 1
 
-  while i <= #tokens do
-    local token = tokens[i]
+  while i <= #unquoted_tokens do
+    local token = unquoted_tokens[i]
     if rg_flags[token] then
       -- if it's a token, discard it
       i = i + 1
@@ -94,7 +88,7 @@ function M._parse_args(tokens)
       -- if it's an option, discard it with its value
       i = i + 2
     elseif token == POSITIONAL_SEPARATOR then
-      local pattern = tokens[i + 1]
+      local pattern = unquoted_tokens[i + 1]
       if not pattern then
         return nil
       else

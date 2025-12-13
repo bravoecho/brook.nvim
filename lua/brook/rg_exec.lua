@@ -72,6 +72,8 @@ end
 function M.rg_raw(cmd_args, plugin_opts)
   plugin_opts = plugin_opts or {}
 
+  -- Step 1: Tokenise
+  -------------------
   -- Tokenise the command string (split on whitespace, respect quotes)
   local tokens = tokenise(cmd_args)
 
@@ -80,12 +82,25 @@ function M.rg_raw(cmd_args, plugin_opts)
     return
   end
 
-  local parsed_args = parse_args(tokens)
-  if not parsed_args then
+  -- Step 2: Unquote
+  ------------------
+  -- Unquote each token (interprets shell quoting rules)
+  local rg_args = shell_unquote_all(tokens)
+  -- If any token was malformed (unterminated quotes, trailing backslashes...),
+  -- notify and bail out
+  if rg_args == nil then
     vim.notify("brook: malformed command", vim.log.levels.ERROR)
     return
   end
 
+  -- Step 3: Parse
+  ----------------
+  -- Minimal parsing, just enough to support Neovim features
+  local parsed_args = parse_args(rg_args)
+  if not parsed_args then
+    vim.notify("brook: malformed command", vim.log.levels.ERROR)
+    return
+  end
   -- NOTE: Currently only the first pattern is returned (even when the original
   -- command specified multiple with -e/--regexp). Support to combine multiple
   -- patterns in an alternation for more accurate highlighting may be added in
@@ -93,15 +108,6 @@ function M.rg_raw(cmd_args, plugin_opts)
   local rg_pattern = nil
   if parsed_args.patterns and #(parsed_args.patterns) > 0 then
     rg_pattern = parsed_args.patterns[1]
-  end
-
-  -- Unquote each token (interprets shell quoting rules)
-  local rg_args = shell_unquote_all(tokens)
-
-  -- If any token was malformed (unterminated quotes), notify and bail out
-  if rg_args == nil then
-    vim.notify("brook: malformed command", vim.log.levels.ERROR)
-    return
   end
 
   M._rg_exec(

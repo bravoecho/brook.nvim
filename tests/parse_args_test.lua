@@ -6,30 +6,25 @@ local test = h.test
 local deep_eq = h.deep_eq
 local parse_args = require('brook.parse_args')._parse_args
 
+-- NOTE: `parse_args` receives already-unquoted tokens. Shell unquoting
+-- behaviour is tested separately in shell_unquote_test.lua.
+
 --------------------------------------------------------------------------------
 --- Simple cases (no options, no paths) ----------------------------------------
 --------------------------------------------------------------------------------
 
-test('simple: single unquoted pattern', function()
+test('simple: single pattern', function()
   deep_eq(
     parse_args({ 'hello' }),
     { patterns = { 'hello' }, word = false, fixed = false }
   )
 end)
 
-test('simple: single-quoted pattern', function()
+test('simple: pattern with spaces', function()
   deep_eq(
-    parse_args({ "'hello world'" }),
+    parse_args({ 'hello world' }),
     { patterns = { 'hello world' }, word = false, fixed = false }
   )
-end)
-
-test('simple: double-quoted pattern', function()
-  deep_eq(parse_args({ '"hello world"' }), {
-    patterns = { 'hello world' },
-    word = false,
-    fixed = false,
-  })
 end)
 
 test('simple: empty token list', function()
@@ -55,7 +50,7 @@ test('flag: pattern after multiple boolean flags', function()
 end)
 
 test('flag: pattern after combined short flags', function()
-  -- rg allows -iw as shorthand for -i -H
+  -- rg allows -iH as shorthand for -i -H
   deep_eq(parse_args({ '-iH', 'pattern' }), {
     patterns = { 'pattern' },
     word = false,
@@ -143,23 +138,23 @@ test('option: flag with separate value before pattern', function()
   )
 end)
 
-test('option: quoted option value before pattern', function()
+test('option: option value with spaces before pattern', function()
   deep_eq(
-    parse_args({ '-g', "'*.lua'", '--hidden', "'my pattern'" }),
+    parse_args({ '-g', '*.lua', '--hidden', 'my pattern' }),
     { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
 
-test('option: --glob=quoted-value before pattern', function()
+test('option: --glob=value before pattern', function()
   deep_eq(
-    parse_args({ "--glob='*.lua'", 'pattern' }),
+    parse_args({ '--glob=*.lua', 'pattern' }),
     { patterns = { 'pattern' }, word = false, fixed = false }
   )
 end)
 
-test('option: -g=quoted-value before pattern', function()
+test('option: -g=value before pattern', function()
   deep_eq(
-    parse_args({ "-g='*.lua'", 'pattern' }),
+    parse_args({ '-g=*.lua', 'pattern' }),
     { patterns = { 'pattern' }, word = false, fixed = false }
   )
 end)
@@ -175,16 +170,16 @@ end)
 --- Pattern with paths after it ------------------------------------------------
 --------------------------------------------------------------------------------
 
-test('path: unquoted pattern with path', function()
+test('path: pattern with path', function()
   deep_eq(
     parse_args({ 'pattern', 'src/lib' }),
     { patterns = { 'pattern' }, word = false, fixed = false }
   )
 end)
 
-test('path: quoted pattern with path', function()
+test('path: pattern with spaces and path', function()
   deep_eq(
-    parse_args({ "'my pattern'", 'src/lib' }),
+    parse_args({ 'my pattern', 'src/lib' }),
     { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
@@ -214,17 +209,17 @@ test('full: options, pattern, path', function()
   )
 end)
 
-test('full: multiple named args, quoted pattern, path', function()
+test('full: multiple named args, pattern with spaces, path', function()
   deep_eq(
-    parse_args({ '-H', '--vimgrep', "'my pattern'", 'src/' }),
+    parse_args({ '-H', '--vimgrep', 'my pattern', 'src/' }),
     { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
 
-test('full: complex command with quoted pattern', function()
+test('full: complex command with pattern containing special chars', function()
   local tokens = {
-    '-g', "'*.lua'", '--color=never', '--ignore-case', '--hidden',
-    "'my-special (pattern|here)'", 'a/path/in side/the/repo'
+    '-g', '*.lua', '--color=never', '--ignore-case', '--hidden',
+    'my-special (pattern|here)', 'a/path/in side/the/repo'
   }
   deep_eq(
     parse_args(tokens),
@@ -233,7 +228,7 @@ test('full: complex command with quoted pattern', function()
 end)
 
 test('full: option with value as last named arg before pattern', function()
-  local tokens = { '-g', "'*.go'", "'flags\\(\\)'", './go/termcol/' }
+  local tokens = { '-g', '*.go', 'flags\\(\\)', './go/termcol/' }
   deep_eq(
     parse_args(tokens),
     { patterns = { 'flags\\(\\)' }, word = false, fixed = false }
@@ -245,7 +240,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('double-dash: separates options from positional args', function()
-  local tokens = { '-g', "'*.go'", '--', "'flags\\(\\)'", './go/termcol/' }
+  local tokens = { '-g', '*.go', '--', 'flags\\(\\)', './go/termcol/' }
   deep_eq(
     parse_args(tokens),
     { patterns = { 'flags\\(\\)' }, word = false, fixed = false }
@@ -381,16 +376,16 @@ end)
 --------------------------------------------------------------------------------
 
 -- -e with separate value
-test('regexp: -e with separate unquoted value', function()
+test('regexp: -e with separate value', function()
   deep_eq(
     parse_args({ '-e', 'pattern' }),
     { patterns = { 'pattern' }, word = false, fixed = false }
   )
 end)
 
-test('regexp: -e with separate quoted value', function()
+test('regexp: -e with value containing spaces', function()
   deep_eq(
-    parse_args({ '-e', "'my pattern'" }),
+    parse_args({ '-e', 'my pattern' }),
     { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
@@ -423,9 +418,9 @@ test('regexp: -e=value syntax', function()
   )
 end)
 
-test('regexp: -e=quoted-value syntax', function()
+test('regexp: -e=value with spaces', function()
   deep_eq(
-    parse_args({ "-e='my pattern'" }),
+    parse_args({ '-e=my pattern' }),
     { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
@@ -442,13 +437,6 @@ test('regexp: -evalue syntax (attached)', function()
   deep_eq(
     parse_args({ '-epattern' }),
     { patterns = { 'pattern' }, word = false, fixed = false }
-  )
-end)
-
-test('regexp: -e with attached quoted value', function()
-  deep_eq(
-    parse_args({ "-e'my pattern'" }),
-    { patterns = { 'my pattern' }, word = false, fixed = false }
   )
 end)
 
@@ -474,16 +462,16 @@ test('regexp: --regexp=value syntax', function()
   )
 end)
 
-test('regexp: --regexp with quoted value', function()
+test('regexp: --regexp with value containing spaces', function()
   deep_eq(
-    parse_args({ '--regexp', "'foo bar'" }),
+    parse_args({ '--regexp', 'foo bar' }),
     { patterns = { 'foo bar' }, word = false, fixed = false }
   )
 end)
 
-test('regexp: --regexp=quoted-value syntax', function()
+test('regexp: --regexp=value with spaces', function()
   deep_eq(
-    parse_args({ "--regexp='foo bar'" }),
+    parse_args({ '--regexp=foo bar' }),
     { patterns = { 'foo bar' }, word = false, fixed = false }
   )
 end)
@@ -576,7 +564,7 @@ test('word: args include -w', function()
   )
 end)
 
-test('word: args include a stacked F', function()
+test('word: args include a stacked w', function()
   deep_eq(
     parse_args({ '-Lw.', 'someFunction()' }),
     { patterns = { 'someFunction()' }, word = true, fixed = false }
@@ -584,33 +572,27 @@ test('word: args include a stacked F', function()
 end)
 
 --------------------------------------------------------------------------------
---- Quoted patterns: edge cases ------------------------------------------------
+--- Patterns with embedded quotes (post-unquoting) -----------------------------
 --------------------------------------------------------------------------------
 
-test('quotes: pattern with escaped single quote inside double quotes', function()
+-- After shell_unquote, the pattern itself may contain quote characters
+test('pattern: contains single quote', function()
   deep_eq(
-    parse_args({ '"it\'s"' }),
+    parse_args({ "it's" }),
     { patterns = { "it's" }, word = false, fixed = false }
   )
 end)
 
-test('quotes: pattern with double quote inside single quotes', function()
+test('pattern: contains double quote', function()
   deep_eq(
-    parse_args({ "'say \"hello\"'" }),
+    parse_args({ 'say "hello"' }),
     { patterns = { 'say "hello"' }, word = false, fixed = false }
   )
 end)
 
-test('quotes: empty quoted string', function()
+test('pattern: empty string', function()
   deep_eq(
-    parse_args({ "''" }),
-    { patterns = { '' }, word = false, fixed = false }
-  )
-end)
-
-test('quotes: empty double-quoted string', function()
-  deep_eq(
-    parse_args({ '""' }),
+    parse_args({ '' }),
     { patterns = { '' }, word = false, fixed = false }
   )
 end)
@@ -645,16 +627,11 @@ test('edge: pattern with special regex characters', function()
   )
 end)
 
-test('edge: quoted pattern with special regex characters', function()
+test('edge: pattern with complex regex', function()
   deep_eq(
-    parse_args({ "'(foo|bar)+'" }),
+    parse_args({ '(foo|bar)+' }),
     { patterns = { '(foo|bar)+' }, word = false, fixed = false }
   )
-end)
-
-test('edge: single quote character alone', function()
-  -- Malformed input: unterminated quote
-  deep_eq(parse_args({ "'" }), nil)
 end)
 
 test('edge: single dash alone', function()
@@ -720,7 +697,7 @@ end)
 
 test('real-world: multiline search', function()
   deep_eq(
-    parse_args({ '-U', "'func.*\\n.*return'" }),
+    parse_args({ '-U', 'func.*\\n.*return' }),
     { patterns = { 'func.*\\n.*return' }, word = false, fixed = false }
   )
 end)
@@ -735,7 +712,7 @@ end)
 
 test('real-world: pcre2 regex', function()
   deep_eq(
-    parse_args({ '-P', "'(?<=func )\\w+'" }),
+    parse_args({ '-P', '(?<=func )\\w+' }),
     { patterns = { '(?<=func )\\w+' }, word = false, fixed = false }
   )
 end)
