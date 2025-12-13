@@ -44,6 +44,7 @@ function M._categorise_args(tokens)
   local result = {
     patterns = {},
     fixed = false,
+    word = false,
   }
 
   while i <= #tokens do
@@ -65,6 +66,9 @@ function M._categorise_args(tokens)
       i = i + 2
     elseif token == '-F' or token == '--fixed-strings' then
       result.fixed = true
+      i = i + 1
+    elseif token == '-w' or token == '--word-regexp' then
+      result.word = true
       i = i + 1
     else
       i = i + 1

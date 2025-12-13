@@ -82,7 +82,7 @@ function M.rg_raw(cmd_args, plugin_opts)
 
   local categorised_args = categorise_args(tokens)
   local rg_pattern = nil
-  if categorised_args and #(categorised_args.patterns) > 0 then
+  if categorised_args and categorised_args.patterns and #(categorised_args.patterns) > 0 then
     rg_pattern = categorised_args.patterns[1]
   end
 
@@ -98,7 +98,7 @@ function M.rg_raw(cmd_args, plugin_opts)
   M._rg_exec(
     rg_args,
     rg_pattern,
-    { word = false, fixed = categorised_args.fixed },
+    { word = categorised_args.word, fixed = categorised_args.fixed },
     plugin_opts
   )
 end
