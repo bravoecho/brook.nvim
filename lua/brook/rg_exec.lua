@@ -10,7 +10,7 @@ local current_job_id = nil
 local rg_to_vim_pattern = require('brook.rg_to_vim_pattern')._rg_to_vim_pattern
 local tokenise = require('brook.tokenise')._tokenise
 local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
-local categorise_args = require('brook.categorise_args')._categorise_args
+local parse_args = require('brook.parse_args')._parse_args
 
 local M = {}
 
@@ -80,7 +80,7 @@ function M.rg_raw(cmd_args, plugin_opts)
     return
   end
 
-  local categorised_args = categorise_args(tokens)
+  local categorised_args = parse_args(tokens)
   local rg_pattern = nil
   if categorised_args and categorised_args.patterns and #(categorised_args.patterns) > 0 then
     rg_pattern = categorised_args.patterns[1]
@@ -259,7 +259,7 @@ function M._extract_rg_pattern(tokens)
     return nil
   end
 
-  local categorised_args = categorise_args(tokens)
+  local categorised_args = parse_args(tokens)
   if categorised_args and #(categorised_args.patterns) > 0 then
     return categorised_args.patterns[1]
   end

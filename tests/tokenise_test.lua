@@ -179,7 +179,7 @@ end)
 -- TODO: ???
 -- test('edge: unterminated string', function()
 --   -- Best effort: treat as pattern anyway
---   eq(categorise_args({ "'hello", 'world' }), "'hello world")
+--   eq(parse_args({ "'hello", 'world' }), "'hello world")
 -- end)
 
 --------------------------------------------------------------------------------

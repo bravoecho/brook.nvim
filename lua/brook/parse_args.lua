@@ -19,7 +19,7 @@ local POSITIONAL_SEPARATOR = '--'
 ---
 ---@param tokens string[]|nil A list of POSIX-like command-line tokens
 ---@return string[]|nil patterns One or more search patterns, or nil if malformed
-function M._categorise_args(tokens)
+function M._parse_args(tokens)
   -- Step 1 (pre-processing): unquote all args
   --------------------------------------------
   -- unquote the tokens, because even when quoted ripgrep will try to interpret
