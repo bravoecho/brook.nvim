@@ -1,18 +1,18 @@
 # brook.nvim
 
 A ripgrep wrapper for Neovim. Streams results asynchronously to the quickfix
-list, bypasses shell interpretation for portability, and sets the search
-register for seamless `n`/`N` navigation.
+list, bypasses shell interpretation for security and portability, and sets the
+search register for seamless `n`/`N` navigation.
 
 ## Features
 
-- **Asynchronous execution** — results stream to the quickfix list as they
+- **Asynchronous execution**: results stream to the quickfix list as they
   arrive
-- **Shell-safe** — arguments are passed directly to ripgrep, bypassing shell
+- **Shell-safe**: arguments are passed directly to ripgrep, bypassing shell
   interpretation entirely
-- **Pattern extraction** — the search pattern is translated to Vim regex and set
+- **Pattern extraction**: the search pattern is translated to Vim regex and set
   in the search register, so `n`/`N` navigation and `hlsearch` work out of the box
-- **Transparent** — no abstraction layer; any ripgrep knowledge transfers
+- **Transparent**: no abstraction layer; any ripgrep knowledge transfers
   directly
 
 ## Installation
@@ -185,7 +185,7 @@ running Neovim in different shells (Bash/Zsh vs Fish, for example).
 When you type a command like `:Rg 'foo|bar'`, Neovim passes the raw string
 `'foo|bar'` (quotes included) to brook. Brook then applies POSIX-compliant shell
 unquoting to extract the intended pattern (`foo|bar`), and passes it directly to
-ripgrep via `jobstart()` as an argument array—no shell ever interprets the
+ripgrep via `jobstart()` as an argument array: no shell ever interprets the
 pattern.
 
 Malformed input (such as unterminated quotes or a trailing backslash) is
@@ -197,18 +197,20 @@ Building a "transparent" ripgrep wrapper presents a few challenges.
 
 **POSIX shell unquoting.** When you type `:Rg 'foo bar'`, Neovim passes the
 literal string `'foo bar'` (quotes included) to the plugin. Brook must interpret
-these quotes the way a shell would—removing them while respecting the
+these quotes the way a shell would: removing them while respecting the
 differences between single quotes, double quotes, and backslash escapes.
 
 **Pattern extraction.** To set Vim's search register, brook needs to identify
 which argument is the search pattern. This requires parsing ripgrep's CLI:
 distinguishing flags from options that take values, handling stacked short flags
 (`-wie`), long options with attached values (`--regexp=pattern`), and the `--`
-separator.
+separator. Setting the search register is useful when performing global
+search+replace with `:cfdo %s//my-new-thing/`, so that the search pattern
+doesn't have to be typed in again.
 
 **Regex dialect translation.** Ripgrep uses Rust's regex syntax; Vim has its
 own. Brook translates patterns to Vim's "very magic" mode (`\v`), which closely
-mirrors ripgrep's syntax—most metacharacters pass through unchanged. The main
+mirrors ripgrep's syntax: most metacharacters pass through unchanged. The main
 transformations are non-greedy quantifiers (`+?` → `{-1,}`, `*?` → `{-}`) and
 word boundaries (`\b` → `(<|>)`). This is best-effort but covers most real-world
 patterns, enabling accurate `n`/`N` navigation and highlighting.
@@ -228,6 +230,12 @@ on a hardcoded list of ripgrep flags. If your ripgrep version has newer options,
 run `./bin/generate-rg-named-args` to regenerate the list, or submit a pull
 request.
 
+**Case-sensitivity is not reflected correctly in highlighting.** Translating
+flags like `--case-sensitive`, `--smart-case` and more would add significant
+complexity for marginal benefit. As a workaround, if both ripgrep and Neovim are
+configured to use smart case by default, the corresponding Vim search should
+do what you expect in most cases.
+
 **Results are truncated.** By default, brook stops after 1000 results to keep
 the quickfix list manageable. Increase or disable the limit with `max_results`
 in your configuration.
@@ -237,7 +245,9 @@ is used to set the search register. This is because I suspect it would be
 a seldom used feature in the context of code editing. Support for multiple
 patterns may be added in the future.
 
-## brook.nvim vs vim-grepper
+## Other plugins
+
+### brook.nvim vs vim-grepper
 
 [vim-grepper](https://github.com/mhinz/vim-grepper) is an excellent,
 battle-tested plugin I used for many years. It supported my workflows where no
@@ -260,7 +270,7 @@ Main motivations for brook.nvim were:
 **vim-grepper** abstracts over multiple grep tools with rich configuration:
 prompt modes, tool switching, directory strategies, side windows, and more.
 
-**brook.nvim** only supports ripgrep and streams results to quickfix—no shell
+**brook.nvim** only supports ripgrep and streams results to quickfix: no shell
 interpretation, identical behaviour across Fish/Zsh/Bash. brook.nvim omits
 multi-tool support, interactive prompt, location list, side window, append mode,
 auto-jump, and Vim support.
@@ -268,6 +278,34 @@ auto-jump, and Vim support.
 If switching from vim-grepper, these work the same: async streaming to quickfix,
 search register (`n`/`N` navigation), word-under-cursor search, visual selection
 search, arbitrary ripgrep flags, and environment (`.gitignore`, `.ripgreprc`).
+
+### brook.nvim vs Telescope and FzfLua
+
+Fuzzy finders are excellent for tasks where partial information is sufficient to
+find the resource, like opening a file, switching buffers, finding
+a lesser-known command. The transient UI fits that interaction: find, select,
+move on.
+
+Grepping is different, for code exploration and modification. The results need
+to remain available, to navigate between them, and often act on them. The
+quickfix list is best suited to this purpose:
+
+- it persists, and it can be kept open or hidden
+- it integrates with built-in navigation commands and shortcuts
+- supports batch operations via `:cfdo`
+
+### Global Search and Replace
+
+Grepping plugins that populate the quickfix list and set the search register,
+like vim-grepper and brook.nvim, support global search-and-replace out of the
+box:
+
+```vim
+:cfdo %s//replacement/gc
+```
+
+...will replace all matches across files, using the pattern you already searched
+for. No additional UI required, just Vim, working as designed.
 
 ## Requirements
 
