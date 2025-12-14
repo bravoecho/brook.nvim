@@ -83,18 +83,34 @@ function M._rg_to_vim_pattern(pattern, opts)
       in_char_class = false
       table.insert(result, ']')
       i = i + 1
-    elseif char == '}' and next_char == '?' and not in_char_class then
+    elseif char == '{' and not in_char_class then
       -- Non-greedy brace quantifier: {n}? {n,}? {n,m}? -> {-n} {-n,} {-n,m}
-      -- Find the opening brace in the result and insert '-' after it
-      -- FIXME: refactor by introducing a new state 'in_brace_quantifier', to avoid backtracking
-      for j = #result, 1, -1 do
-        if result[j] == '{' then
-          table.insert(result, j + 1, '-')
+      -- Handle it as an independent subsequence.
+      -- Find the opening brace in the result and insert '-' after it.
+      local subresult = {}
+      while i <= len do
+        -- collect and advance in any case
+        local qch, next_qch = pattern:sub(i, i), pattern:sub(i + 1, i + 1)
+        table.insert(subresult, qch)
+        i = i + 1
+
+        -- if this was the closing of a brace identifer, handle it
+        if qch == '}' then
+          if next_qch == '?' then
+            -- this is a non-greedy brace quantifier: insert the '-' character
+            -- after the opening brace: {4,7} => {-4,7} and consume the '?' in
+            -- the source
+            table.insert(subresult, 2, '-')
+            i = i + 1
+          end
+          -- merge the subsequence back into the main result
+          for j = 1, #subresult do
+            table.insert(result, subresult[j])
+          end
+          -- end the brace quantifier sequence
           break
         end
       end
-      table.insert(result, '}')
-      i = i + 2 -- skip both } and ?
     elseif (char == '*' or char == '+' or char == '?')
         and next_char == '?'
         and not in_char_class
