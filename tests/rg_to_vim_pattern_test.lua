@@ -7,7 +7,7 @@ local eq = h.eq
 local rg_to_vim_pattern = require('brook.rg_to_vim_pattern')._rg_to_vim_pattern
 
 --------------------------------------------------------------------------------
---- Fixed string / literal searches (opts.fixed = true) ------------------------
+--- Fixed string mode (opts.fixed = true) --------------------------------------
 --------------------------------------------------------------------------------
 
 test('fixed: simple literal', function()
@@ -30,144 +30,252 @@ test('fixed: complex path-like pattern', function()
   eq(rg_to_vim_pattern('path/to/file.txt', { fixed = true }), '\\Vpath\\/to\\/file.txt')
 end)
 
---------------------------------------------------------------------------------
---- Special metacharacters -----------------------------------------------------
---------------------------------------------------------------------------------
-
-test('fixed: complex path-like pattern', function()
-  eq(rg_to_vim_pattern('[~=]= nil', {}), [[\v[~=]\= nil]])
+test('fixed: empty string', function()
+  eq(rg_to_vim_pattern('', { fixed = true }), '\\V')
 end)
 
---------------------------------------------------------------------------------
---- Word boundary handling (opts.word = true) ----------------------------------
---------------------------------------------------------------------------------
-
-test('word: wraps pattern with word boundaries', function()
-  eq(rg_to_vim_pattern('hello', { word = true }), '\\v<hello>')
+test('fixed: special chars preserved', function()
+  eq(rg_to_vim_pattern('foo=bar~baz', { fixed = true }), '\\Vfoo=bar~baz')
 end)
 
-test('word: combined with fixed', function()
+test('fixed: with word boundary', function()
   eq(rg_to_vim_pattern('hello', { fixed = true, word = true }), '\\V\\<hello\\>')
 end)
 
+test('fixed: with word boundary and dot (literal)', function()
+  eq(rg_to_vim_pattern('foo.bar', { fixed = true, word = true }), '\\V\\<foo.bar\\>')
+end)
+
 --------------------------------------------------------------------------------
---- Very magic basics: metacharacters pass through -----------------------------
+--- Vim-special character escaping (literal in rg, special in \v) --------------
 --------------------------------------------------------------------------------
 
-test('verymagic: + passes through', function()
+test('vimspecial: equals sign', function()
+  eq(rg_to_vim_pattern('foo=bar', {}), '\\vfoo\\=bar')
+end)
+
+test('vimspecial: multiple equals signs', function()
+  eq(rg_to_vim_pattern('foo==bar', {}), '\\vfoo\\=\\=bar')
+end)
+
+test('vimspecial: tilde', function()
+  eq(rg_to_vim_pattern('x~y', {}), '\\vx\\~y')
+end)
+
+test('vimspecial: at-sign', function()
+  eq(rg_to_vim_pattern('a@b', {}), '\\va\\@b')
+end)
+
+test('vimspecial: ampersand', function()
+  eq(rg_to_vim_pattern('a&b', {}), '\\va\\&b')
+end)
+
+test('vimspecial: double ampersand (logical AND)', function()
+  eq(rg_to_vim_pattern('a && b', {}), '\\va \\&\\& b')
+end)
+
+test('vimspecial: less-than (comparison)', function()
+  eq(rg_to_vim_pattern('a<b', {}), '\\va\\<b')
+end)
+
+test('vimspecial: greater-than (comparison)', function()
+  eq(rg_to_vim_pattern('x > 0', {}), '\\vx \\> 0')
+end)
+
+test('vimspecial: generic type syntax', function()
+  eq(rg_to_vim_pattern('Vec<T>', {}), '\\vVec\\<T\\>')
+end)
+
+test('vimspecial: HTML tag', function()
+  eq(rg_to_vim_pattern('<div>', {}), '\\v\\<div\\>')
+end)
+
+test('vimspecial: Python decorator', function()
+  eq(rg_to_vim_pattern('@decorator', {}), '\\v\\@decorator')
+end)
+
+test('vimspecial: inside class literal, outside escaped', function()
+  eq(rg_to_vim_pattern('[~=]= nil', {}), '\\v[~=]\\= nil')
+end)
+
+test('vimspecial: angle brackets inside class (no escape needed)', function()
+  eq(rg_to_vim_pattern('[<>]', {}), '\\v[<>]')
+end)
+
+test('vimspecial: at and ampersand inside class (no escape needed)', function()
+  eq(rg_to_vim_pattern('[@&]', {}), '\\v[@&]')
+end)
+
+test('vimspecial: escaped equals in rg (literal)', function()
+  eq(rg_to_vim_pattern('\\=', {}), '\\v\\=')
+end)
+
+test('vimspecial: escaped tilde in rg (literal)', function()
+  eq(rg_to_vim_pattern('\\~', {}), '\\v\\~')
+end)
+
+test('vimspecial: escaped at in rg (literal)', function()
+  eq(rg_to_vim_pattern('\\@', {}), '\\v\\@')
+end)
+
+test('vimspecial: escaped ampersand in rg (literal)', function()
+  eq(rg_to_vim_pattern('\\&', {}), '\\v\\&')
+end)
+
+--------------------------------------------------------------------------------
+--- Characters special in both engines (pass through) --------------------------
+--------------------------------------------------------------------------------
+
+test('metachar: dot passes through', function()
+  eq(rg_to_vim_pattern('a.b', {}), '\\va.b')
+end)
+
+test('metachar: star passes through', function()
+  eq(rg_to_vim_pattern('a*b', {}), '\\va*b')
+end)
+
+test('metachar: plus passes through', function()
   eq(rg_to_vim_pattern('a+b', {}), '\\va+b')
 end)
 
-test('verymagic: ? passes through', function()
+test('metachar: question passes through', function()
   eq(rg_to_vim_pattern('a?b', {}), '\\va?b')
 end)
 
-test('verymagic: () pass through', function()
+test('metachar: parentheses pass through', function()
   eq(rg_to_vim_pattern('(foo)', {}), '\\v(foo)')
 end)
 
-test('verymagic: {} pass through', function()
-  eq(rg_to_vim_pattern('a{2,3}', {}), '\\va{2,3}')
-end)
-
-test('verymagic: | passes through', function()
+test('metachar: pipe passes through', function()
   eq(rg_to_vim_pattern('foo|bar', {}), '\\vfoo|bar')
 end)
 
-test('verymagic: multiple metacharacters pass through', function()
+test('metachar: caret passes through', function()
+  eq(rg_to_vim_pattern('^start', {}), '\\v^start')
+end)
+
+test('metachar: dollar passes through', function()
+  eq(rg_to_vim_pattern('end$', {}), '\\vend$')
+end)
+
+test('metachar: braces pass through', function()
+  eq(rg_to_vim_pattern('a{2,3}', {}), '\\va{2,3}')
+end)
+
+test('metachar: combined', function()
   eq(rg_to_vim_pattern('(a+|b?)', {}), '\\v(a+|b?)')
 end)
 
 --------------------------------------------------------------------------------
---- Escaped metacharacters (literal in rg -> literal in Vim) -------------------
+--- Escaped metacharacters (literal in both) -----------------------------------
 --------------------------------------------------------------------------------
 
-test('escaped: \\( passes through (literal in both)', function()
+test('escaped: \\( passes through', function()
   eq(rg_to_vim_pattern('\\(', {}), '\\v\\(')
 end)
 
-test('escaped: \\) passes through (literal in both)', function()
+test('escaped: \\) passes through', function()
   eq(rg_to_vim_pattern('\\)', {}), '\\v\\)')
 end)
 
-test('escaped: \\+ passes through (literal in both)', function()
+test('escaped: \\+ passes through', function()
   eq(rg_to_vim_pattern('\\+', {}), '\\v\\+')
 end)
 
-test('escaped: \\? passes through (literal in both)', function()
+test('escaped: \\? passes through', function()
   eq(rg_to_vim_pattern('\\?', {}), '\\v\\?')
 end)
 
-test('escaped: \\{ passes through (literal in both)', function()
+test('escaped: \\{ passes through', function()
   eq(rg_to_vim_pattern('\\{', {}), '\\v\\{')
 end)
 
-test('escaped: \\} passes through (literal in both)', function()
+test('escaped: \\} passes through', function()
   eq(rg_to_vim_pattern('\\}', {}), '\\v\\}')
 end)
 
-test('escaped: \\\\ stays as \\\\', function()
-  eq(rg_to_vim_pattern('\\\\', {}), '\\v\\\\')
+test('escaped: \\[ passes through', function()
+  eq(rg_to_vim_pattern('\\[', {}), '\\v\\[')
 end)
 
---------------------------------------------------------------------------------
---- Non-greedy quantifiers -----------------------------------------------------
---------------------------------------------------------------------------------
-
-test('nongreedy: *? becomes {-}', function()
-  eq(rg_to_vim_pattern('a*?b', {}), '\\va{-}b')
+test('escaped: \\] passes through', function()
+  eq(rg_to_vim_pattern('\\]', {}), '\\v\\]')
 end)
 
-test('nongreedy: +? becomes {-1,}', function()
-  eq(rg_to_vim_pattern('a+?b', {}), '\\va{-1,}b')
+test('escaped: \\| passes through', function()
+  eq(rg_to_vim_pattern('\\|', {}), '\\v\\|')
 end)
 
-test('nongreedy: ?? becomes {-0,1}', function()
-  eq(rg_to_vim_pattern('a??b', {}), '\\va{-0,1}b')
-end)
-
-test('nongreedy: complex pattern with +?', function()
-  eq(rg_to_vim_pattern([[\.password-.+?("|')\)]], {}), [[\v\.password-.{-1,}("|')\)]])
-end)
-
-test('nongreedy: .+? shorthand', function()
-  eq(rg_to_vim_pattern('.+?', {}), '\\v.{-1,}')
-end)
-
-test('nongreedy: .*? shorthand', function()
-  eq(rg_to_vim_pattern('.*?', {}), '\\v.{-}')
-end)
-
-test('nongreedy: multiple non-greedy in pattern', function()
-  eq(rg_to_vim_pattern('a+?b*?c??', {}), '\\va{-1,}b{-}c{-0,1}')
-end)
-
---------------------------------------------------------------------------------
---- Pass-through escape sequences (same in both) -------------------------------
---------------------------------------------------------------------------------
-
-test('passthrough: \\d stays as \\d', function()
-  eq(rg_to_vim_pattern('\\d', {}), '\\v\\d')
-end)
-
-test('passthrough: \\w stays as \\w', function()
-  eq(rg_to_vim_pattern('\\w', {}), '\\v\\w')
-end)
-
-test('passthrough: \\s stays as \\s', function()
-  eq(rg_to_vim_pattern('\\s', {}), '\\v\\s')
-end)
-
-test('passthrough: \\n stays as \\n', function()
-  eq(rg_to_vim_pattern('\\n', {}), '\\v\\n')
-end)
-
-test('passthrough: \\. stays as \\.', function()
+test('escaped: \\. passes through', function()
   eq(rg_to_vim_pattern('\\.', {}), '\\v\\.')
 end)
 
+test('escaped: \\* passes through', function()
+  eq(rg_to_vim_pattern('\\*', {}), '\\v\\*')
+end)
+
+test('escaped: \\\\ passes through', function()
+  eq(rg_to_vim_pattern('\\\\', {}), '\\v\\\\')
+end)
+
+test('escaped: \\^ passes through', function()
+  eq(rg_to_vim_pattern('\\^', {}), '\\v\\^')
+end)
+
+test('escaped: \\$ passes through', function()
+  eq(rg_to_vim_pattern('\\$', {}), '\\v\\$')
+end)
+
 --------------------------------------------------------------------------------
---- Word boundary \b translation -----------------------------------------------
+--- Character class shorthands (pass through) ----------------------------------
+--------------------------------------------------------------------------------
+
+test('shorthand: \\d passes through', function()
+  eq(rg_to_vim_pattern('\\d', {}), '\\v\\d')
+end)
+
+test('shorthand: \\D passes through', function()
+  eq(rg_to_vim_pattern('\\D', {}), '\\v\\D')
+end)
+
+test('shorthand: \\w passes through', function()
+  eq(rg_to_vim_pattern('\\w', {}), '\\v\\w')
+end)
+
+test('shorthand: \\W passes through', function()
+  eq(rg_to_vim_pattern('\\W', {}), '\\v\\W')
+end)
+
+test('shorthand: \\s passes through', function()
+  eq(rg_to_vim_pattern('\\s', {}), '\\v\\s')
+end)
+
+test('shorthand: \\S passes through', function()
+  eq(rg_to_vim_pattern('\\S', {}), '\\v\\S')
+end)
+
+test('shorthand: \\t passes through', function()
+  eq(rg_to_vim_pattern('\\t', {}), '\\v\\t')
+end)
+
+test('shorthand: \\n passes through', function()
+  eq(rg_to_vim_pattern('\\n', {}), '\\v\\n')
+end)
+
+test('shorthand: \\r passes through', function()
+  eq(rg_to_vim_pattern('\\r', {}), '\\v\\r')
+end)
+
+test('shorthand: combined with quantifier', function()
+  eq(rg_to_vim_pattern('\\d+', {}), '\\v\\d+')
+end)
+
+test('shorthand: inside character class', function()
+  eq(rg_to_vim_pattern('[\\d\\w]', {}), '\\v[\\d\\w]')
+end)
+
+--------------------------------------------------------------------------------
+--- Word boundaries ------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 test('boundary: \\b at start', function()
@@ -186,85 +294,394 @@ test('boundary: \\b in middle', function()
   eq(rg_to_vim_pattern('foo\\bbar', {}), '\\vfoo(<|>)bar')
 end)
 
---------------------------------------------------------------------------------
---- Angle bracket escaping (literal in rg, word boundary in very magic) --------
---------------------------------------------------------------------------------
-
-test('angle: < becomes \\<', function()
-  eq(rg_to_vim_pattern('<', {}), '\\v\\<')
+test('boundary: \\b with shorthand', function()
+  eq(rg_to_vim_pattern('\\b\\w+\\b', {}), '\\v(<|>)\\w+(<|>)')
 end)
 
-test('angle: > becomes \\>', function()
-  eq(rg_to_vim_pattern('>', {}), '\\v\\>')
+test('boundary: -w flag wraps with word boundaries', function()
+  eq(rg_to_vim_pattern('hello', { word = true }), '\\v<hello>')
 end)
 
-test('angle: generic type pattern', function()
-  eq(rg_to_vim_pattern('Vec<T>', {}), '\\vVec\\<T\\>')
+test('boundary: -w flag with regex pattern', function()
+  eq(rg_to_vim_pattern('foo.*bar', { word = true }), '\\v<foo.*bar>')
 end)
 
-test('angle: HTML tag', function()
-  eq(rg_to_vim_pattern('<div>', {}), '\\v\\<div\\>')
+test('boundary: \\B unsupported (returns nil)', function()
+  eq(rg_to_vim_pattern('\\B', {}), nil)
 end)
 
-test('angle: comparison operators', function()
-  eq(rg_to_vim_pattern('x > 0', {}), '\\vx \\> 0')
-end)
-
-test('angle: escaped in rg stays escaped (literal)', function()
-  -- In rg, \< is an escaped literal <, which in \v should also be \
-  eq(rg_to_vim_pattern('\\<', {}), '\\v\\<')
+test('boundary: \\B in pattern unsupported (returns nil)', function()
+  eq(rg_to_vim_pattern('foo\\Bbar', {}), nil)
 end)
 
 --------------------------------------------------------------------------------
---- Character classes (brackets) -----------------------------------------------
+--- Greedy quantifiers (pass through) ------------------------------------------
 --------------------------------------------------------------------------------
 
-test('bracket: simple class passes through', function()
+test('greedy: a* passes through', function()
+  eq(rg_to_vim_pattern('a*', {}), '\\va*')
+end)
+
+test('greedy: a+ passes through', function()
+  eq(rg_to_vim_pattern('a+', {}), '\\va+')
+end)
+
+test('greedy: a? passes through', function()
+  eq(rg_to_vim_pattern('a?', {}), '\\va?')
+end)
+
+test('greedy: a{3} passes through', function()
+  eq(rg_to_vim_pattern('a{3}', {}), '\\va{3}')
+end)
+
+test('greedy: a{3,} passes through', function()
+  eq(rg_to_vim_pattern('a{3,}', {}), '\\va{3,}')
+end)
+
+test('greedy: a{3,5} passes through', function()
+  eq(rg_to_vim_pattern('a{3,5}', {}), '\\va{3,5}')
+end)
+
+--------------------------------------------------------------------------------
+--- Non-greedy quantifiers (translation required) ------------------------------
+--------------------------------------------------------------------------------
+
+test('nongreedy: *? becomes {-}', function()
+  eq(rg_to_vim_pattern('a*?', {}), '\\va{-}')
+end)
+
+test('nongreedy: +? becomes {-1,}', function()
+  eq(rg_to_vim_pattern('a+?', {}), '\\va{-1,}')
+end)
+
+test('nongreedy: ?? becomes {-0,1}', function()
+  eq(rg_to_vim_pattern('a??', {}), '\\va{-0,1}')
+end)
+
+test('nongreedy: *? with preceding atom', function()
+  eq(rg_to_vim_pattern('a*?b', {}), '\\va{-}b')
+end)
+
+test('nongreedy: +? with preceding atom', function()
+  eq(rg_to_vim_pattern('a+?b', {}), '\\va{-1,}b')
+end)
+
+test('nongreedy: ?? with preceding atom', function()
+  eq(rg_to_vim_pattern('a??b', {}), '\\va{-0,1}b')
+end)
+
+test('nongreedy: .*? common pattern', function()
+  eq(rg_to_vim_pattern('.*?', {}), '\\v.{-}')
+end)
+
+test('nongreedy: .+? common pattern', function()
+  eq(rg_to_vim_pattern('.+?', {}), '\\v.{-1,}')
+end)
+
+test('nongreedy: multiple in pattern', function()
+  eq(rg_to_vim_pattern('a+?b*?c??', {}), '\\va{-1,}b{-}c{-0,1}')
+end)
+
+test('nongreedy: {n}? becomes {-n}', function()
+  eq(rg_to_vim_pattern('a{3}?', {}), '\\va{-3}')
+end)
+
+test('nongreedy: {n,}? becomes {-n,}', function()
+  eq(rg_to_vim_pattern('a{3,}?', {}), '\\va{-3,}')
+end)
+
+test('nongreedy: {n,m}? becomes {-n,m}', function()
+  eq(rg_to_vim_pattern('a{3,5}?', {}), '\\va{-3,5}')
+end)
+
+test('nongreedy: {n,m}? realistic', function()
+  eq(rg_to_vim_pattern('a{2,4}?', {}), '\\va{-2,4}')
+end)
+
+test('nongreedy: on group', function()
+  eq(rg_to_vim_pattern('(ab)+?', {}), '\\v(ab){-1,}')
+end)
+
+test('nongreedy: HTML tag pattern', function()
+  eq(rg_to_vim_pattern('<.*?>', {}), '\\v\\<.{-}\\>')
+end)
+
+test('nongreedy: quoted string', function()
+  eq(rg_to_vim_pattern('".*?"', {}), '\\v".{-}"')
+end)
+
+test('nongreedy: with shorthand', function()
+  eq(rg_to_vim_pattern('\\w+?', {}), '\\v\\w{-1,}')
+end)
+
+test('nongreedy: complex pattern', function()
+  eq(rg_to_vim_pattern([[\.password-.+?("|')\)]], {}), [[\v\.password-.{-1,}("|')\)]])
+end)
+
+--------------------------------------------------------------------------------
+--- Character classes ----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+-- Basic syntax
+test('class: simple', function()
   eq(rg_to_vim_pattern('[abc]', {}), '\\v[abc]')
 end)
 
-test('bracket: negated class passes through', function()
+test('class: range', function()
+  eq(rg_to_vim_pattern('[a-z]', {}), '\\v[a-z]')
+end)
+
+test('class: negated', function()
   eq(rg_to_vim_pattern('[^abc]', {}), '\\v[^abc]')
 end)
 
-test('bracket: metacharacters inside remain literal', function()
-  eq(rg_to_vim_pattern('[a+b]', {}), '\\v[a+b]')
+test('class: multiple ranges', function()
+  eq(rg_to_vim_pattern('[a-zA-Z0-9]', {}), '\\v[a-zA-Z0-9]')
 end)
 
-test('bracket: all metacharacters inside remain literal', function()
-  eq(rg_to_vim_pattern('[+?(){}|]', {}), '\\v[+?(){}|]')
-end)
-
-test('bracket: literal ] at start of class', function()
+-- Special positions
+test('class: literal ] at start', function()
   eq(rg_to_vim_pattern('[]abc]', {}), '\\v[]abc]')
 end)
 
-test('bracket: literal ] at start of negated class', function()
+test('class: literal ] at start of negated', function()
   eq(rg_to_vim_pattern('[^]abc]', {}), '\\v[^]abc]')
 end)
 
-test('bracket: escapes inside brackets pass through', function()
+test('class: literal - at start', function()
+  eq(rg_to_vim_pattern('[-abc]', {}), '\\v[-abc]')
+end)
+
+test('class: literal - at end', function()
+  eq(rg_to_vim_pattern('[abc-]', {}), '\\v[abc-]')
+end)
+
+test('class: range then literal -', function()
+  eq(rg_to_vim_pattern('[a-z-]', {}), '\\v[a-z-]')
+end)
+
+-- Vim-special chars inside (no escaping needed)
+test('class: tilde and equals inside', function()
+  eq(rg_to_vim_pattern('[~=]', {}), '\\v[~=]')
+end)
+
+test('class: angle brackets inside', function()
+  eq(rg_to_vim_pattern('[<>]', {}), '\\v[<>]')
+end)
+
+test('class: at and ampersand inside', function()
+  eq(rg_to_vim_pattern('[@&]', {}), '\\v[@&]')
+end)
+
+-- Escapes inside classes
+test('class: shorthands inside', function()
   eq(rg_to_vim_pattern('[\\d\\w]', {}), '\\v[\\d\\w]')
 end)
 
-test('bracket: metachar outside, literal inside', function()
+test('class: escaped ]', function()
+  eq(rg_to_vim_pattern('[\\]]', {}), '\\v[\\]]')
+end)
+
+test('class: escaped backslash', function()
+  eq(rg_to_vim_pattern('[\\\\]', {}), '\\v[\\\\]')
+end)
+
+test('class: escaped caret', function()
+  eq(rg_to_vim_pattern('[\\^]', {}), '\\v[\\^]')
+end)
+
+test('class: escaped hyphen', function()
+  eq(rg_to_vim_pattern('[\\-]', {}), '\\v[\\-]')
+end)
+
+-- Metacharacters literal inside
+test('class: quantifiers literal inside', function()
+  eq(rg_to_vim_pattern('[+*?]', {}), '\\v[+*?]')
+end)
+
+test('class: parens literal inside', function()
+  eq(rg_to_vim_pattern('[()]', {}), '\\v[()]')
+end)
+
+test('class: braces literal inside', function()
+  eq(rg_to_vim_pattern('[{}]', {}), '\\v[{}]')
+end)
+
+test('class: pipe literal inside', function()
+  eq(rg_to_vim_pattern('[|]', {}), '\\v[|]')
+end)
+
+test('class: dot literal inside', function()
+  eq(rg_to_vim_pattern('[.]', {}), '\\v[.]')
+end)
+
+test('class: all metacharacters inside', function()
+  eq(rg_to_vim_pattern('[+?(){}|]', {}), '\\v[+?(){}|]')
+end)
+
+-- Mixed inside/outside
+test('class: metachar outside, literal inside', function()
   eq(rg_to_vim_pattern('[a+]+', {}), '\\v[a+]+')
 end)
 
-test('bracket: multiple classes in pattern', function()
+test('class: multiple classes in pattern', function()
   eq(rg_to_vim_pattern('[a-z]+[0-9]+', {}), '\\v[a-z]+[0-9]+')
 end)
 
 --------------------------------------------------------------------------------
---- Forward slash escaping (search delimiter) ----------------------------------
+--- Groups ---------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-test('slash: escaped in pattern', function()
+-- Capturing groups (pass through)
+test('group: simple capturing', function()
+  eq(rg_to_vim_pattern('(foo)', {}), '\\v(foo)')
+end)
+
+test('group: with alternation', function()
+  eq(rg_to_vim_pattern('(a|b)', {}), '\\v(a|b)')
+end)
+
+test('group: multiple', function()
+  eq(rg_to_vim_pattern('(foo)(bar)', {}), '\\v(foo)(bar)')
+end)
+
+test('group: nested', function()
+  eq(rg_to_vim_pattern('((nested))', {}), '\\v((nested))')
+end)
+
+-- Non-capturing groups (translation required)
+test('group: non-capturing simple', function()
+  eq(rg_to_vim_pattern('(?:foo)', {}), '\\v%(foo)')
+end)
+
+test('group: non-capturing with alternation', function()
+  eq(rg_to_vim_pattern('(?:a|b)', {}), '\\v%(a|b)')
+end)
+
+test('group: non-capturing with quantifier +', function()
+  eq(rg_to_vim_pattern('(?:foo)+', {}), '\\v%(foo)+')
+end)
+
+test('group: non-capturing with quantifier ?', function()
+  eq(rg_to_vim_pattern('(?:foo)?', {}), '\\v%(foo)?')
+end)
+
+test('group: non-capturing with quantifier *', function()
+  eq(rg_to_vim_pattern('(?:foo)*', {}), '\\v%(foo)*')
+end)
+
+test('group: mixed capturing and non-capturing', function()
+  eq(rg_to_vim_pattern('(a)(?:b)(c)', {}), '\\v(a)%(b)(c)')
+end)
+
+test('group: nested non-capturing', function()
+  eq(rg_to_vim_pattern('(?:(?:inner))', {}), '\\v%(%(inner))')
+end)
+
+test('group: non-capturing with non-greedy', function()
+  eq(rg_to_vim_pattern('(?:ab)+?', {}), '\\v%(ab){-1,}')
+end)
+
+-- Named groups (unsupported)
+test('group: named Python style unsupported', function()
+  eq(rg_to_vim_pattern('(?P<name>foo)', {}), nil)
+end)
+
+test('group: named PCRE style unsupported', function()
+  eq(rg_to_vim_pattern('(?<name>foo)', {}), nil)
+end)
+
+--------------------------------------------------------------------------------
+--- Backreferences -------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+test('backref: simple repeat', function()
+  eq(rg_to_vim_pattern('(\\w+) \\1', {}), '\\v(\\w+) \\1')
+end)
+
+test('backref: palindrome-ish', function()
+  eq(rg_to_vim_pattern('(.).*\\1', {}), '\\v(.).*\\1')
+end)
+
+test('backref: multiple refs', function()
+  eq(rg_to_vim_pattern('(a)(b)\\2\\1', {}), '\\v(a)(b)\\2\\1')
+end)
+
+--------------------------------------------------------------------------------
+--- Forward slash escaping -----------------------------------------------------
+--------------------------------------------------------------------------------
+
+test('slash: simple path', function()
   eq(rg_to_vim_pattern('foo/bar', {}), '\\vfoo\\/bar')
 end)
 
-test('slash: escaped inside brackets too', function()
+test('slash: URL path', function()
+  eq(rg_to_vim_pattern('/api/v1', {}), '\\v\\/api\\/v1')
+end)
+
+test('slash: inside character class', function()
   eq(rg_to_vim_pattern('[/]', {}), '\\v[\\/]')
+end)
+
+test('slash: multiple', function()
+  eq(rg_to_vim_pattern('a/b/c', {}), '\\va\\/b\\/c')
+end)
+
+--------------------------------------------------------------------------------
+--- Unsupported features (should return nil) -----------------------------------
+--------------------------------------------------------------------------------
+
+-- Lookarounds
+test('unsupported: positive lookahead', function()
+  eq(rg_to_vim_pattern('foo(?=bar)', {}), nil)
+end)
+
+test('unsupported: negative lookahead', function()
+  eq(rg_to_vim_pattern('foo(?!bar)', {}), nil)
+end)
+
+test('unsupported: positive lookbehind', function()
+  eq(rg_to_vim_pattern('(?<=foo)bar', {}), nil)
+end)
+
+test('unsupported: negative lookbehind', function()
+  eq(rg_to_vim_pattern('(?<!foo)bar', {}), nil)
+end)
+
+-- Atomic groups
+test('unsupported: atomic group', function()
+  eq(rg_to_vim_pattern('(?>foo)', {}), nil)
+end)
+
+-- Possessive quantifiers
+test('unsupported: possessive *+', function()
+  eq(rg_to_vim_pattern('a*+', {}), nil)
+end)
+
+test('unsupported: possessive ++', function()
+  eq(rg_to_vim_pattern('a++', {}), nil)
+end)
+
+test('unsupported: possessive ?+', function()
+  eq(rg_to_vim_pattern('a?+', {}), nil)
+end)
+
+-- Unicode categories
+test('unsupported: unicode category', function()
+  eq(rg_to_vim_pattern('\\p{L}', {}), nil)
+end)
+
+test('unsupported: negated unicode category', function()
+  eq(rg_to_vim_pattern('\\P{L}', {}), nil)
+end)
+
+-- String anchors
+test('unsupported: string start anchor', function()
+  eq(rg_to_vim_pattern('\\A', {}), nil)
+end)
+
+test('unsupported: string end anchor', function()
+  eq(rg_to_vim_pattern('\\z', {}), nil)
 end)
 
 --------------------------------------------------------------------------------
@@ -276,10 +693,10 @@ test('complex: function call pattern', function()
 end)
 
 test('complex: email-like pattern', function()
-  eq(rg_to_vim_pattern('[a-zA-Z0-9.]+@[a-zA-Z0-9.]+', {}), '\\v[a-zA-Z0-9.]+@[a-zA-Z0-9.]+')
+  eq(rg_to_vim_pattern('[a-zA-Z0-9.]+@[a-zA-Z0-9.]+', {}), '\\v[a-zA-Z0-9.]+\\@[a-zA-Z0-9.]+')
 end)
 
-test('complex: URL path', function()
+test('complex: URL path with version', function()
   eq(rg_to_vim_pattern('/api/v[0-9]+/users', {}), '\\v\\/api\\/v[0-9]+\\/users')
 end)
 
@@ -287,16 +704,48 @@ test('complex: alternation with groups', function()
   eq(rg_to_vim_pattern('(foo|bar)(baz)?', {}), '\\v(foo|bar)(baz)?')
 end)
 
-test('complex: word with quantifier', function()
+test('complex: word with quantifier range', function()
   eq(rg_to_vim_pattern('\\b\\w{3,5}\\b', {}), '\\v(<|>)\\w{3,5}(<|>)')
 end)
 
-test('complex: non-greedy HTML tag matching', function()
-  eq(rg_to_vim_pattern('<div.*?>', {}), [[\v\<div.{-}\>]])
+test('complex: non-greedy HTML tag', function()
+  eq(rg_to_vim_pattern('<div.*?>', {}), '\\v\\<div.{-}\\>')
 end)
 
-test('complex: quoted string (non-greedy)', function()
+test('complex: quoted string non-greedy', function()
   eq(rg_to_vim_pattern('"[^"]*?"', {}), '\\v"[^"]{-}"')
+end)
+
+test('complex: Go generic type', function()
+  eq(rg_to_vim_pattern('Map\\[string\\]', {}), '\\vMap\\[string\\]')
+end)
+
+test('complex: Lua nil check', function()
+  eq(rg_to_vim_pattern('[~=]= nil', {}), '\\v[~=]\\= nil')
+end)
+
+test('complex: CSS selector', function()
+  eq(rg_to_vim_pattern('\\.class-name', {}), '\\v\\.class-name')
+end)
+
+test('complex: method chaining', function()
+  eq(rg_to_vim_pattern('\\.\\w+\\(.*?\\)', {}), '\\v\\.\\w+\\(.{-}\\)')
+end)
+
+test('complex: assignment operator', function()
+  eq(rg_to_vim_pattern('\\w+ = ', {}), '\\v\\w+ \\= ')
+end)
+
+test('complex: shell variable', function()
+  eq(rg_to_vim_pattern('\\$\\{?\\w+\\}?', {}), '\\v\\$\\{?\\w+\\}?')
+end)
+
+test('complex: markdown link', function()
+  eq(rg_to_vim_pattern('\\[.*?\\]\\(.*?\\)', {}), '\\v\\[.{-}\\]\\(.{-}\\)')
+end)
+
+test('complex: SQL LIKE pattern', function()
+  eq(rg_to_vim_pattern("LIKE '%.*?%'", {}), "\\vLIKE '%.{-}%'")
 end)
 
 --------------------------------------------------------------------------------
@@ -313,6 +762,22 @@ end)
 
 test('edge: only metacharacters', function()
   eq(rg_to_vim_pattern('+?|', {}), '\\v+?|')
+end)
+
+test('edge: unclosed bracket', function()
+  eq(rg_to_vim_pattern('[abc', {}), '\\v[abc')
+end)
+
+test('edge: unclosed group', function()
+  eq(rg_to_vim_pattern('(foo', {}), '\\v(foo')
+end)
+
+test('edge: only special chars', function()
+  eq(rg_to_vim_pattern('~=@&<>', {}), '\\v\\~\\=\\@\\&\\<\\>')
+end)
+
+test('edge: consecutive escapes', function()
+  eq(rg_to_vim_pattern('\\\\\\d', {}), '\\v\\\\\\d')
 end)
 
 --------------------------------------------------------------------------------

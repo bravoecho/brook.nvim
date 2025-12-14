@@ -69,6 +69,14 @@ respects the existing ripgrep configuration:
 - `.gitignore` and `.ignore` files
 - Environment variables inherited by Neovim
 
+Pattern translation targets Neovim's NFA regexp engine. This is usually used by
+default. However, for more predictable behaviour, ensure it's set in your
+`init.lua`:
+
+```lua
+vim.o.regexpengine = 2 -- set to 'NFA'
+```
+
 ## Usage
 
 ### Command
