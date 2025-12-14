@@ -34,7 +34,7 @@ function M.setup(plugin_opts)
     -- General case: forward command arguments to ripgrep
     -----------------------------------------------------
     rg_raw(cmd_opts.args, { max_results = max_results })
-  end, { nargs = '*', complete = 'file' })
+  end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
   ------------------------
   --- Command shortcut ---
@@ -59,7 +59,7 @@ function M.setup(plugin_opts)
     end
 
     rg_selection(text, { max_results = max_results })
-  end, { desc = 'Grep visual selection' })
+  end, { desc = 'Grep visual selection with ripgrep' })
 end
 
 return M

@@ -78,7 +78,7 @@ function M.rg_raw(cmd_args, plugin_opts)
   local tokens = tokenise(cmd_args)
 
   if not tokens or #tokens == 0 then
-    vim.notify("brook: no arguments provided", vim.log.levels.ERROR)
+    vim.notify("rg: no arguments provided", vim.log.levels.ERROR)
     return
   end
 
@@ -89,7 +89,7 @@ function M.rg_raw(cmd_args, plugin_opts)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- notify and bail out
   if rg_args == nil then
-    vim.notify("brook: malformed command", vim.log.levels.ERROR)
+    vim.notify("rg: malformed command", vim.log.levels.ERROR)
     return
   end
 
@@ -98,7 +98,7 @@ function M.rg_raw(cmd_args, plugin_opts)
   -- Minimal parsing, just enough to support Neovim features
   local parsed_args = parse_args(rg_args)
   if not parsed_args then
-    vim.notify("brook: malformed command", vim.log.levels.ERROR)
+    vim.notify("rg: malformed command", vim.log.levels.ERROR)
     return
   end
   -- NOTE: Currently only the first pattern is returned (even when the original
