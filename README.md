@@ -37,10 +37,9 @@ return {
 
 Minimal.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `keymap` | string | `'<leader>g'` | Keymap for triggering searches |
-| `max_results` | integer\|false | `1000` | Maximum results before stopping (false to disable) |
+- `keymap` (string, default `'<leader>g'`): keymap for triggering searches
+- `max_results` (integer or false, default `1000`): maximum results before
+  stopping (false to disable)
 
 To use a different keymap, update both the `keys` table (for lazy-loading) and
 `opts`.
@@ -95,11 +94,12 @@ Path completion is supported.
 
 ### Default mappings
 
-| Mode | Mapping | Action |
-|------|---------|--------|
-| Normal | `<leader>g` | Open the `:Rg` command prompt |
-| Normal | `:Rg` (no args) | Search for word under cursor |
-| Visual | `<leader>g` | Search for visual selection |
+- Normal mode
+  - `<leader>g`: open the `:Rg` command prompt
+  - `:Rg` (no args) followed by `<enter>`: search for word under cursor
+
+- Visual mode
+  - `<leader>g`: search for visual selection
 
 ## Examples
 
@@ -267,13 +267,15 @@ Main motivations for brook.nvim were:
 - I couldn't find a ripgrep plugin written in Lua
 - I was interested in extended search register support
 
-| Aspect | brook.nvim | vim-grepper |
-|--------|------------|-------------|
-| Language | Lua | Vimscript |
-| Target | Neovim only | Vim + Neovim |
-| Tools | ripgrep only | 9 tools |
-| Config | Minimal | Many options |
-| Shell | Bypassed (direct execution) | Per-tool escaping |
+Differences
+
+- **Language**: brook.nvim uses Lua, vim-grepper uses Vimscript
+- **Target**: brook.nvim is Neovim only, vim-grepper supports both Vim and
+  Neovim
+- **Tools**: brook.nvim supports ripgrep only, vim-grepper supports 9 tools
+- **Config**: brook.nvim is minimal, vim-grepper has many options
+- **Shell**: brook.nvim bypasses shell (direct execution), vim-grepper uses
+  per-tool escaping
 
 **vim-grepper** abstracts over multiple grep tools with rich configuration:
 prompt modes, tool switching, directory strategies, side windows, and more.
