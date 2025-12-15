@@ -6,6 +6,32 @@ local M = {}
 --- Targets very magic mode (\v) for closer semantic alignment with ripgrep's
 --- Rust regex syntax.
 ---
+--- Supported syntactic features:
+---
+---   - literal characters and basic metacharacters
+---   - Vim-special characters requiring escaping
+---   - character classes
+---   - character class shorthands
+---   - word boundaries
+---   - quantifiers (greedy and non-greedy)
+---   - numbered groups (capturing and non-capturing)
+---   - backreferences in patterns
+---
+--- Pattern translation, and therefore search result highlighting, is not
+--- supported for several advanced Rust regex features. This is either because
+--- have no vimgrep correspondent, or because are too complex to implement and
+--- unlikely to be used in code searches. They will cause the translator to
+--- return `nil`. For example:
+---
+---   - lookarounds: `(?=...)` `(?!...)` `(?<=...)` `(?<!...)`
+---   - named groups: `(?P<n>...)` `(?<n>...)`
+---   - non-word boundary: `\B`
+---   - anchors: `\A` `\z` (use `^` `$` instead)
+---   - unicode categories: `\p{...}` `\P{...}`
+---   - conditional patterns: `(?(condition)yes|no)`
+---   - atomic groups: `(?>...)`
+---   - possessive quantifiers: `*+` `++` `?+`
+---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.SearchOpts Options affecting pattern translation
 ---@return string|nil vim_pattern The translated Vim regex pattern, nil when pattern is unsupported.
