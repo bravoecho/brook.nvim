@@ -2,6 +2,7 @@
 set -euo pipefail
 
 selfdir="$(dirname "$(readlink -f "$0")")"
+rootdir=$(cd "$selfdir"; git rev-parse --show-toplevel)
 
 # Lists all the ripgrep named arguments (flags and options) listed by the
 # ripgrep help command, one per line.
@@ -58,4 +59,4 @@ export RG_OPTIONS="$options"
 echo "$template" \
   | envsubst \
   | stylua --quote-style ForceSingle --indent-type Spaces --indent-width 2 - \
-  | tee "$selfdir/../rg_args.lua"
+  | tee "$rootdir/lua/brook/rg_args.lua"
