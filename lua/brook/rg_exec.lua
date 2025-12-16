@@ -28,7 +28,14 @@ local M = {}
 ---@param plugin_opts? brook.PluginOpts Plugin options
 function M.rg_selection(text, plugin_opts)
   plugin_opts = plugin_opts or {}
-  M._rg_exec({ '--', text }, text, { word = false, fixed = true }, plugin_opts)
+
+  local search_opts = { word = false, fixed = true }
+
+  local on_first_result = function()
+    M._set_search_register(text, search_opts)
+  end
+
+  M._rg_exec({ '--', text }, on_first_result, search_opts, plugin_opts)
 end
 
 --- Searches for a single word using ripgrep.
@@ -43,7 +50,14 @@ end
 ---@param plugin_opts? brook.PluginOpts Plugin options
 function M.rg_word(word, plugin_opts)
   plugin_opts = plugin_opts or {}
-  M._rg_exec({ '--', word }, word, { word = true, fixed = true }, plugin_opts)
+
+  local search_opts = { word = true, fixed = true }
+
+  local on_first_result = function()
+    M._set_search_register(word, search_opts)
+  end
+
+  M._rg_exec({ '--', word }, on_first_result, search_opts, plugin_opts)
 end
 
 --- Searches with user-defined arguments.
@@ -87,35 +101,48 @@ function M.rg_raw(cmd_args, plugin_opts)
   -- Unquote each token (interprets shell quoting rules)
   local rg_args = shell_unquote_all(tokens)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
-  -- notify and bail out
+  -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then
     vim.notify("rg: malformed command", vim.log.levels.ERROR)
     return
   end
 
-  -- Step 3: Parse
-  ----------------
-  -- Minimal parsing, just enough to support Neovim features
-  local parsed_args = parse_args(rg_args)
-  if not parsed_args then
-    vim.notify("rg: malformed command", vim.log.levels.ERROR)
-    return
-  end
-  -- NOTE: Currently only the first pattern is returned (even when the original
-  -- command specified multiple with -e/--regexp). Support to combine multiple
-  -- patterns in an alternation for more accurate highlighting may be added in
-  -- the future.
-  local rg_pattern = nil
-  if parsed_args.patterns and #(parsed_args.patterns) > 0 then
-    rg_pattern = parsed_args.patterns[1]
+  -- Step 3: Build deferred callback
+  ----------------------------------
+  -- Remaining operations can be performed lazily, only when and if results
+  -- are received. This way...
+  --   - we can be confident that the arguments were formally correct, because
+  --     the command succeeded and has matches: this simplifies parsing, no need
+  --     for extra validation
+  --   - we don't risk to reset the search register inappropriately
+  --   - we avoid unnecessary work
+  local on_first_result = function()
+    -- Minimal parsing, just enough to support Neovim features
+    local parsed_args = parse_args(rg_args)
+    if not parsed_args then
+      vim.notify("rg: malformed command", vim.log.levels.ERROR)
+      return
+    end
+    -- NOTE: Currently only the first pattern is used (even when the original
+    -- command specified multiple with -e/--regexp). Support to combine multiple
+    -- patterns in an alternation for more accurate highlighting may be added in
+    -- the future.
+    local rg_pattern = nil
+    if parsed_args.patterns and #(parsed_args.patterns) > 0 then
+      rg_pattern = parsed_args.patterns[1]
+    end
+    if not rg_pattern then
+      return
+    end
+    M._set_search_register(rg_pattern, {
+      word = parsed_args.word,
+      fixed = parsed_args.fixed,
+    })
   end
 
-  M._rg_exec(
-    rg_args,
-    rg_pattern,
-    { word = parsed_args.word, fixed = parsed_args.fixed },
-    plugin_opts
-  )
+  -- no need to specify programmatic search options, if any are present, they
+  -- will come from the args provided by the user
+  M._rg_exec(rg_args, on_first_result, {}, plugin_opts)
 end
 
 --- Runs ripgrep with the given argument array.
@@ -127,11 +154,11 @@ end
 ---   - No injection vulnerabilities
 ---   - Slightly faster (no shell process spawned)
 ---
----@param args string[] Arguments to pass to rg (excluding 'rg' itself and derived flags)
----@param rg_pattern string|nil The search pattern (used only to set the search register)
----@param search_opts brook.SearchOpts Search options
+---@param args string[] Shell-unquoted command tokens to pass to `rg`
+---@param on_first_result function Callback to executed when first result is received
+---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
 ---@param plugin_opts brook.PluginOpts Plugin options
-function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
+function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
   if current_job_id then
     vim.fn.jobstop(current_job_id)
     current_job_id = nil
@@ -139,22 +166,22 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
 
   local max_results = plugin_opts.max_results
 
-  -- Build the command array, deriving flags from search_opts
+  -- 1. Build command array
+  -------------------------
   local cmd = { 'rg', '--vimgrep' }
-
   if search_opts.word then
     table.insert(cmd, '--word-regexp')
   end
-
   if search_opts.fixed then
     table.insert(cmd, '--fixed-strings')
   end
-
   for _, arg in ipairs(args) do
     table.insert(cmd, arg)
   end
 
-  local is_first_entry = true
+  -- 2. Result stream handling
+  ----------------------------
+  local is_first_result = true
   local result_count = 0
   local stopped_at_limit = false
 
@@ -169,10 +196,17 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
       return
     end
 
-    if is_first_entry and #data > 0 then
+    if is_first_result and #data > 0 then
+      -- Clear the quickfix list
       vim.fn.setqflist({}, 'r')
+      -- Open it
       vim.cmd('copen')
-      is_first_entry = false
+
+      if on_first_result then
+        on_first_result()
+      end
+
+      is_first_result = false
     end
 
     local entries = {}
@@ -213,6 +247,8 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
     end
   end)
 
+  -- 3. Error message handling
+  ----------------------------
   local stderr_lines = {}
 
   local on_stderr = vim.schedule_wrap(function(_, data, _)
@@ -223,16 +259,11 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
     end
   end)
 
+  -- 4. Command completion handling
+  ---------------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    -- If we stopped at the limit, we still want to set the search register
-    -- but skip the normal exit handling
-    if stopped_at_limit then
-      M._set_search_register(rg_pattern, search_opts)
-      return
-    end
-
-    if exit_code == 0 then
-      M._set_search_register(rg_pattern, search_opts)
+    -- If the command finished successfully or we stopped at limit, nothing left to do.
+    if exit_code == 0 or stopped_at_limit then
       return
     end
 
@@ -248,6 +279,8 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
     vim.notify(msg, vim.log.levels.ERROR)
   end)
 
+  -- 5. Start the job
+  -------------------
   current_job_id = vim.fn.jobstart(cmd, {
     -- NOTE: Immediately close rg's stdin, or it will hang forever while we
     -- never send any data via stdin. This is specific to rg. Other tools like
@@ -263,20 +296,6 @@ function M._rg_exec(args, rg_pattern, search_opts, plugin_opts)
     vim.notify("failed to start rg", vim.log.levels.ERROR)
     current_job_id = nil
   end
-end
-
----@param tokens string[] the 'args' string from the opts of the command callback
-function M._extract_rg_pattern(tokens)
-  if not tokens or #tokens == 0 then
-    return nil
-  end
-
-  local parsed_args = parse_args(tokens)
-  if parsed_args and #(parsed_args.patterns) > 0 then
-    return parsed_args.patterns[1]
-  end
-
-  return nil
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.

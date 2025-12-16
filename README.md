@@ -230,6 +230,40 @@ pattern.
 Malformed input (such as unterminated quotes or a trailing backslash) is
 rejected rather than passed through incorrectly.
 
+```
+                           Neovim Command
+                                 |
+                                 |  args string
+                                 v
+                              Tokenise
+                                 |
+                                 |  user-quoted tokens
+                                 v
+                     POSIX Shell-Unquote (custom)
+                                 |
+                                 | unquoted user tokens
+                                 |
+              +------------------+----------------------+
+              |                                         |
+              v                                         |
+   Spawn ripgrep (no shell)                             |
+              |                                         |
+              v                                         v
+         First results -------------------------> Expand Tokens
+              |           ✓ pattern is valid            |
+   stream...  |                                         | all patterns, flags and options
+              v                                         v
+        Quickfix List                            Parse and Extract
+                                                        |
+                                                        | ripgrep pattern + options
+                                                        v
+                                                    Translate
+                                                        |
+                                                        | vimgrep pattern (very magic)
+                                                        v
+                                                Set Search Register
+```
+
 ### Shell safety
 
 brook.nvim passes arguments directly to ripgrep as an array, bypassing shell
