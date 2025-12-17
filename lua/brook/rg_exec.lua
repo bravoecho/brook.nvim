@@ -191,15 +191,15 @@ function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
       return
     end
 
-    -- blank data happens when there were no results
+    -- blank data happens when there were no results, one or more empty lines
+    -- are still intercepted
     if M._data_blank(data) then
       return
     end
 
     if is_first_result and #data > 0 then
-      -- Clear the quickfix list
+      -- Clear the quickfix list and open it
       vim.fn.setqflist({}, 'r')
-      -- Open it
       vim.cmd('copen')
 
       if on_first_result then
