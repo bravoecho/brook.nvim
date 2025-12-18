@@ -1,10 +1,11 @@
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
 -- ripgrep help.
-local rg_args = require('brook.rg_args')
-local rg_flags = rg_args.flags
-local rg_options = rg_args.options
+local rg_args              = require('brook.rg_args')
+local types                = require('brook.types')
+local rg_flags             = rg_args.flags
+local rg_options           = rg_args.options
 
-local M = {}
+local M                    = {}
 
 local POSITIONAL_SEPARATOR = '--'
 
@@ -35,10 +36,13 @@ function M._parse_args(unquoted_tokens)
   --------------------------------------------------------
   -- search for patterns specified with the -e or --regexp options
   local i = 1
+
+  ---@type brook.ParsedArgs
   local result = {
     patterns = {},
     fixed = false,
     word = false,
+    case = types.search_case.unset,
   }
 
   while i <= #unquoted_tokens do
@@ -63,6 +67,15 @@ function M._parse_args(unquoted_tokens)
       i = i + 1
     elseif token == '-w' or token == '--word-regexp' then
       result.word = true
+      i = i + 1
+    elseif token == '-s' or token == '--case-sensitive' then
+      result.case = types.search_case.sensitive
+      i = i + 1
+    elseif token == '-i' or token == '--ignore-case' then
+      result.case = types.search_case.insensitive
+      i = i + 1
+    elseif token == '-S' or token == '--smart-case' then
+      result.case = types.search_case.unset
       i = i + 1
     else
       i = i + 1

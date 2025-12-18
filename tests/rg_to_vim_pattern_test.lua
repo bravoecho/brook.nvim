@@ -315,6 +315,74 @@ test('boundary: \\B in pattern unsupported (returns nil)', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Case sensitivity -----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+test('case: sensitive adds \\C prefix', function()
+  eq(rg_to_vim_pattern('hello', { case = 'case-sensitive' }), '\\C\\vhello')
+end)
+
+test('case: insensitive adds \\c prefix', function()
+  eq(rg_to_vim_pattern('hello', { case = 'case-insensitive' }), '\\c\\vhello')
+end)
+
+test('case: unset adds no prefix', function()
+  eq(rg_to_vim_pattern('hello', { case = 'unset' }), '\\vhello')
+end)
+
+test('case: nil adds no prefix', function()
+  eq(rg_to_vim_pattern('hello', {}), '\\vhello')
+end)
+
+test('case: sensitive with word boundary', function()
+  eq(rg_to_vim_pattern('hello', { case = 'case-sensitive', word = true }), '\\C\\v<hello>')
+end)
+
+test('case: insensitive with word boundary', function()
+  eq(rg_to_vim_pattern('hello', { case = 'case-insensitive', word = true }), '\\c\\v<hello>')
+end)
+
+test('case: sensitive with complex pattern', function()
+  eq(rg_to_vim_pattern('foo.*bar', { case = 'case-sensitive' }), '\\C\\vfoo.*bar')
+end)
+
+test('case: insensitive with special chars', function()
+  eq(rg_to_vim_pattern('foo=bar', { case = 'case-insensitive' }), '\\c\\vfoo\\=bar')
+end)
+
+--------------------------------------------------------------------------------
+--- Case sensitivity with fixed strings ----------------------------------------
+--------------------------------------------------------------------------------
+
+test('fixed+case: sensitive', function()
+  eq(rg_to_vim_pattern('hello', { fixed = true, case = 'case-sensitive' }), '\\C\\Vhello')
+end)
+
+test('fixed+case: insensitive', function()
+  eq(rg_to_vim_pattern('hello', { fixed = true, case = 'case-insensitive' }), '\\c\\Vhello')
+end)
+
+test('fixed+case: unset', function()
+  eq(rg_to_vim_pattern('hello', { fixed = true, case = 'unset' }), '\\Vhello')
+end)
+
+test('fixed+case: sensitive with word boundary', function()
+  eq(rg_to_vim_pattern('hello', { fixed = true, case = 'case-sensitive', word = true }), '\\C\\V\\<hello\\>')
+end)
+
+test('fixed+case: insensitive with word boundary', function()
+  eq(rg_to_vim_pattern('hello', { fixed = true, case = 'case-insensitive', word = true }), '\\c\\V\\<hello\\>')
+end)
+
+test('fixed+case: sensitive with special chars preserved', function()
+  eq(rg_to_vim_pattern('[a+b].*', { fixed = true, case = 'case-sensitive' }), '\\C\\V[a+b].*')
+end)
+
+test('fixed+case: insensitive with path', function()
+  eq(rg_to_vim_pattern('foo/bar', { fixed = true, case = 'case-insensitive' }), '\\c\\Vfoo\\/bar')
+end)
+
+--------------------------------------------------------------------------------
 --- Greedy quantifiers (pass through) ------------------------------------------
 --------------------------------------------------------------------------------
 

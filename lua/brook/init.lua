@@ -6,7 +6,7 @@ local rg_selection = rg_exec.rg_selection
 local rg_word = rg_exec.rg_word
 local get_visual_selection = require('brook.utils').get_visual_selection
 
---- @param plugin_opts? brook.PluginOpts
+--- @param plugin_opts? brook.BrookOpts
 function M.setup(plugin_opts)
   plugin_opts = plugin_opts or {}
   local keymap = plugin_opts.keymap or '<leader>g'

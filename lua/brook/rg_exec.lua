@@ -5,14 +5,15 @@
 --- for security and portability.
 ---@module 'brook.rg_exec'
 
-local current_job_id = nil
+local current_job_id    = nil
 
 local rg_to_vim_pattern = require('brook.rg_to_vim_pattern')._rg_to_vim_pattern
-local tokenise = require('brook.tokenise')._tokenise
+local tokenise          = require('brook.tokenise')._tokenise
 local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
-local parse_args = require('brook.parse_args')._parse_args
+local parse_args        = require('brook.parse_args')._parse_args
+local types             = require('brook.types')
 
-local M = {}
+local M                 = {}
 
 --- Searches for a literal pattern using ripgrep.
 ---
@@ -25,11 +26,12 @@ local M = {}
 --- quotes included.
 ---
 ---@param text string The literal text to search for
----@param plugin_opts? brook.PluginOpts Plugin options
+---@param plugin_opts? brook.BrookOpts Plugin options
 function M.rg_selection(text, plugin_opts)
   plugin_opts = plugin_opts or {}
 
-  local search_opts = { word = false, fixed = true }
+  ---@type brook.SearchOpts
+  local search_opts = { word = false, fixed = true, case = 'unset' }
 
   local on_first_result = function()
     M._set_search_register(text, search_opts)
@@ -47,11 +49,11 @@ end
 --- is already a plain string without any shell quoting.
 ---
 ---@param word string The word to search for (typically from <cword>)
----@param plugin_opts? brook.PluginOpts Plugin options
+---@param plugin_opts? brook.BrookOpts Plugin options
 function M.rg_word(word, plugin_opts)
   plugin_opts = plugin_opts or {}
 
-  local search_opts = { word = true, fixed = true }
+  local search_opts = { word = true, fixed = true, case = 'unset' }
 
   local on_first_result = function()
     M._set_search_register(word, search_opts)
@@ -82,7 +84,7 @@ end
 ---   `:Rg -w 'foo bar'`         -> `rg --vimgrep -w "foo bar"`
 ---
 ---@param cmd_args string The raw command-line arguments string
----@param plugin_opts? brook.PluginOpts Plugin options
+---@param plugin_opts? brook.BrookOpts Plugin options
 function M.rg_raw(cmd_args, plugin_opts)
   plugin_opts = plugin_opts or {}
 
@@ -137,6 +139,7 @@ function M.rg_raw(cmd_args, plugin_opts)
     M._set_search_register(rg_pattern, {
       word = parsed_args.word,
       fixed = parsed_args.fixed,
+      case = parsed_args.case,
     })
   end
 
@@ -157,7 +160,7 @@ end
 ---@param args string[] Shell-unquoted command tokens to pass to `rg`
 ---@param on_first_result function Callback to executed when first result is received
 ---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
----@param plugin_opts brook.PluginOpts Plugin options
+---@param plugin_opts brook.BrookOpts Plugin options
 function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
   if current_job_id then
     vim.fn.jobstop(current_job_id)
@@ -174,6 +177,11 @@ function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
   end
   if search_opts.fixed then
     table.insert(cmd, '--fixed-strings')
+  end
+  if search_opts.case == types.search_case.sensitive then
+    table.insert(cmd, '--case-sensitive')
+  elseif search_opts.case == types.search_case.insensitive then
+    table.insert(cmd, '--ignore-case')
   end
   for _, arg in ipairs(args) do
     table.insert(cmd, arg)
@@ -346,6 +354,7 @@ function M._set_search_register(rg_pattern, search_opts)
   local vim_pattern = rg_to_vim_pattern(rg_pattern, {
     word = search_opts.word,
     fixed = search_opts.fixed,
+    case = search_opts.case,
   })
 
   if vim_pattern == '' then

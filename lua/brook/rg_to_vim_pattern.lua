@@ -1,3 +1,4 @@
+local types = require "brook.types"
 local M = {}
 
 --- Translates a ripgrep pattern to Vim regex syntax.
@@ -38,16 +39,30 @@ local M = {}
 function M._rg_to_vim_pattern(pattern, opts)
   opts = opts or {}
 
+  -- Case 1. Literal search (verbatim, no regex, no translation)
+  --------------------------------------------------------------
   -- For literal (fixed-string) searches, use very-nomagic mode (\V).
   -- Only backslash and the search delimiter (/) need escaping.
   if opts.fixed then
-    local escaped = pattern:gsub('\\', '\\\\'):gsub('/', '\\/')
+    pattern = pattern:gsub('\\', '\\\\'):gsub('/', '\\/')
     if opts.word then
-      return '\\V\\<' .. escaped .. '\\>'
+      pattern = '\\<' .. pattern .. '\\>'
     end
-    return '\\V' .. escaped
+
+    local prefix = '\\V'
+    -- Case-sensitivity must be set at the beginning of the pattern, or it will be
+    -- interpreted as an escaped character.
+    if opts.case == types.search_case.sensitive then
+      prefix = '\\C' .. prefix
+    elseif opts.case == types.search_case.insensitive then
+      prefix = '\\c' .. prefix
+    end
+
+    return prefix .. pattern
   end
 
+  -- Case 2. Normal search pattern: translate rg to vim
+  -----------------------------------------------------
   local result = {}
   local len = #pattern
   local in_char_class = false
@@ -192,6 +207,14 @@ function M._rg_to_vim_pattern(pattern, opts)
   end
   -- Make the pattern "very magic"
   vimgrep_pattern = '\\v' .. vimgrep_pattern
+
+  -- Case-sensitivity must be set at the beginning of the pattern, or it will be
+  -- interpreted as an escaped character.
+  if opts.case == types.search_case.sensitive then
+    vimgrep_pattern = '\\C' .. vimgrep_pattern
+  elseif opts.case == types.search_case.insensitive then
+    vimgrep_pattern = '\\c' .. vimgrep_pattern
+  end
 
   return vimgrep_pattern
 end

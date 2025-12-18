@@ -1,8 +1,9 @@
 --- Shared type definitions for the rg plugin.
----
---- This file contains only LuaDoc annotations and is not meant to be required
---- at runtime. It exists solely to provide type information to the Lua
---- language server.
+---@module 'brook'
+
+---@class brook.BrookOpts
+---@field keymap? string Keymap for triggering searches (default: '<leader>g')
+---@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
 
 --- A quickfix list entry, as expected by `vim.fn.setqflist()`.
 ---@class brook.QfEntry
@@ -15,13 +16,22 @@
 ---@class brook.SearchOpts
 ---@field word? boolean Whether to match whole words only (--word-regexp)
 ---@field fixed? boolean Whether to treat the pattern as a literal string (--fixed-strings)
+---@field case? search_case Whether to treat the pattern as case sensitive, case insensitive, or unspecified
+
+local M = {}
+
+---@enum search_case
+M.search_case = {
+  sensitive = 'case-sensitive',
+  insensitive = 'case-insensitive',
+  unset = 'unset',
+}
 
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.ParsedArgs
 ---@field patterns string[] One or more search patterns
 ---@field fixed boolean Whether --fixed-strings / -F was specified
 ---@field word boolean Whether --word-regexp / -w was specified
+---@field case search_case Whether -s, --case-sensitive, -i or --ignore-case were specified
 
----@class brook.PluginOpts
----@field keymap? string Keymap for triggering searches (default: '<leader>g')
----@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
+return M

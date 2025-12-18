@@ -39,6 +39,7 @@ translation enables:
 6. Quantifiers (greedy and non-greedy)
 7. Groups (capturing and non-capturing)
 8. Backreferences in patterns
+9. Case sensitivity modifiers
 
 ### Features OUT of Scope
 
@@ -60,7 +61,64 @@ These features will cause the translator to return `nil`:
 - Regex (default) => `\v` (very magic: most punctuation is special)
 - Fixed string (`-F`) => `\V` (very nomagic: only `\` is special)
 
-### 2. Characters Literal in Ripgrep, Special in Very Magic
+### 2. Case Sensitivity
+
+Case sensitivity is controlled by ripgrep's `-s`/`--case-sensitive` and
+`-i`/`--ignore-case` flags. When specified, these translate to Vim's `\C`
+and `\c` pattern modifiers respectively.
+
+The case modifier must appear at the very beginning of the pattern, before the
+magic mode prefix, or Vim will interpret it as an escaped literal character.
+
+**Translation:**
+
+- `-s` / `--case-sensitive` => prepend `\C`
+- `-i` / `--ignore-case` => prepend `\c`
+- Neither specified => no modifier (defer to Vim's `'ignorecase'`/`'smartcase'`)
+
+**Flag precedence:** When multiple case flags are specified, the last one wins.
+This matches ripgrep's behaviour.
+
+**Test Cases (regex mode):**
+
+- `hello` with `-s` => `\C\vhello`
+- `hello` with `-i` => `\c\vhello`
+- `hello` (no flag) => `\vhello`
+- `foo.*bar` with `-s` => `\C\vfoo.*bar`
+- `foo=bar` with `-i` => `\c\vfoo\=bar`
+
+**Test Cases (fixed string mode):**
+
+- `hello` with `-F -s` => `\C\Vhello`
+- `hello` with `-F -i` => `\c\Vhello`
+- `hello` with `-F` (no case flag) => `\Vhello`
+- `[a+b].*` with `-F -s` => `\C\V[a+b].*`
+- `foo/bar` with `-F -i` => `\c\Vfoo\/bar`
+
+**Test Cases (with word boundaries):**
+
+- `hello` with `-w -s` => `\C\v<hello>`
+- `hello` with `-w -i` => `\c\v<hello>`
+- `hello` with `-F -w -s` => `\C\V\<hello\>`
+- `hello` with `-F -w -i` => `\c\V\<hello\>`
+
+**Test Cases (flag precedence):**
+
+- `pattern` with `-i -s` => `\C\vpattern` (last wins: case-sensitive)
+- `pattern` with `-s -i` => `\c\vpattern` (last wins: case-insensitive)
+
+**Note on `--smart-case`:**
+
+Ripgrep's `-S`/`--smart-case` flag has no direct Vim pattern equivalent. Users
+who want consistent smart-case behaviour should configure both tools similarly:
+
+- Ripgrep: Set `--smart-case` in `~/.ripgreprc`
+- Neovim: Set `vim.o.ignorecase = true` and `vim.o.smartcase = true`
+
+When neither `-s` nor `-i` is explicitly passed, the translator omits any case
+modifier, allowing Vim's native settings to govern match highlighting.
+
+### 3. Characters Literal in Ripgrep, Special in Very Magic
 
 These must be escaped when they appear as literals outside character classes:
 
@@ -86,7 +144,7 @@ These must be escaped when they appear as literals outside character classes:
 - `@decorator` => `\@decorator` (Python decorator)
 - `a && b` => `a \&\& b` (logical AND)
 
-### 3. Characters Special in Both Engines
+### 4. Characters Special in Both Engines
 
 These pass through unchanged (both engines treat them as metacharacters):
 
@@ -114,7 +172,7 @@ These pass through unchanged (both engines treat them as metacharacters):
 - `end$` => `end$` (line end)
 - `a{2,3}` => `a{2,3}` (range quantifier)
 
-### 4. Escaped Metacharacters (Literal in Both)
+### 5. Escaped Metacharacters (Literal in Both)
 
 When ripgrep escapes a metacharacter to make it literal, the escape passes
 through (very magic uses the same convention):
@@ -136,7 +194,7 @@ through (very magic uses the same convention):
 - `\^` => `\^` (literal caret)
 - `\$` => `\$` (literal dollar)
 
-### 5. Character Class Shorthands
+### 6. Character Class Shorthands
 
 These are compatible between engines and pass through:
 
@@ -157,7 +215,7 @@ These are compatible between engines and pass through:
 - `\s*` => `\s*`
 - `[\d\w]` => `[\d\w]`
 
-### 6. Word Boundaries
+### 7. Word Boundaries
 
 - `\b` => `(<|>)` (word boundary, either side)
 - `\B` => **unsupported**, return `nil`
@@ -185,9 +243,9 @@ since we know definitively it's a whole-word match:
 - `-w hello` => `<hello>`
 - `-w foo.*bar` => `<foo.*bar>`
 
-### 7. Quantifiers
+### 8. Quantifiers
 
-#### 7.1 Greedy Quantifiers (Pass Through)
+#### 8.1 Greedy Quantifiers (Pass Through)
 
 - `a*` => `a*`
 - `a+` => `a+`
@@ -196,7 +254,7 @@ since we know definitively it's a whole-word match:
 - `a{3,}` => `a{3,}`
 - `a{3,5}` => `a{3,5}`
 
-#### 7.2 Non-Greedy Quantifiers (Translation Required)
+#### 8.2 Non-Greedy Quantifiers (Translation Required)
 
 Vim uses `\{-}` syntax for non-greedy matching:
 
@@ -217,18 +275,18 @@ Vim uses `\{-}` syntax for non-greedy matching:
 - `a{2,4}?` => `a{-2,4}` (range, non-greedy)
 - `(ab)+?` => `(ab){-1,}` (group, non-greedy)
 
-### 8. Character Classes
+### 9. Character Classes
 
 Inside `[...]`, most metacharacters lose their special meaning.
 
-#### 8.1 Basic Syntax (Pass Through)
+#### 9.1 Basic Syntax (Pass Through)
 
 - `[abc]` => `[abc]` (simple class)
 - `[a-z]` => `[a-z]` (range)
 - `[^abc]` => `[^abc]` (negated class)
 - `[a-zA-Z0-9]` => `[a-zA-Z0-9]` (multiple ranges)
 
-#### 8.2 Special Positions Within Classes
+#### 9.2 Special Positions Within Classes
 
 - `[]abc]` => `[]abc]` (literal `]` at start)
 - `[^]abc]` => `[^]abc]` (literal `]` at start of negated)
@@ -236,7 +294,7 @@ Inside `[...]`, most metacharacters lose their special meaning.
 - `[abc-]` => `[abc-]` (literal `-` at end)
 - `[a-z-]` => `[a-z-]` (range then literal `-`)
 
-#### 8.3 Vim-Special Characters Inside Classes (No Escaping Needed)
+#### 9.3 Vim-Special Characters Inside Classes (No Escaping Needed)
 
 Characters that need escaping outside classes are literal inside:
 
@@ -245,7 +303,7 @@ Characters that need escaping outside classes are literal inside:
 - `[@&]` => `[@&]` (literal at and ampersand)
 - `[~=]= nil` => `[~=]\= nil` (inside literal, outside escaped)
 
-#### 8.4 Escapes Inside Classes
+#### 9.4 Escapes Inside Classes
 
 - `[\d\w]` => `[\d\w]` (shorthands work)
 - `[\]]` => `[\]]` (escaped `]`)
@@ -253,7 +311,7 @@ Characters that need escaping outside classes are literal inside:
 - `[\^]` => `[\^]` (escaped caret, literal)
 - `[\-]` => `[\-]` (escaped hyphen)
 
-#### 8.5 Metacharacters Literal Inside Classes
+#### 9.5 Metacharacters Literal Inside Classes
 
 - `[+*?]` => `[+*?]` (quantifiers literal)
 - `[()]` => `[()]` (parens literal)
@@ -261,16 +319,16 @@ Characters that need escaping outside classes are literal inside:
 - `[|]` => `[|]` (pipe literal)
 - `[.]` => `[.]` (dot literal)
 
-### 9. Groups
+### 10. Groups
 
-#### 9.1 Capturing Groups (Pass Through)
+#### 10.1 Capturing Groups (Pass Through)
 
 - `(foo)` => `(foo)`
 - `(a|b)` => `(a|b)`
 - `(foo)(bar)` => `(foo)(bar)`
 - `((nested))` => `((nested))`
 
-#### 9.2 Non-Capturing Groups (Translation Required)
+#### 10.2 Non-Capturing Groups (Translation Required)
 
 - `(?:foo)` => `%(foo)` (non-capturing)
 - `(?:a|b)` => `%(a|b)` (with alternation)
@@ -278,12 +336,12 @@ Characters that need escaping outside classes are literal inside:
 - `(?:foo)?` => `%(foo)?` (optional group)
 - `(a)(?:b)(c)` => `(a)%(b)(c)` (mixed)
 
-#### 9.3 Named Groups (Unsupported)
+#### 10.3 Named Groups (Unsupported)
 
 - `(?P<n>...)` => `nil` (unsupported)
 - `(?<n>...)` => `nil` (unsupported)
 
-### 10. Backreferences in Patterns
+### 11. Backreferences in Patterns
 
 Numbered backreferences work the same in both engines:
 
@@ -291,7 +349,7 @@ Numbered backreferences work the same in both engines:
 - `(.).*\1` => `(.).*\1` (palindrome-ish)
 - `(a)(b)\2\1` => `(a)(b)\2\1` (multiple refs)
 
-### 11. Forward Slash (Search Delimiter)
+### 12. Forward Slash (Search Delimiter)
 
 The `/` character is Vim's default search delimiter and must be escaped:
 
@@ -300,7 +358,7 @@ The `/` character is Vim's default search delimiter and must be escaped:
 - `[/]` => `[\/]` (inside class too)
 - `a/b/c` => `a\/b\/c` (multiple)
 
-### 12. Fixed String Mode (`-F` / `--fixed-strings`)
+### 13. Fixed String Mode (`-F` / `--fixed-strings`)
 
 When ripgrep's `-F` flag is active, the pattern is treated as a literal string.
 Use Vim's very-nomagic mode (`\V`):
@@ -344,5 +402,9 @@ The translator should detect these patterns and return `nil`:
 - `:help /\v` - very magic mode
 - `:help pattern-atoms` - Vim pattern atoms
 - `:help /character-classes` - character class syntax
+- `:help /\c` - case insensitive modifier
+- `:help /\C` - case sensitive modifier
+- `:help 'ignorecase'` - global ignore case setting
+- `:help 'smartcase'` - smart case setting
 - Rust regex documentation: <https://docs.rs/regex/latest/regex/>
 - Ripgrep user guide: <https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md>
