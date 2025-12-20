@@ -1,5 +1,9 @@
 local M = {}
 
+local SINGLE_QUOTE = "'"
+local DOUBLE_QUOTE = '"'
+local BACKSLASH = '\\'
+
 --- Tokenises a command-line string into individual arguments.
 ---
 --- Splits the input string on whitespace while respecting shell quoting rules:
@@ -45,11 +49,11 @@ function M.tokenise(qargs)
       -- update state for the next iteration
       if escaped then
         escaped = false
-      elseif ch == '\\' and not in_single then
+      elseif ch == BACKSLASH and not in_single then
         escaped = true
-      elseif ch == "'" and not in_double then
+      elseif ch == SINGLE_QUOTE and not in_double then
         in_single = not in_single
-      elseif ch == '"' and not in_single then
+      elseif ch == DOUBLE_QUOTE and not in_single then
         in_double = not in_double
       end
     end

@@ -1,4 +1,4 @@
-local types = require "brook.types"
+local types = require 'brook.types'
 local M = {}
 
 --- Translates a ripgrep pattern to Vim regex syntax.

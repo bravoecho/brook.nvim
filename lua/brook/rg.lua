@@ -104,7 +104,7 @@ function M.raw(cmd_args, plugin_opts)
   local tokens = tokenise(cmd_args)
 
   if not tokens or #tokens == 0 then
-    vim.notify("rg: no arguments provided", vim.log.levels.ERROR)
+    vim.notify('rg: no arguments provided', vim.log.levels.ERROR)
     return
   end
 
@@ -115,7 +115,7 @@ function M.raw(cmd_args, plugin_opts)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then
-    vim.notify("rg: malformed command", vim.log.levels.ERROR)
+    vim.notify('rg: malformed command: could not unquote', vim.log.levels.ERROR)
     return
   end
 
@@ -132,7 +132,7 @@ function M.raw(cmd_args, plugin_opts)
     -- Minimal parsing, just enough to support Neovim features
     local parsed_args = parse_args(rg_args)
     if not parsed_args then
-      vim.notify("rg: malformed command", vim.log.levels.ERROR)
+      vim.notify('rg: malformed command: could not parse', vim.log.levels.ERROR)
       return
     end
     -- NOTE: Currently only the first pattern is used (even when the original
@@ -297,16 +297,17 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   ---------------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
     if exit_code == 0 then
+      vim.notify(string.format('rg: %d matches', total_results), vim.log.levels.INFO)
       return
     end
 
     if exit_code == 1 then
-      vim.notify("rg: no matches found", vim.log.levels.INFO)
+      vim.notify('rg: no matches', vim.log.levels.INFO)
       return
     end
 
-    local stopped_at_limit_msg = 'stopped at limit (you can configure max_results in setup)'
-    local terminated_msg = 'rg process manually stopped'
+    local stopped_at_limit_msg = 'rg: stopped at limit (you can configure max_results in setup)'
+    local terminated_msg = 'rg: process manually stopped'
 
     if stopped_at_limit and #stderr_lines > 0 then
       table.insert(stderr_lines, stopped_at_limit_msg)
@@ -330,7 +331,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       return
     end
 
-    table.insert(stderr_lines, "rg exited with code " .. exit_code)
+    table.insert(stderr_lines, 'rg: exited with code ' .. exit_code)
     vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
   end)
 
@@ -353,7 +354,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   })
 
   if current_job_id <= 0 then
-    vim.notify("failed to start rg", vim.log.levels.ERROR)
+    vim.notify('failed to start rg', vim.log.levels.ERROR)
     current_job_id = nil
   end
 end
@@ -365,7 +366,7 @@ end
 ---@param vimgrep_result string A line in vimgrep format (filename:lnum:col:text)
 ---@return brook.QfEntry|nil entry Quickfix entry, or nil if parsing fails
 function M._parse_result(vimgrep_result)
-  local filename, lnum, col, text = vimgrep_result:match("([^:]+):(%d+):(%d+):(.*)")
+  local filename, lnum, col, text = vimgrep_result:match('([^:]+):(%d+):(%d+):(.*)')
   if not filename then
     return nil
   end
