@@ -15,6 +15,13 @@ local types             = require('brook.types')
 
 local M                 = {}
 
+function M.stop()
+  if current_job_id then
+    vim.fn.jobstop(current_job_id)
+    current_job_id = nil
+  end
+end
+
 --- Searches for a literal pattern using ripgrep.
 ---
 --- The text is passed directly to rg as an array element, bypassing the shell
@@ -162,10 +169,7 @@ end
 ---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
 ---@param plugin_opts brook.BrookOpts Plugin options
 function M._exec(args, on_first_result, search_opts, plugin_opts)
-  if current_job_id then
-    vim.fn.jobstop(current_job_id)
-    current_job_id = nil
-  end
+  M.stop()
 
   local max_results = plugin_opts.max_results
 
@@ -262,8 +266,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
 
     -- Stop if we've hit the limit
     if max_results and total_results >= max_results and current_job_id then
-      vim.fn.jobstop(current_job_id)
-      current_job_id = nil
+      M.stop()
       stopped_at_limit = true
       vim.notify(
         string.format('rg: stopped after %d results (configure max_results in setup)', total_results),

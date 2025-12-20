@@ -9,14 +9,17 @@ function M.setup(plugin_opts)
   local keymap = plugin_opts.keymap or '<leader>g'
   local max_results = plugin_opts.max_results or 1000
 
-  ---------------
-  --- Command ---
-  ---------------
+  ------------------------------------------------------------------------------
+  --- Commands -----------------------------------------------------------------
+  ------------------------------------------------------------------------------
+
+  -- Search command
+  ------------------------------------------------------------------------------
   vim.api.nvim_create_user_command('Rg', function(cmd_opts)
     local args = vim.trim(cmd_opts.args)
 
-    -- Special case: search for current word when no arguments are provided
-    -----------------------------------------------------------------------
+    -- Special case: current word
+    -----------------------------
     if args == '' then
       local word = vim.fn.expand('<cword>')
       if word == '' then
@@ -28,19 +31,25 @@ function M.setup(plugin_opts)
       return
     end
 
-    -- General case: forward command arguments to ripgrep
-    -----------------------------------------------------
+    -- General case
+    ---------------
     rg.raw(cmd_opts.args, { max_results = max_results })
   end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
-  ------------------------
-  --- Command shortcut ---
-  ------------------------
+  --- Stop command
+  ------------------------------------------------------------------------------
+  vim.api.nvim_create_user_command('RgStop', rg.stop, { desc = 'Stop current ripgrep search' })
+
+  ------------------------------------------------------------------------------
+  --- Keymaps ------------------------------------------------------------------
+  ------------------------------------------------------------------------------
+
+  -- Open command
+  ------------------------------------------------------------------------------
   vim.keymap.set({ 'n' }, keymap, ':Rg ', { desc = 'Grep with rg' })
 
-  --------------------------------------
-  --- Visual selection (single line) ---
-  --------------------------------------
+  -- Visual selection (single line)
+  ---------------------------------
   vim.keymap.set({ 'x' }, keymap, function()
     local text = util.get_visual_selection()
 
