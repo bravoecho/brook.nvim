@@ -147,7 +147,7 @@ satisfying project, Brook focuses on specific requirements.
 ### vs. vim-grepper
 
 [vim-grepper](https://github.com/mhinz/vim-grepper) is a legendary Vim plugin
-with a long-history, and it's _the_ top choice for classic Vim. Brook on the
+with a long history, and it's _the_ top choice for classic Vim. Brook on the
 other hand is built from the ground up for the Neovim stack.
 
 * **Fish Shell Support**: By executing `rg` directly, Brook avoids some
