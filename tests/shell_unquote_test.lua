@@ -4,7 +4,7 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
-local shell_unquote = require('brook.shell_unquote')._shell_unquote
+local shell_unquote = require('brook.shell_unquote').shell_unquote
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------

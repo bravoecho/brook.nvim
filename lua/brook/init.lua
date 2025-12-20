@@ -1,10 +1,7 @@
 local M = {}
 
-local rg_exec = require('brook.rg_exec')
-local rg_raw = rg_exec.rg_raw
-local rg_selection = rg_exec.rg_selection
-local rg_word = rg_exec.rg_word
-local get_visual_selection = require('brook.utils').get_visual_selection
+local rg = require('brook.rg')
+local util = require('brook.util')
 
 --- @param plugin_opts? brook.BrookOpts
 function M.setup(plugin_opts)
@@ -27,13 +24,13 @@ function M.setup(plugin_opts)
         return
       end
 
-      rg_word(word, { max_results = max_results })
+      rg.word(word, { max_results = max_results })
       return
     end
 
     -- General case: forward command arguments to ripgrep
     -----------------------------------------------------
-    rg_raw(cmd_opts.args, { max_results = max_results })
+    rg.raw(cmd_opts.args, { max_results = max_results })
   end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
   ------------------------
@@ -45,7 +42,7 @@ function M.setup(plugin_opts)
   --- Visual selection (single line) ---
   --------------------------------------
   vim.keymap.set({ 'x' }, keymap, function()
-    local text = get_visual_selection()
+    local text = util.get_visual_selection()
 
     if text:find('\n') then
       vim.notify('Multi-line selections are not supported', vim.log.levels.WARN)
@@ -58,7 +55,7 @@ function M.setup(plugin_opts)
       return
     end
 
-    rg_selection(text, { max_results = max_results })
+    rg.selection(text, { max_results = max_results })
   end, { desc = 'Grep visual selection with ripgrep' })
 end
 

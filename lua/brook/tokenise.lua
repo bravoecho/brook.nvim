@@ -13,7 +13,7 @@ local M = {}
 ---
 ---@param qargs string The raw command-line string to tokenise
 ---@return string[] tokens List of tokens (may be empty if input is blank)
-function M._tokenise(qargs)
+function M.tokenise(qargs)
   qargs = vim.trim(qargs)
   local tokens = {}
   local current = {}

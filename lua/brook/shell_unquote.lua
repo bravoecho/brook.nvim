@@ -24,11 +24,11 @@ local BACKSLASH = '\\'
 --- The purpose it to prepare the token to be passed to `vim.fn.jobstart()`.
 ---
 --- This handles:
----   - Single-quoted strings: 'foo bar' → foo bar (no escapes inside)
----   - Double-quoted strings: "foo bar" → foo bar (with \\, \", \$, \` escapes)
----   - Backslash escapes outside quotes: foo\ bar → foo bar
----   - The POSIX idiom for single quotes: 'it'\''s' → it's
----   - Mixed quoting: foo"bar"'baz' → foobarbaz
+---   - Single-quoted strings: 'foo bar' => foo bar (no escapes inside)
+---   - Double-quoted strings: "foo bar" => foo bar (with \\, \", \$, \` escapes)
+---   - Backslash escapes outside quotes: foo\ bar => foo bar
+---   - The POSIX idiom for single quotes: 'it'\''s' => it's
+---   - Mixed quoting: foo"bar"'baz' => foobarbaz
 ---
 --- Returns nil for malformed input (unterminated quotes).
 ---
@@ -39,7 +39,7 @@ local BACKSLASH = '\\'
 ---
 ---@param token string The shell token to unquote
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
-function M._shell_unquote(token)
+function M.shell_unquote(token)
   local state = states.NORMAL
   local result = {}
   local len = #token
@@ -118,7 +118,7 @@ function M._shell_unquote_all(tokens)
 
   local result = {}
   for _, token in ipairs(tokens) do
-    local unquoted = M._shell_unquote(token)
+    local unquoted = M.shell_unquote(token)
     if not unquoted then return nil end
     table.insert(result, unquoted)
   end

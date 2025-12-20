@@ -36,7 +36,7 @@ local M = {}
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.SearchOpts Options affecting pattern translation
 ---@return string|nil vim_pattern The translated Vim regex pattern, nil when pattern is unsupported.
-function M._rg_to_vim_pattern(pattern, opts)
+function M.rg_to_vim(pattern, opts)
   opts = opts or {}
 
   -- Case 1. Literal search (verbatim, no regex, no translation)

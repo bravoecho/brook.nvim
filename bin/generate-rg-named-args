@@ -59,4 +59,4 @@ export RG_OPTIONS="$options"
 echo "$template" \
   | envsubst \
   | stylua --quote-style ForceSingle --indent-type Spaces --indent-width 2 - \
-  | tee "$rootdir/lua/brook/rg_args.lua"
+  | tee "$rootdir/lua/brook/lib/rg_named_args.lua"

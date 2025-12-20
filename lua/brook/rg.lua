@@ -3,14 +3,14 @@
 --- This module provides functions to run ripgrep searches asynchronously,
 --- streaming results into Neovim's quickfix list. It bypasses the shell
 --- for security and portability.
----@module 'brook.rg_exec'
+---@module 'brook.rg'
 
 local current_job_id    = nil
 
-local rg_to_vim_pattern = require('brook.rg_to_vim_pattern')._rg_to_vim_pattern
-local tokenise          = require('brook.tokenise')._tokenise
+local pattern           = require('brook.pattern')
+local tokenise          = require('brook.tokenise').tokenise
 local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
-local parse_args        = require('brook.parse_args')._parse_args
+local parse_args        = require('brook.parse_args').parse_args
 local types             = require('brook.types')
 
 local M                 = {}
@@ -27,7 +27,7 @@ local M                 = {}
 ---
 ---@param text string The literal text to search for
 ---@param plugin_opts? brook.BrookOpts Plugin options
-function M.rg_selection(text, plugin_opts)
+function M.selection(text, plugin_opts)
   plugin_opts = plugin_opts or {}
 
   ---@type brook.SearchOpts
@@ -37,7 +37,7 @@ function M.rg_selection(text, plugin_opts)
     M._set_search_register(text, search_opts)
   end
 
-  M._rg_exec({ '--', text }, on_first_result, search_opts, plugin_opts)
+  M._exec({ '--', text }, on_first_result, search_opts, plugin_opts)
 end
 
 --- Searches for a single word using ripgrep.
@@ -50,7 +50,7 @@ end
 ---
 ---@param word string The word to search for (typically from <cword>)
 ---@param plugin_opts? brook.BrookOpts Plugin options
-function M.rg_word(word, plugin_opts)
+function M.word(word, plugin_opts)
   plugin_opts = plugin_opts or {}
 
   local search_opts = { word = true, fixed = true, case = 'unset' }
@@ -59,7 +59,7 @@ function M.rg_word(word, plugin_opts)
     M._set_search_register(word, search_opts)
   end
 
-  M._rg_exec({ '--', word }, on_first_result, search_opts, plugin_opts)
+  M._exec({ '--', word }, on_first_result, search_opts, plugin_opts)
 end
 
 --- Searches with user-defined arguments.
@@ -75,7 +75,7 @@ end
 ---
 --- ...they expect the quotes to be *syntax* (grouping words), not *content*.
 --- The search pattern should be `hello world`, not `'hello world'`. This is
---- different from rg_selection() and rg_word(), where we have pre-built Lua
+--- different from rg.selection() and rg.word(), where we have pre-built Lua
 --- strings that go directly to rg without any shell syntax involved.
 ---
 --- Examples:
@@ -83,9 +83,9 @@ end
 ---   `:Rg 'hello world' src/`   -> `rg --vimgrep "hello world" src/`
 ---   `:Rg -w 'foo bar'`         -> `rg --vimgrep -w "foo bar"`
 ---
----@param cmd_args string The raw command-line arguments string
+---@param cmd_args string The raw command-line arguments
 ---@param plugin_opts? brook.BrookOpts Plugin options
-function M.rg_raw(cmd_args, plugin_opts)
+function M.raw(cmd_args, plugin_opts)
   plugin_opts = plugin_opts or {}
 
   -- Step 1: Tokenise
@@ -145,7 +145,7 @@ function M.rg_raw(cmd_args, plugin_opts)
 
   -- no need to specify programmatic search options, if any are present, they
   -- will come from the args provided by the user
-  M._rg_exec(rg_args, on_first_result, {}, plugin_opts)
+  M._exec(rg_args, on_first_result, {}, plugin_opts)
 end
 
 --- Runs ripgrep with the given argument array.
@@ -161,7 +161,7 @@ end
 ---@param on_first_result function Callback to executed when first result is received
 ---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
 ---@param plugin_opts brook.BrookOpts Plugin options
-function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
+function M._exec(args, on_first_result, search_opts, plugin_opts)
   if current_job_id then
     vim.fn.jobstop(current_job_id)
     current_job_id = nil
@@ -223,7 +223,7 @@ function M._rg_exec(args, on_first_result, search_opts, plugin_opts)
         break
       end
 
-      local entry = M._vimgrep_to_qf_entry(line)
+      local entry = M._parse_result(line)
       if entry then
         table.insert(entries, entry)
         result_count = result_count + 1
@@ -312,7 +312,7 @@ end
 ---
 ---@param vimgrep_result string A line in vimgrep format (filename:lnum:col:text)
 ---@return brook.QfEntry|nil entry Quickfix entry, or nil if parsing fails
-function M._vimgrep_to_qf_entry(vimgrep_result)
+function M._parse_result(vimgrep_result)
   local filename, lnum, col, text = vimgrep_result:match("([^:]+):(%d+):(%d+):(.*)")
   if not filename then
     return nil
@@ -351,7 +351,7 @@ function M._set_search_register(rg_pattern, search_opts)
     return
   end
 
-  local vim_pattern = rg_to_vim_pattern(rg_pattern, {
+  local vim_pattern = pattern.rg_to_vim(rg_pattern, {
     word = search_opts.word,
     fixed = search_opts.fixed,
     case = search_opts.case,

@@ -4,7 +4,7 @@
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
-local parse_args = require('brook.parse_args')._parse_args
+local parse_args = require('brook.parse_args').parse_args
 
 -- NOTE: `parse_args` receives already-unquoted tokens. Shell unquoting
 -- behaviour is tested separately in shell_unquote_test.lua.

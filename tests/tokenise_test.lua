@@ -4,7 +4,7 @@
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
-local tokenise = require('brook.tokenise')._tokenise
+local tokenise = require('brook.tokenise').tokenise
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------

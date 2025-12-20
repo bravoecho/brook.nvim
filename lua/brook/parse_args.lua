@@ -1,9 +1,9 @@
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
 -- ripgrep help.
-local rg_args              = require('brook.rg_args')
+local rg_named_args        = require('brook.lib.rg_named_args')
 local types                = require('brook.types')
-local rg_flags             = rg_args.flags
-local rg_options           = rg_args.options
+local rg_flags             = rg_named_args.flags
+local rg_options           = rg_named_args.options
 
 local M                    = {}
 
@@ -21,7 +21,7 @@ local POSITIONAL_SEPARATOR = '--'
 ---
 ---@param unquoted_tokens string[]|nil A list of shell-unquoted command-line tokens
 ---@return brook.ParsedArgs|nil result Parsed arguments, or nil if malformed
-function M._parse_args(unquoted_tokens)
+function M.parse_args(unquoted_tokens)
   if unquoted_tokens == nil or #unquoted_tokens == 0 then
     return nil
   end
@@ -201,9 +201,9 @@ end
 --- remaining characters as its value) or at an unrecognised character.
 ---
 --- Examples:
----   - `-Hc` with both being flags → `-H`, `-c`
----   - `-Hefoo` with `-H` flag and `-e` option → `-H`, `-e`, `foo`
----   - `-e=pattern` with `-e` option → `-e`, `pattern`
+---   - `-Hc` with both being flags => `-H`, `-c`
+---   - `-Hefoo` with `-H` flag and `-e` option => `-H`, `-e`, `foo`
+---   - `-e=pattern` with `-e` option => `-e`, `pattern`
 ---
 ---@param token string A token starting with a single hyphen
 ---@return string[] expanded Expanded tokens

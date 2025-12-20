@@ -28,7 +28,7 @@ power users:
 * **Native Search Integration**: Finding text is only half the battle. Brook
   accurately translates ripgrep patterns to the search register. This turns
   search results into editable targets, enabling powerful automation. Explore
-  the [pattern translation spec](/tests/rg_to_vim_pattern_spec.md) for more
+  the [pattern translation spec](./tests/pattern_spec.md) for more
   details.
 
 * **Complementing LSPs**: While LSPs handle symbol renaming, Brook handles
