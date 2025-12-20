@@ -6,6 +6,8 @@
 ---@module 'brook.rg'
 
 local current_job_id    = nil
+--- Whether the stop() function was called.
+local terminated        = false
 
 local pattern           = require('brook.pattern')
 local tokenise          = require('brook.tokenise').tokenise
@@ -17,6 +19,7 @@ local M                 = {}
 
 function M.stop()
   if current_job_id then
+    terminated = true
     vim.fn.jobstop(current_job_id)
     current_job_id = nil
   end
@@ -169,7 +172,11 @@ end
 ---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
 ---@param plugin_opts brook.BrookOpts Plugin options
 function M._exec(args, on_first_result, search_opts, plugin_opts)
-  M.stop()
+  terminated = false
+  if current_job_id then
+    vim.fn.jobstop(current_job_id)
+    current_job_id = nil
+  end
 
   local max_results = plugin_opts.max_results
 
@@ -244,6 +251,11 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
     local entries = {}
     for _, line in ipairs(data) do
       if max_results and total_results >= max_results then
+        stopped_at_limit = true
+        if current_job_id then
+          vim.fn.jobstop(current_job_id)
+          current_job_id = nil
+        end
         break
       end
 
@@ -262,16 +274,6 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       if qf_winid ~= 0 then
         vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
       end
-    end
-
-    -- Stop if we've hit the limit
-    if max_results and total_results >= max_results and current_job_id then
-      M.stop()
-      stopped_at_limit = true
-      vim.notify(
-        string.format('rg: stopped after %d results (configure max_results in setup)', total_results),
-        vim.log.levels.INFO
-      )
     end
   end)
 
@@ -294,8 +296,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   -- 4. Command completion handling
   ---------------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    -- If the command finished successfully or we stopped at limit, nothing left to do.
-    if exit_code == 0 or stopped_at_limit then
+    if exit_code == 0 then
       return
     end
 
@@ -304,11 +305,33 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       return
     end
 
-    local msg = "rg exited with code " .. exit_code
-    if #stderr_lines > 0 then
-      msg = msg .. ':\n' .. table.concat(stderr_lines, '\n')
+    local stopped_at_limit_msg = 'stopped at limit (you can configure max_results in setup)'
+    local terminated_msg = 'rg process manually stopped'
+
+    if stopped_at_limit and #stderr_lines > 0 then
+      table.insert(stderr_lines, stopped_at_limit_msg)
+      vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
+      return
     end
-    vim.notify(msg, vim.log.levels.ERROR)
+
+    if stopped_at_limit and #stderr_lines == 0 then
+      vim.notify(stopped_at_limit_msg, vim.log.levels.INFO)
+      return
+    end
+
+    if terminated and #stderr_lines > 0 then
+      table.insert(stderr_lines, terminated_msg)
+      vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.WARN)
+      return
+    end
+
+    if terminated and #stderr_lines == 0 then
+      vim.notify(terminated_msg, vim.log.levels.INFO)
+      return
+    end
+
+    table.insert(stderr_lines, "rg exited with code " .. exit_code)
+    vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
   end)
 
   -- 5. Start the job
