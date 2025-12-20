@@ -193,16 +193,34 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   local total_results = 0
   local stopped_at_limit = false
 
+  --- Last chunk of the previous batch. See :h channel-lines.
+  local stdout_buffer = ''
+
   local on_stdout = vim.schedule_wrap(function(_, data, _)
-    -- no data signifies EOF error (end of the stream)
     if not data then
       return
     end
 
-    -- blank data happens when there were no results, one or more empty lines
-    -- are still intercepted
-    if M._data_blank(data) then
+    -- Handle incomplete chunks and EOF.
+    if #data == 1 and data[1] == '' and stdout_buffer == '' then
+      -- EOF and no dangling buffer: nothing else to do.
       return
+    elseif #data == 1 and data[1] == '' then
+      -- EOF, but there's still a result in the buffer: put it back into `data`
+      -- and proceed normally.
+      data[1] = stdout_buffer
+      stdout_buffer = ''
+    else
+      -- Handle ongoing stream
+      -- 1. Complete the first chunk using the last one from the previous batch.
+      data[1] = stdout_buffer .. data[1]
+      -- Pop the last (potentially incomplete) chunk of this batch. What remains
+      -- are all fully-formed lines.
+      --
+      -- NOTE: After removing the last (potentially incomplete) element, data
+      -- may be empty. This is expected when we receive a single partial chunk;
+      -- it will be completed and processed when the next stdout event arrives.
+      stdout_buffer = table.remove(data)
     end
 
     if is_first_result and #data > 0 then
