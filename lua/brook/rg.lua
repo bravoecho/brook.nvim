@@ -190,7 +190,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   -- 2. Result stream handling
   ----------------------------
   local is_first_result = true
-  local result_count = 0
+  local total_results = 0
   local stopped_at_limit = false
 
   local on_stdout = vim.schedule_wrap(function(_, data, _)
@@ -217,39 +217,38 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       is_first_result = false
     end
 
+    local previous_total = total_results
+
     local entries = {}
     for _, line in ipairs(data) do
-      if max_results and result_count >= max_results then
+      if max_results and total_results >= max_results then
         break
       end
 
       local entry = M._parse_result(line)
       if entry then
         table.insert(entries, entry)
-        result_count = result_count + 1
+        total_results = total_results + 1
       end
     end
-
-    local initial_qf_size = #vim.fn.getqflist()
 
     vim.fn.setqflist(entries, 'a')
 
     -- Resize quickfix window, to make room for new entries, up to a maximum of 10.
-    if initial_qf_size <= 10 then
-      local current_qf_size = #vim.fn.getqflist()
+    if previous_total <= 10 then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(current_qf_size, 10))
+        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
       end
     end
 
     -- Stop if we've hit the limit
-    if max_results and result_count >= max_results and current_job_id then
+    if max_results and total_results >= max_results and current_job_id then
       vim.fn.jobstop(current_job_id)
       current_job_id = nil
       stopped_at_limit = true
       vim.notify(
-        string.format('rg: stopped after %d results (configure max_results in setup)', result_count),
+        string.format('rg: stopped after %d results (configure max_results in setup)', total_results),
         vim.log.levels.INFO
       )
     end
