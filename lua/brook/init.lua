@@ -7,7 +7,10 @@ local util = require('brook.util')
 function M.setup(plugin_opts)
   plugin_opts = plugin_opts or {}
   local keymap = plugin_opts.keymap or '<leader>g'
-  local max_results = plugin_opts.max_results or 1000
+  local max_results = plugin_opts.max_results
+  if max_results == nil then
+    max_results = 1000
+  end
 
   ------------------------------------------------------------------------------
   --- Commands -----------------------------------------------------------------
