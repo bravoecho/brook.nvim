@@ -274,15 +274,19 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
 
   -- 3. Error message handling
   ----------------------------
+  -- NOTE: stderr is buffered (see jobstart options below), so this callback
+  -- receives all stderr output in a single call when the job exits.
   local stderr_lines = {}
 
-  local on_stderr = vim.schedule_wrap(function(_, data, _)
-    for _, line in ipairs(data) do
-      if line ~= '' then
-        table.insert(stderr_lines, line)
-      end
+  local on_stderr = function(_, data, _)
+    if not data or #data == 0 then
+      return
     end
-  end)
+    if data[#data] == '' then
+      table.remove(data)
+    end
+    stderr_lines = data
+  end
 
   -- 4. Command completion handling
   ---------------------------------
@@ -315,6 +319,11 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
     on_stdout = on_stdout,
     on_stderr = on_stderr,
     on_exit = on_exit,
+    -- NOTE: Buffer stderr so we receive all error output in a single callback.
+    -- This avoids partial-line issues without the complexity of manual
+    -- buffering, since stderr is typically small (error messages or lists of
+    -- unreadable files).
+    stderr_buffered = true,
   })
 
   if current_job_id <= 0 then
