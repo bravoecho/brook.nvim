@@ -4,6 +4,13 @@
 ---@class brook.BrookOpts
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
 ---@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
+---@field debounce? integer Maximum wait in ms before flushing results (default: 30)
+---@field buffer_size? integer Maximum number of results to buffer before flushing (default: 30)
+
+---@class brook.ExecOpts
+---@field max_results integer Maximum results before stopping (default: 1000, nil for unlimited)
+---@field debounce integer Maximum wait in ms before flushing results (default: 30)
+---@field buffer_size integer Maximum number of results to buffer before flushing (default: 30)
 
 --- A quickfix list entry, as expected by `vim.fn.setqflist()`.
 ---@class brook.QfEntry

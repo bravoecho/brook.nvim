@@ -36,9 +36,9 @@ end
 --- quotes included.
 ---
 ---@param text string The literal text to search for
----@param plugin_opts? brook.BrookOpts Plugin options
-function M.selection(text, plugin_opts)
-  plugin_opts = plugin_opts or {}
+---@param exec_opts? brook.ExecOpts Plugin options
+function M.selection(text, exec_opts)
+  exec_opts = exec_opts or {}
 
   ---@type brook.SearchOpts
   local search_opts = { word = false, fixed = true, case = 'unset' }
@@ -47,7 +47,7 @@ function M.selection(text, plugin_opts)
     M._set_search_register(text, search_opts)
   end
 
-  M._exec({ '--', text }, on_first_result, search_opts, plugin_opts)
+  M._exec({ '--', text }, on_first_result, search_opts, exec_opts)
 end
 
 --- Searches for a single word using ripgrep.
@@ -59,9 +59,9 @@ end
 --- is already a plain string without any shell quoting.
 ---
 ---@param word string The word to search for (typically from <cword>)
----@param plugin_opts? brook.BrookOpts Plugin options
-function M.word(word, plugin_opts)
-  plugin_opts = plugin_opts or {}
+---@param exec_opts? brook.ExecOpts Plugin options
+function M.word(word, exec_opts)
+  exec_opts = exec_opts or {}
 
   local search_opts = { word = true, fixed = true, case = 'unset' }
 
@@ -69,7 +69,7 @@ function M.word(word, plugin_opts)
     M._set_search_register(word, search_opts)
   end
 
-  M._exec({ '--', word }, on_first_result, search_opts, plugin_opts)
+  M._exec({ '--', word }, on_first_result, search_opts, exec_opts)
 end
 
 --- Searches with user-defined arguments.
@@ -94,9 +94,9 @@ end
 ---   `:Rg -w 'foo bar'`         -> `rg --vimgrep -w "foo bar"`
 ---
 ---@param cmd_args string The raw command-line arguments
----@param plugin_opts? brook.BrookOpts Plugin options
-function M.raw(cmd_args, plugin_opts)
-  plugin_opts = plugin_opts or {}
+---@param exec_opts? brook.ExecOpts Plugin options
+function M.raw(cmd_args, exec_opts)
+  exec_opts = exec_opts or {}
 
   -- Step 1: Tokenise
   -------------------
@@ -155,7 +155,7 @@ function M.raw(cmd_args, plugin_opts)
 
   -- no need to specify programmatic search options, if any are present, they
   -- will come from the args provided by the user
-  M._exec(rg_args, on_first_result, {}, plugin_opts)
+  M._exec(rg_args, on_first_result, {}, exec_opts)
 end
 
 --- Runs ripgrep with the given argument array.
@@ -170,15 +170,15 @@ end
 ---@param args string[] Shell-unquoted command tokens to pass to `rg`
 ---@param on_first_result function Callback to executed when first result is received
 ---@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
----@param plugin_opts brook.BrookOpts Plugin options
-function M._exec(args, on_first_result, search_opts, plugin_opts)
+---@param exec_opts brook.ExecOpts Plugin options
+function M._exec(args, on_first_result, search_opts, exec_opts)
   terminated = false
   if current_job_id then
     vim.fn.jobstop(current_job_id)
     current_job_id = nil
   end
 
-  local max_results = plugin_opts.max_results
+  local max_results = exec_opts.max_results
 
   -- 1. Build command array
   -------------------------
@@ -203,6 +203,46 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   local is_first_result = true
   local total_results = 0
   local stopped_at_limit = false
+
+  local buffer_size = exec_opts.buffer_size
+  local flush_debounce = exec_opts.debounce
+
+  ---@type brook.QfEntry[]
+  local entry_buffer = {}
+
+  ---@type uv_timer_t?
+  local flush_timer = nil
+
+  local flush = function()
+    if flush_timer then
+      flush_timer:stop()
+    end
+
+    if #entry_buffer == 0 then
+      return
+    end
+
+    local previous_total = total_results - #entry_buffer
+
+    vim.fn.setqflist(entry_buffer, 'a')
+    entry_buffer = {}
+
+    -- Resize quickfix window, to make room for new entries, up to a maximum of 10.
+    if previous_total <= 10 then
+      local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
+      if qf_winid ~= 0 then
+        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
+      end
+    end
+  end
+
+  local schedule_flush = function()
+    if flush_timer then
+      flush_timer:stop()
+    end
+
+    flush_timer = vim.defer_fn(flush, flush_debounce)
+  end
 
   --- Last chunk of the previous batch. See :h channel-lines.
   local stdout_buffer = ''
@@ -238,20 +278,14 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       -- Clear the quickfix list and open it
       vim.fn.setqflist({}, 'r')
       vim.cmd('copen')
-
-      if on_first_result then
-        on_first_result()
-      end
-
+      on_first_result()
       is_first_result = false
     end
 
-    local previous_total = total_results
-
-    local entries = {}
     for _, line in ipairs(data) do
       if max_results and total_results >= max_results then
         stopped_at_limit = true
+        flush()
         if current_job_id then
           vim.fn.jobstop(current_job_id)
           current_job_id = nil
@@ -261,19 +295,15 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
 
       local entry = M._parse_result(line)
       if entry then
-        table.insert(entries, entry)
+        table.insert(entry_buffer, entry)
         total_results = total_results + 1
       end
     end
 
-    vim.fn.setqflist(entries, 'a')
-
-    -- Resize quickfix window, to make room for new entries, up to a maximum of 10.
-    if previous_total <= 10 then
-      local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
-      if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
-      end
+    if is_first_result or #entry_buffer >= buffer_size then
+      flush()
+    else
+      schedule_flush()
     end
   end)
 
@@ -296,6 +326,8 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
   -- 4. Command completion handling
   ---------------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
+    flush()
+
     if exit_code == 0 then
       vim.notify(string.format('rg: %d matches', total_results), vim.log.levels.INFO)
       return
@@ -306,7 +338,7 @@ function M._exec(args, on_first_result, search_opts, plugin_opts)
       return
     end
 
-    local stopped_at_limit_msg = 'rg: stopped at limit (you can configure max_results in setup)'
+    local stopped_at_limit_msg = 'rg: stopped at limit (configure max_results in setup)'
     local terminated_msg = 'rg: process manually stopped'
 
     if stopped_at_limit and #stderr_lines > 0 then

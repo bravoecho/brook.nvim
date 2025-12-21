@@ -11,6 +11,21 @@ function M.setup(plugin_opts)
   if max_results == nil then
     max_results = 1000
   end
+  local buffer_size = plugin_opts.buffer_size
+  if buffer_size == nil then
+    buffer_size = 30
+  end
+  local debounce = plugin_opts.debounce
+  if debounce == nil then
+    debounce = 30
+  end
+
+  ---@type brook.ExecOpts
+  local exec_opts = {
+    max_results = max_results,
+    buffer_size = buffer_size,
+    debounce = debounce,
+  }
 
   ------------------------------------------------------------------------------
   --- Commands -----------------------------------------------------------------
@@ -30,13 +45,13 @@ function M.setup(plugin_opts)
         return
       end
 
-      rg.word(word, { max_results = max_results })
+      rg.word(word, exec_opts)
       return
     end
 
     -- General case
     ---------------
-    rg.raw(cmd_opts.args, { max_results = max_results })
+    rg.raw(cmd_opts.args, exec_opts)
   end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
   --- Stop command
@@ -67,7 +82,7 @@ function M.setup(plugin_opts)
       return
     end
 
-    rg.selection(text, { max_results = max_results })
+    rg.selection(text, exec_opts)
   end, { desc = 'Grep visual selection with ripgrep' })
 end
 
