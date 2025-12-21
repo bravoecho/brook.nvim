@@ -5,7 +5,7 @@
 
 **brook.nvim** is an asynchronous ripgrep wrapper for Neovim that prioritizes
 performance and seamless navigation. It doesn't try to be a fuzzy finder; it's
-a precision tool for code exploration and refactoring.
+a precision tool for code exploration and refactoring, the Vim way.
 
 ## Why Brook?
 
@@ -59,9 +59,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   opts = {
     keymap = '<leader>g',
     max_results = 1000, -- Set to false for unlimited
+    buffer_size = 30,   -- Results to accumulate before flushing to quickfix
+    debounce = 30,      -- Max wait (ms) before flushing buffered results
   },
 }
 ```
+
+See the Technical Notes below for more details on buffering and debouncing.
 
 > [!TIP]
 > For consistent results, it's recommended to configure both ripgrep and Neovim
@@ -137,6 +141,24 @@ extension of Vim:
   Brook translates these to Vim's `\C` and `\c` modifiers, so `n`/`N` navigation
   and highlighting respect your choice.
 
+* **Stopping Long Searches**: If a search is taking too long or returning too
+  many results, use `:RgStop` to terminate it immediately. The results collected
+  so far remain in the quickfix list.
+
+### Limitations
+
+* **Multiline visual selections**: Brook does not support searching for
+  multiline selections. When you select text spanning multiple lines and trigger
+  a search, Brook will display a warning and abort. This is a deliberate
+  limitation; ripgrep's `--vimgrep` output format and the quickfix list are
+  designed around line-based results.
+
+* **Multiple patterns**: When using multiple `-e` flags (e.g., `-e foo -e bar`),
+  Brook only uses the first pattern for search register integration. The ripgrep
+  search itself works correctly with all patterns, but only the first will be
+  highlighted and available for `n`/`N` navigation. This avoids complexity for
+  a seldom used ripgrep feature.
+
 ---
 
 ## Philosophy & Comparisons
@@ -205,6 +227,14 @@ exploration across many files**.
   `rg`. This prevents "UI lag" because the quickfix list is updated
   incrementally rather than waiting for the entire search to finish.
 
+* **Buffering and Debouncing**: The `buffer_size` and `debounce` options
+  optimize Brook’s streaming from ripgrep. Because ripgrep flushes results to
+  stdout very frequently, Brook accumulates them in a buffer instead of updating
+  the quickfix list for every single stdout output event. It then flushes either
+  when the buffer reaches `buffer_size` entries, or after `debounce` milliseconds
+  of inactivity, whichever comes first. This debouncing strikes a balance
+  between responsiveness and efficiency.
+
 * **Lazy execution**: Argument parsing, pattern extraction and search register
   handling are performed only when, and if, at least one result is found.
 
@@ -229,13 +259,13 @@ exploration across many files**.
                    v                                     v                   v
              Expand Tokens <----------------------- First results       More results...
                    |          ✓ pattern is valid         |                   |
-    raw patterns,  |                                     |      stream...    |
+    raw patterns,  |                                     |     buffer...     |
  flags and options |                                     |                   |
                    v                                     v                   |
-            Parse and Extract                      Quickfix List <-----------+
-                   |
-   ripgrep pattern |
-     + options     |
+            Parse and Extract                    Buffered Flush <------------+
+                   |                                     |
+   ripgrep pattern |                                     v
+     + options     |                              Quickfix List
                    v
                Translate
                    |
