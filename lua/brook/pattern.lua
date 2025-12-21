@@ -84,9 +84,6 @@ function M.rg_to_vim(pattern, opts)
       elseif next_char == 'B' then
         -- Non-word boundary: unsupported
         return nil
-      elseif next_char == 'B' then
-        -- Non-word boundary: unsupported
-        return nil
       elseif next_char == 'A' or next_char == 'z' then
         -- String anchors: unsupported
         return nil
