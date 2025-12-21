@@ -147,17 +147,18 @@ extension of Vim:
 
 ### Limitations
 
-* **Multiline visual selections**: Brook does not support searching for
-  multiline selections. When you select text spanning multiple lines and trigger
-  a search, Brook will display a warning and abort. This is a deliberate
-  limitation; ripgrep's `--vimgrep` output format and the quickfix list are
-  designed around line-based results.
+* **No multiline search**: Ripgrep by default does not allow multiline search,
+  requiring to enable it explicitly. Brook does not support it either. When you
+  search a multiline selection, or add flags like `-U`/`--multiline`, Brook will
+  display a warning and abort. This is a deliberate limitation; ripgrep's
+  `--vimgrep` output format and the quickfix list are designed around line-based
+  results.
 
-* **Multiple patterns**: When using multiple `-e` flags (e.g., `-e foo -e bar`),
-  Brook only uses the first pattern for search register integration. The ripgrep
-  search itself works correctly with all patterns, but only the first will be
-  highlighted and available for `n`/`N` navigation. This avoids complexity for
-  a seldom used ripgrep feature.
+* **No multiple patterns**: When using multiple `-e` flags (e.g., `-e foo -e
+  bar`), Brook only uses the first pattern for search register integration. The
+  ripgrep search itself works correctly with all patterns, but only the first
+  will be highlighted and available for `n`/`N` navigation. This avoids
+  complexity for a seldom used ripgrep feature.
 
 ---
 

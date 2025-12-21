@@ -119,8 +119,17 @@ function M.raw(cmd_args, exec_opts)
     return
   end
 
-  -- Step 3: Build deferred callback
-  ----------------------------------
+  -- Step 3: Enforce single-line search
+  -------------------------------------
+  for _, rg_arg in ipairs(rg_args) do
+    if rg_arg == '-U' or rg_arg == '--multiline' or rg_arg == '--multiline-dotall' then
+      vim.notify('rg: multiline search not supported', vim.log.levels.ERROR)
+      return
+    end
+  end
+
+  -- Step 4: Parse ripgrep arguments and set search register (lazy)
+  -----------------------------------------------------------------
   -- Remaining operations can be performed lazily, only when and if results
   -- are received. This way...
   --   - we can be confident that the arguments were formally correct, because
@@ -182,7 +191,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
 
   -- 1. Build command array
   -------------------------
-  local cmd = { 'rg', '--vimgrep' }
+  local cmd = { 'rg', '--vimgrep', '--no-multiline' }
   if search_opts.word then
     table.insert(cmd, '--word-regexp')
   end
