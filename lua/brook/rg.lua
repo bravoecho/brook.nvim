@@ -411,20 +411,6 @@ function M._parse_result(vimgrep_result)
   }
 end
 
---- Checks if stdout data contains only blank strings.
----
----@param data string[] Lines received from stdout
----@return boolean blank True if all lines are empty or whitespace-only
-function M._data_blank(data)
-  for _, line in ipairs(data) do
-    if vim.trim(line) ~= '' then
-      return false
-    end
-  end
-
-  return true
-end
-
 --- Sets Vim's search register to the given ripgrep pattern.
 ---
 --- Translates the ripgrep pattern to Vim regex syntax and enables hlsearch.
