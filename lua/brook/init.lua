@@ -41,7 +41,7 @@ function M.setup(plugin_opts)
     if args == '' then
       local word = vim.fn.expand('<cword>')
       if word == '' then
-        vim.notify('No word under the cursor', vim.log.levels.INFO)
+        vim.notify('rg: no word under the cursor', vim.log.levels.WARN)
         return
       end
 
@@ -72,13 +72,13 @@ function M.setup(plugin_opts)
     local text = util.get_visual_selection()
 
     if text:find('\n') then
-      vim.notify('Multi-line selections are not supported', vim.log.levels.WARN)
+      vim.notify('rg: multi-line selection not supported', vim.log.levels.WARN)
       return
     end
 
     -- TODO: check if this can happen in practice
     if text == '' then
-      vim.notify('Empty selection', vim.log.levels.WARN)
+      vim.notify('rg: empty selection', vim.log.levels.WARN)
       return
     end
 

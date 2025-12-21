@@ -343,12 +343,12 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
 
     if stopped_at_limit and #stderr_lines > 0 then
       table.insert(stderr_lines, stopped_at_limit_msg)
-      vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
+      vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.WARN)
       return
     end
 
     if stopped_at_limit and #stderr_lines == 0 then
-      vim.notify(stopped_at_limit_msg, vim.log.levels.INFO)
+      vim.notify(stopped_at_limit_msg, vim.log.levels.WARN)
       return
     end
 
@@ -359,7 +359,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
     end
 
     if terminated and #stderr_lines == 0 then
-      vim.notify(terminated_msg, vim.log.levels.INFO)
+      vim.notify(terminated_msg, vim.log.levels.WARN)
       return
     end
 
