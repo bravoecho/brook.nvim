@@ -237,7 +237,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
     entry_buffer = {}
 
     -- Resize quickfix window, to make room for new entries, up to a maximum of 10.
-    if previous_total <= 10 then
+    if previous_total < 10 then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
         vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
@@ -274,7 +274,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
       -- Handle ongoing stream
       -- 1. Complete the first chunk using the last one from the previous batch.
       data[1] = stdout_buffer .. data[1]
-      -- Pop the last (potentially incomplete) chunk of this batch. What remains
+      -- 2. Pop the last (potentially incomplete) chunk of this batch. What remains
       -- are all fully-formed lines.
       --
       -- NOTE: After removing the last (potentially incomplete) element, data
@@ -285,7 +285,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
 
     if is_first_result and #data > 0 then
       -- Clear the quickfix list and open it
-      vim.fn.setqflist({}, 'r')
+      vim.fn.setqflist({}, 'r', { title = 'ripgrep search' })
       vim.cmd('copen')
       on_first_result()
       is_first_result = false
