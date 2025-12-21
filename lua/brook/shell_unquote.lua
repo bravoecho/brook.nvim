@@ -111,7 +111,7 @@ end
 ---
 ---@param tokens string[]|nil List of shell tokens
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
-function M._shell_unquote_all(tokens)
+function M.shell_unquote_all(tokens)
   if not tokens then
     return nil
   end

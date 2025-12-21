@@ -11,7 +11,7 @@ local terminated        = false
 
 local pattern           = require('brook.pattern')
 local tokenise          = require('brook.tokenise').tokenise
-local shell_unquote_all = require('brook.shell_unquote')._shell_unquote_all
+local shell_unquote_all = require('brook.shell_unquote').shell_unquote_all
 local parse_args        = require('brook.parse_args').parse_args
 local types             = require('brook.types')
 
