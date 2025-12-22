@@ -228,20 +228,23 @@ exploration across many files**.
   search patterns.
 
 * **Regex Translation**: Patterns are translated to Vim's "very magic" (`\v`)
-  mode to ensure highlighting matches what `ripgrep` found. Case sensitivity
-  flags (`-s`, `-i`) are translated to `\C` and `\c` modifiers respectively.
+  mode to ensure highlighting matches what `ripgrep` found. The pattern-related
+  ripgrep flags are translated to the corresponding modifiers. For example,
+  case sensitivity flags (`-s`, `-i`) are translated to `\C` and `\c` modifiers
+  respectively. See also [pattern translation spec](./tests/pattern_spec.md).
 
 * **Streaming Logic**: Results are processed line-by-line as they are emitted by
   `rg`. This prevents "UI lag" because the quickfix list is updated
   incrementally rather than waiting for the entire search to finish.
 
-* **Buffering and Debouncing**: The `buffer_size` and `debounce` options
-  optimize Brook’s streaming from ripgrep. Because ripgrep flushes results to
-  stdout very frequently, Brook accumulates them in a buffer instead of updating
-  the quickfix list for every single stdout output event. It then flushes either
-  when the buffer reaches `buffer_size` entries, or after `debounce` milliseconds
-  of inactivity, whichever comes first. This debouncing strikes a balance
-  between responsiveness and efficiency.
+* **Buffering and Debouncing**: The `buffer_size` and `debounce` options control
+  how frequently Brook updates the quickfix list. More frequent updates would
+  feel more responsive, but each UI update is expensive and slows down the
+  search. Also, results beyond the quickfix window height are below the fold,
+  and would not benefit from immediate flushing. After the initial results,
+  buffering kicks in, and results are then flushed only after `buffer_size`
+  entries, or after `debounce` milliseconds of inactivity, whichever comes
+  first.
 
 * **Lazy execution**: Argument parsing, pattern translation and search register
   handling are performed only when-and-if at least one result is found.
