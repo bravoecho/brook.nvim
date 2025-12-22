@@ -3,28 +3,29 @@ local M = {}
 local rg = require('brook.rg')
 local util = require('brook.util')
 
---- @param plugin_opts? brook.BrookOpts
-function M.setup(plugin_opts)
-  plugin_opts = plugin_opts or {}
-  local keymap = plugin_opts.keymap or '<leader>g'
-  local max_results = plugin_opts.max_results
-  if max_results == nil then
-    max_results = 1000
-  end
-  local buffer_size = plugin_opts.buffer_size
-  if buffer_size == nil then
-    buffer_size = 100
-  end
-  local debounce = plugin_opts.debounce
-  if debounce == nil then
-    debounce = 80
-  end
+--- @param cfg? brook.Config User-provided configuration
+function M.setup(cfg)
+  ---@type brook.Config
+  local defaults = {
+    keymap = '<leader>g',
+    max_results = 1000,
+    buffer_size = 100,
+    debounce = 80,
+    qf_open = true,
+    qf_auto_resize = true,
+    qf_win_height = 10,
+  }
+
+  cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
 
   ---@type brook.ExecOpts
   local exec_opts = {
-    max_results = max_results,
-    buffer_size = buffer_size,
-    debounce = debounce,
+    max_results = cfg.max_results,
+    buffer_size = cfg.buffer_size,
+    debounce = cfg.debounce,
+    qf_open = cfg.qf_open,
+    qf_auto_resize = cfg.qf_auto_resize,
+    qf_win_height = cfg.qf_win_height,
   }
 
   ------------------------------------------------------------------------------
@@ -64,11 +65,11 @@ function M.setup(plugin_opts)
 
   -- Open command
   ------------------------------------------------------------------------------
-  vim.keymap.set({ 'n' }, keymap, ':Rg ', { desc = 'Grep with rg' })
+  vim.keymap.set({ 'n' }, cfg.keymap, ':Rg ', { desc = 'Grep with rg' })
 
   -- Visual selection (single line)
   ---------------------------------
-  vim.keymap.set({ 'x' }, keymap, function()
+  vim.keymap.set({ 'x' }, cfg.keymap, function()
     local text = util.get_visual_selection()
 
     if text:find('\n') then

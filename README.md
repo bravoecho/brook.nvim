@@ -63,6 +63,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Buffering and debouncing: adjust to balance performance and responsiveness.
     buffer_size = 100,  -- Results to accumulate before flushing to quickfix
     debounce = 80,      -- Max wait (ms) before flushing buffered results
+
+    -- Quickfix list management
+    qf_open = true,         -- Auto-open the quickfix window when results are found
+    qf_auto_resize = true,  -- Resize the quickfix window when more results arrive
+    qf_win_height = 10,     -- Fixed or max height (depending on auto-resizing on/off)
   },
 }
 ```
@@ -238,8 +243,8 @@ exploration across many files**.
   of inactivity, whichever comes first. This debouncing strikes a balance
   between responsiveness and efficiency.
 
-* **Lazy execution**: Argument parsing, pattern extraction and search register
-  handling are performed only when, and if, at least one result is found.
+* **Lazy execution**: Argument parsing, pattern translation and search register
+  handling are performed only when-and-if at least one result is found.
 
 ```
                                 Neovim Command
@@ -272,7 +277,8 @@ exploration across many files**.
                    v
                Translate
                    |
-                   | vimgrep pattern (very magic)
+   vimgrep pattern |
+    (very magic)   |
                    v
            Set Search Register
 ```

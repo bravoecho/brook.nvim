@@ -5,19 +5,17 @@
 --- for security and portability.
 ---@module 'brook.rg'
 
-local current_job_id      = nil
+local current_job_id    = nil
 --- Whether the stop() function was called.
-local terminated          = false
+local terminated        = false
 
-local max_quickfix_height = 10
+local pattern           = require('brook.pattern')
+local tokenise          = require('brook.tokenise').tokenise
+local shell_unquote_all = require('brook.shell_unquote').shell_unquote_all
+local parse_args        = require('brook.parse_args').parse_args
+local types             = require('brook.types')
 
-local pattern             = require('brook.pattern')
-local tokenise            = require('brook.tokenise').tokenise
-local shell_unquote_all   = require('brook.shell_unquote').shell_unquote_all
-local parse_args          = require('brook.parse_args').parse_args
-local types               = require('brook.types')
-
-local M                   = {}
+local M                 = {}
 
 function M.stop()
   if current_job_id then
@@ -182,7 +180,7 @@ end
 --- Context object for ripgrep execution (parameters for _exec).
 ---
 ---@class brook.SearchContext
----@field args string[] Shell-unquoted command tokens to pass to `rg`
+---@field args string[] Shell-unquoted command tokens to be passed to `rg`
 ---@field search_opts brook.SearchOpts Search options (only used for programmatic searches)
 ---@field exec_opts brook.ExecOpts Plugin options
 ---@field title string Quickfix window title
@@ -212,6 +210,9 @@ function M._exec(ctx)
   local on_first_result = ctx.on_first_result or function() end
 
   local max_results = exec_opts.max_results
+  local qf_win_height = exec_opts.qf_win_height
+  local qf_open = exec_opts.qf_open
+  local qf_auto_resize = exec_opts.qf_auto_resize
 
   vim.notify(title, vim.log.levels.INFO)
 
@@ -238,6 +239,7 @@ function M._exec(ctx)
   local is_first_result = true
   local total_results = 0
   local stopped_at_limit = false
+  local did_resize = false
 
   local buffer_size = exec_opts.buffer_size
   local flush_debounce = exec_opts.debounce
@@ -258,7 +260,7 @@ function M._exec(ctx)
       return
     end
 
-    -- 1. Clear for new searches
+    -- 1. Clear
     ----------------------------
     if is_first_result then
       -- Clear the quickfix list.
@@ -267,28 +269,50 @@ function M._exec(ctx)
 
     -- 2. Populate
     --------------
+    local current_buffer_size = #entry_buffer
     vim.fn.setqflist(entry_buffer, 'a')
-    local previous_total = total_results - #entry_buffer
+    local previous_total = total_results - current_buffer_size
     entry_buffer = {}
 
     -- 3. Open (on new searches)
     ----------------------------
     if is_first_result then
-      vim.cmd('copen')
+      if qf_open then
+        if qf_auto_resize then
+          -- Open directly with the size correspoding to initial content, to
+          -- avoid "flickering".
+          vim.cmd('copen ' .. current_buffer_size)
+        else
+          -- Set the final height right away if the user has disabled auto-resizing.
+          vim.cmd('copen ' .. qf_win_height)
+        end
+      end
       on_first_result()
+      is_first_result = false
     end
 
     -- 4. Resize
     ------------
-    -- Make room for new entries, up to the set maximum.
-    if previous_total < max_quickfix_height then
-      local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
-      if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, max_quickfix_height))
-      end
+    -- Respect user config if auto-resizing was disabled.
+    if not qf_auto_resize then
+      return
     end
 
-    is_first_result = false
+    -- Avoid resizing after the final height was reached, in case the user has
+    -- resized manually since.
+    if did_resize then
+      return
+    end
+
+    if previous_total < qf_win_height then
+      local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
+      if qf_winid ~= 0 then
+        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, qf_win_height))
+        if total_results >= qf_win_height then
+          did_resize = true
+        end
+      end
+    end
   end
 
   local schedule_flush = function()
@@ -298,9 +322,6 @@ function M._exec(ctx)
 
     flush_timer = vim.defer_fn(flush, flush_debounce)
   end
-
-  -- local handle_first_result = function()
-  -- end
 
   --- Last chunk of the previous batch. See :h channel-lines.
   local stdout_buffer = ''
@@ -312,10 +333,11 @@ function M._exec(ctx)
     end
 
     -- Handle incomplete chunks and EOF.
-    if #data == 1 and data[1] == '' and stdout_buffer == '' then
+    if #data == 1 and data[1] == '' then
       -- EOF and no dangling buffer: nothing else to do.
-      return
-    elseif #data == 1 and data[1] == '' then
+      if stdout_buffer == '' then
+        return
+      end
       -- EOF, but there's still a result in the buffer: put it back into `data`
       -- and proceed normally.
       data[1] = stdout_buffer
@@ -360,8 +382,9 @@ function M._exec(ctx)
       end
     end
 
-    -- Display first few results immediately, for increased responsiveness.
-    if total_results < max_quickfix_height then
+    -- Display first few results immediately regardless of buffer size, for
+    -- increased responsiveness.
+    if total_results < qf_win_height then
       flush()
     else
       schedule_flush()

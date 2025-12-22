@@ -1,16 +1,22 @@
 --- Shared type definitions for the rg plugin.
 ---@module 'brook'
 
----@class brook.BrookOpts
+---@class brook.Config
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
 ---@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
 ---@field debounce? integer Maximum wait in ms before flushing results (default: 80)
 ---@field buffer_size? integer Maximum number of results to buffer before flushing (default: 100)
+---@field qf_open? boolean Whether the quickfix list should be opened when results arrive (default: true)
+---@field qf_auto_resize? boolean Whether the quickfix window should grow as results come in (default: true)
+---@field qf_win_height? integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 
 ---@class brook.ExecOpts
 ---@field max_results integer Maximum results before stopping (default: 1000, nil for unlimited)
 ---@field debounce integer Maximum wait in ms before flushing results (default: 80)
 ---@field buffer_size integer Maximum number of results to buffer before flushing (default: 100)
+---@field qf_open boolean Whether the quickfix list should be opened when results arrive (default: true)
+---@field qf_auto_resize boolean Whether the quickfix window should grow as results come in (default: true)
+---@field qf_win_height integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.SearchOpts
