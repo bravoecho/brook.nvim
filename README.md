@@ -59,8 +59,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   opts = {
     keymap = '<leader>g',
     max_results = 1000, -- Set to false for unlimited
-    buffer_size = 30,   -- Results to accumulate before flushing to quickfix
-    debounce = 30,      -- Max wait (ms) before flushing buffered results
+
+    -- Buffering and debouncing: adjust to balance performance and responsiveness.
+    buffer_size = 100,  -- Results to accumulate before flushing to quickfix
+    debounce = 80,      -- Max wait (ms) before flushing buffered results
   },
 }
 ```

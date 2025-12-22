@@ -5,17 +5,19 @@
 --- for security and portability.
 ---@module 'brook.rg'
 
-local current_job_id    = nil
+local current_job_id      = nil
 --- Whether the stop() function was called.
-local terminated        = false
+local terminated          = false
 
-local pattern           = require('brook.pattern')
-local tokenise          = require('brook.tokenise').tokenise
-local shell_unquote_all = require('brook.shell_unquote').shell_unquote_all
-local parse_args        = require('brook.parse_args').parse_args
-local types             = require('brook.types')
+local max_quickfix_height = 10
 
-local M                 = {}
+local pattern             = require('brook.pattern')
+local tokenise            = require('brook.tokenise').tokenise
+local shell_unquote_all   = require('brook.shell_unquote').shell_unquote_all
+local parse_args          = require('brook.parse_args').parse_args
+local types               = require('brook.types')
+
+local M                   = {}
 
 function M.stop()
   if current_job_id then
@@ -38,16 +40,18 @@ end
 ---@param text string The literal text to search for
 ---@param exec_opts? brook.ExecOpts Plugin options
 function M.selection(text, exec_opts)
-  exec_opts = exec_opts or {}
-
   ---@type brook.SearchOpts
   local search_opts = { word = false, fixed = true, case = 'unset' }
 
-  local on_first_result = function()
-    M._set_search_register(text, search_opts)
-  end
-
-  M._exec({ '--', text }, on_first_result, search_opts, exec_opts)
+  M._exec({
+    args = { '--', text },
+    search_opts = search_opts,
+    exec_opts = exec_opts or {},
+    title = 'rg -F ' .. text,
+    on_first_result = function()
+      M._set_search_register(text, search_opts)
+    end,
+  })
 end
 
 --- Searches for a single word using ripgrep.
@@ -61,15 +65,17 @@ end
 ---@param word string The word to search for (typically from <cword>)
 ---@param exec_opts? brook.ExecOpts Plugin options
 function M.word(word, exec_opts)
-  exec_opts = exec_opts or {}
-
   local search_opts = { word = true, fixed = true, case = 'unset' }
 
-  local on_first_result = function()
-    M._set_search_register(word, search_opts)
-  end
-
-  M._exec({ '--', word }, on_first_result, search_opts, exec_opts)
+  M._exec({
+    args = { '--', word },
+    search_opts = search_opts,
+    exec_opts = exec_opts or {},
+    title = 'rg -w ' .. word,
+    on_first_result = function()
+      M._set_search_register(word, search_opts)
+    end,
+  })
 end
 
 --- Searches with user-defined arguments.
@@ -164,8 +170,23 @@ function M.raw(cmd_args, exec_opts)
 
   -- no need to specify programmatic search options, if any are present, they
   -- will come from the args provided by the user
-  M._exec(rg_args, on_first_result, {}, exec_opts)
+  M._exec({
+    args = rg_args,
+    search_opts = {},
+    exec_opts = exec_opts,
+    title = 'rg ' .. cmd_args,
+    on_first_result = on_first_result,
+  })
 end
+
+--- Context object for ripgrep execution (parameters for _exec).
+---
+---@class brook.SearchContext
+---@field args string[] Shell-unquoted command tokens to pass to `rg`
+---@field search_opts brook.SearchOpts Search options (only used for programmatic searches)
+---@field exec_opts brook.ExecOpts Plugin options
+---@field title string Quickfix window title
+---@field on_first_result? function Callback when first result arrives
 
 --- Runs ripgrep with the given argument array.
 ---
@@ -176,18 +197,23 @@ end
 ---   - No injection vulnerabilities
 ---   - Slightly faster (no shell process spawned)
 ---
----@param args string[] Shell-unquoted command tokens to pass to `rg`
----@param on_first_result function Callback to executed when first result is received
----@param search_opts brook.SearchOpts Search options (only used for programmatic searches)
----@param exec_opts brook.ExecOpts Plugin options
-function M._exec(args, on_first_result, search_opts, exec_opts)
+---@param ctx brook.SearchContext Search context with all execution parameters
+function M._exec(ctx)
   terminated = false
   if current_job_id then
     vim.fn.jobstop(current_job_id)
     current_job_id = nil
   end
 
+  local args = ctx.args
+  local search_opts = ctx.search_opts
+  local exec_opts = ctx.exec_opts
+  local title = ctx.title
+  local on_first_result = ctx.on_first_result or function() end
+
   local max_results = exec_opts.max_results
+
+  vim.notify(title, vim.log.levels.INFO)
 
   -- 1. Build command array
   -------------------------
@@ -216,12 +242,13 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
   local buffer_size = exec_opts.buffer_size
   local flush_debounce = exec_opts.debounce
 
-  ---@type brook.QfEntry[]
+  ---@type vim.quickfix.entry
   local entry_buffer = {}
 
   ---@type uv_timer_t?
   local flush_timer = nil
 
+  --- Displays results in the quickfix list
   local flush = function()
     if flush_timer then
       flush_timer:stop()
@@ -231,18 +258,37 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
       return
     end
 
-    local previous_total = total_results - #entry_buffer
+    -- 1. Clear for new searches
+    ----------------------------
+    if is_first_result then
+      -- Clear the quickfix list.
+      vim.fn.setqflist({}, 'r', { title = 'rg: results', items = {} })
+    end
 
+    -- 2. Populate
+    --------------
     vim.fn.setqflist(entry_buffer, 'a')
+    local previous_total = total_results - #entry_buffer
     entry_buffer = {}
 
-    -- Resize quickfix window, to make room for new entries, up to a maximum of 10.
-    if previous_total < 10 then
+    -- 3. Open (on new searches)
+    ----------------------------
+    if is_first_result then
+      vim.cmd('copen')
+      on_first_result()
+    end
+
+    -- 4. Resize
+    ------------
+    -- Make room for new entries, up to the set maximum.
+    if previous_total < max_quickfix_height then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, 10))
+        vim.api.nvim_win_set_height(qf_winid, math.min(total_results, max_quickfix_height))
       end
     end
+
+    is_first_result = false
   end
 
   local schedule_flush = function()
@@ -253,10 +299,14 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
     flush_timer = vim.defer_fn(flush, flush_debounce)
   end
 
+  -- local handle_first_result = function()
+  -- end
+
   --- Last chunk of the previous batch. See :h channel-lines.
   local stdout_buffer = ''
 
   local on_stdout = vim.schedule_wrap(function(_, data, _)
+    -- Should never happen according to docs.
     if not data then
       return
     end
@@ -274,21 +324,16 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
       -- Handle ongoing stream
       -- 1. Complete the first chunk using the last one from the previous batch.
       data[1] = stdout_buffer .. data[1]
-      -- 2. Pop the last (potentially incomplete) chunk of this batch. What remains
-      -- are all fully-formed lines.
-      --
-      -- NOTE: After removing the last (potentially incomplete) element, data
-      -- may be empty. This is expected when we receive a single partial chunk;
-      -- it will be completed and processed when the next stdout event arrives.
+      -- 2. Pop the last (potentially incomplete) chunk of this batch. What
+      --    remains are all fully-formed lines.
       stdout_buffer = table.remove(data)
     end
 
-    if is_first_result and #data > 0 then
-      -- Clear the quickfix list and open it
-      vim.fn.setqflist({}, 'r', { title = 'ripgrep search' })
-      vim.cmd('copen')
-      on_first_result()
-      is_first_result = false
+    -- NOTE: After removing the last (potentially incomplete) element, data may
+    -- be empty. This is expected when we receive a single partial chunk; it
+    -- will be completed and processed when the next stdout event arrives.
+    if #data == 0 then
+      return
     end
 
     for _, line in ipairs(data) do
@@ -307,9 +352,16 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
         table.insert(entry_buffer, entry)
         total_results = total_results + 1
       end
+
+      -- Don't wait until the entire result batch is processed, if there are
+      -- already enough results to flush.
+      if #entry_buffer >= buffer_size then
+        flush()
+      end
     end
 
-    if is_first_result or #entry_buffer >= buffer_size then
+    -- Display first few results immediately, for increased responsiveness.
+    if total_results < max_quickfix_height then
       flush()
     else
       schedule_flush()
@@ -335,6 +387,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
   -- 4. Command completion handling
   ---------------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
+    -- Ensure any remaining buffered results are displayed.
     flush()
 
     if exit_code == 0 then
@@ -348,7 +401,7 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
     end
 
     local stopped_at_limit_msg = 'rg: stopped at limit (configure max_results in setup)'
-    local terminated_msg = 'rg: process manually stopped'
+    local terminated_msg = 'rg: stopped manually'
 
     if stopped_at_limit and #stderr_lines > 0 then
       table.insert(stderr_lines, stopped_at_limit_msg)
@@ -385,13 +438,13 @@ function M._exec(args, on_first_result, search_opts, exec_opts)
     -- they receive normal arguments.
     stdin = 'null',
     on_stdout = on_stdout,
-    on_stderr = on_stderr,
-    on_exit = on_exit,
     -- NOTE: Buffer stderr so we receive all error output in a single callback.
     -- This avoids partial-line issues without the complexity of manual
     -- buffering, since stderr is typically small (error messages or lists of
     -- unreadable files).
     stderr_buffered = true,
+    on_stderr = on_stderr,
+    on_exit = on_exit,
   })
 
   if current_job_id <= 0 then
@@ -405,7 +458,7 @@ end
 --- Example input: "some/path/to/file.txt:137:42:the red fox jumped"
 ---
 ---@param vimgrep_result string A line in vimgrep format (filename:lnum:col:text)
----@return brook.QfEntry|nil entry Quickfix entry, or nil if parsing fails
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
 function M._parse_result(vimgrep_result)
   local filename, lnum, col, text = vimgrep_result:match('([^:]+):(%d+):(%d+):(.*)')
   if not filename then

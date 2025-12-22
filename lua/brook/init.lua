@@ -13,11 +13,11 @@ function M.setup(plugin_opts)
   end
   local buffer_size = plugin_opts.buffer_size
   if buffer_size == nil then
-    buffer_size = 30
+    buffer_size = 100
   end
   local debounce = plugin_opts.debounce
   if debounce == nil then
-    debounce = 30
+    debounce = 80
   end
 
   ---@type brook.ExecOpts
@@ -54,7 +54,7 @@ function M.setup(plugin_opts)
     rg.raw(cmd_opts.args, exec_opts)
   end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
-  --- Stop command
+  -- Stop command
   ------------------------------------------------------------------------------
   vim.api.nvim_create_user_command('RgStop', rg.stop, { desc = 'Stop current ripgrep search' })
 

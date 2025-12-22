@@ -4,20 +4,13 @@
 ---@class brook.BrookOpts
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
 ---@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
----@field debounce? integer Maximum wait in ms before flushing results (default: 30)
----@field buffer_size? integer Maximum number of results to buffer before flushing (default: 30)
+---@field debounce? integer Maximum wait in ms before flushing results (default: 80)
+---@field buffer_size? integer Maximum number of results to buffer before flushing (default: 100)
 
 ---@class brook.ExecOpts
 ---@field max_results integer Maximum results before stopping (default: 1000, nil for unlimited)
----@field debounce integer Maximum wait in ms before flushing results (default: 30)
----@field buffer_size integer Maximum number of results to buffer before flushing (default: 30)
-
---- A quickfix list entry, as expected by `vim.fn.setqflist()`.
----@class brook.QfEntry
----@field filename string Path to the file containing the match
----@field lnum integer Line number (1-indexed)
----@field col integer Column number (1-indexed)
----@field text string The matched line content
+---@field debounce integer Maximum wait in ms before flushing results (default: 80)
+---@field buffer_size integer Maximum number of results to buffer before flushing (default: 100)
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.SearchOpts
