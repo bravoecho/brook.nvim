@@ -17,7 +17,7 @@ local states = {
 
 local SINGLE_QUOTE = "'"
 local DOUBLE_QUOTE = '"'
-local BACKSLASH = '\\'
+local ESCAPE = '\\'
 
 --- Unquotes a shell token, interpreting POSIX shell quoting rules.
 ---
@@ -63,7 +63,7 @@ function M.shell_unquote(token)
       -------------------------------------------------
       if ch == DOUBLE_QUOTE then
         state = states.NORMAL -- close double quote
-      elseif ch == BACKSLASH and DOUBLE_QUOTE_ESCAPES[next_char] then
+      elseif ch == ESCAPE and DOUBLE_QUOTE_ESCAPES[next_char] then
         -- POSIX escape: collect the next char and skip the backslash.
         table.insert(result, next_char)
         i = i + 1
@@ -80,10 +80,10 @@ function M.shell_unquote(token)
         state = states.SINGLE
       elseif ch == DOUBLE_QUOTE then
         state = states.DOUBLE
-      elseif ch == BACKSLASH and i == len then
+      elseif ch == ESCAPE and i == len then
         -- Trailing backslash is malformed.
         return nil
-      elseif ch == BACKSLASH then
+      elseif ch == ESCAPE then
         -- Backslash escape outside quotes: next character is literal. Collect
         -- the next char and skip the backslash.
         table.insert(result, next_char)

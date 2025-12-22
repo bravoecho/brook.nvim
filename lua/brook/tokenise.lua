@@ -2,7 +2,7 @@ local M = {}
 
 local SINGLE_QUOTE = "'"
 local DOUBLE_QUOTE = '"'
-local BACKSLASH = '\\'
+local ESCAPE = '\\'
 
 --- Tokenises a command-line string into individual arguments.
 ---
@@ -49,7 +49,7 @@ function M.tokenise(qargs)
       -- update state for the next iteration
       if escaped then
         escaped = false
-      elseif ch == BACKSLASH and not in_single then
+      elseif ch == ESCAPE and not in_single then
         escaped = true
       elseif ch == SINGLE_QUOTE and not in_double then
         in_single = not in_single
