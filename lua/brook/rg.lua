@@ -38,17 +38,18 @@ end
 ---@param text string The literal text to search for
 ---@param exec_opts? brook.ExecOpts Plugin options
 function M.selection(text, exec_opts)
-  ---@type brook.SearchOpts
-  local search_opts = { word = false, fixed = true, case = 'unset' }
-
   M._exec({
     args = { '--', text },
-    search_opts = search_opts,
+    parsed_args = {
+      pattern = text,
+      word = false,
+      fixed = true,
+      case = nil,
+      unique_lines = false,
+      multiline = false,
+    },
     exec_opts = exec_opts or {},
     title = 'rg -F ' .. text,
-    on_first_result = function()
-      M._set_search_register(text, search_opts)
-    end,
   })
 end
 
@@ -63,16 +64,18 @@ end
 ---@param word string The word to search for (typically from <cword>)
 ---@param exec_opts? brook.ExecOpts Plugin options
 function M.word(word, exec_opts)
-  local search_opts = { word = true, fixed = true, case = 'unset' }
-
   M._exec({
     args = { '--', word },
-    search_opts = search_opts,
+    parsed_args = {
+      pattern = word,
+      word = true,
+      fixed = true,
+      case = nil,
+      unique_lines = false,
+      multiline = false,
+    },
     exec_opts = exec_opts or {},
     title = 'rg -w ' .. word,
-    on_first_result = function()
-      M._set_search_register(word, search_opts)
-    end,
   })
 end
 
@@ -116,6 +119,7 @@ function M.raw(cmd_args, exec_opts)
   ------------------
   -- Unquote each token (interprets shell quoting rules)
   local rg_args = shell_unquote_all(tokens)
+  -- FIXME: revise this
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then
@@ -123,57 +127,25 @@ function M.raw(cmd_args, exec_opts)
     return
   end
 
-  -- Step 3: Enforce single-line search
+  -- Step 3: Parse ripgrep arguments
+  ----------------------------------
+  -- Minimal parsing, just enough to support Neovim features
+  local parsed_args = parse_args(rg_args)
+
+  -- Step 4: Enforce single-line search
   -------------------------------------
-  for _, rg_arg in ipairs(rg_args) do
-    if rg_arg == '-U' or rg_arg == '--multiline' or rg_arg == '--multiline-dotall' then
-      vim.notify('rg: multiline search not supported', vim.log.levels.ERROR)
-      return
-    end
+  if parsed_args.multiline then
+    vim.notify('rg: multiline search not supported', vim.log.levels.ERROR)
+    return
   end
 
-  -- Step 4: Parse ripgrep arguments and set search register (lazy)
-  -----------------------------------------------------------------
-  -- Remaining operations can be performed lazily, only when and if results
-  -- are received. This way...
-  --   - we can be confident that the arguments were formally correct, because
-  --     the command succeeded and has matches: this simplifies parsing, no need
-  --     for extra validation
-  --   - we don't risk to reset the search register inappropriately
-  --   - we avoid unnecessary work
-  local on_first_result = function()
-    -- Minimal parsing, just enough to support Neovim features
-    local parsed_args = parse_args(rg_args)
-    if not parsed_args then
-      vim.notify('rg: malformed command: could not parse', vim.log.levels.ERROR)
-      return
-    end
-    -- NOTE: Currently only the first pattern is used (even when the original
-    -- command specified multiple with -e/--regexp). Support to combine multiple
-    -- patterns in an alternation for more accurate highlighting may be added in
-    -- the future.
-    local rg_pattern = nil
-    if parsed_args.patterns and #(parsed_args.patterns) > 0 then
-      rg_pattern = parsed_args.patterns[1]
-    end
-    if not rg_pattern then
-      return
-    end
-    M._set_search_register(rg_pattern, {
-      word = parsed_args.word,
-      fixed = parsed_args.fixed,
-      case = parsed_args.case,
-    })
-  end
-
-  -- no need to specify programmatic search options, if any are present, they
-  -- will come from the args provided by the user
+  -- Step 5: Run the search
+  -------------------------
   M._exec({
     args = rg_args,
-    search_opts = {},
+    parsed_args = parsed_args,
     exec_opts = exec_opts,
     title = 'rg ' .. cmd_args,
-    on_first_result = on_first_result,
   })
 end
 
@@ -181,10 +153,9 @@ end
 ---
 ---@class brook.SearchContext
 ---@field args string[] Shell-unquoted command tokens to be passed to `rg`
----@field search_opts brook.SearchOpts Search options (only used for programmatic searches)
----@field exec_opts brook.ExecOpts Plugin options
----@field title string Quickfix window title
----@field on_first_result? function Callback when first result arrives
+---@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
+---@field exec_opts brook.ExecOpts Control how search is performed and results displayed
+---@field title string Used to provide feedback to the user
 
 --- Runs ripgrep with the given argument array.
 ---
@@ -204,10 +175,9 @@ function M._exec(ctx)
   end
 
   local args = ctx.args
-  local search_opts = ctx.search_opts
+  local parsed_args = ctx.parsed_args
   local exec_opts = ctx.exec_opts
   local title = ctx.title
-  local on_first_result = ctx.on_first_result or function() end
 
   local max_results = exec_opts.max_results
   local qf_win_height = exec_opts.qf_win_height
@@ -222,15 +192,15 @@ function M._exec(ctx)
   -- long lines. Matching will still include the whole, only the preview is
   -- truncated.
   local cmd = { 'rg', '--vimgrep', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
-  if search_opts.word then
+  if parsed_args.word then
     table.insert(cmd, '--word-regexp')
   end
-  if search_opts.fixed then
+  if parsed_args.fixed then
     table.insert(cmd, '--fixed-strings')
   end
-  if search_opts.case == types.search_case.sensitive then
+  if parsed_args.case == types.search_case.sensitive then
     table.insert(cmd, '--case-sensitive')
-  elseif search_opts.case == types.search_case.insensitive then
+  elseif parsed_args.case == types.search_case.insensitive then
     table.insert(cmd, '--ignore-case')
   end
   for _, arg in ipairs(args) do
@@ -263,22 +233,22 @@ function M._exec(ctx)
       return
     end
 
-    -- 1. Clear
-    ----------------------------
+    -- i. Clear
+    -----------
     if is_first_result then
       -- Clear the quickfix list.
       vim.fn.setqflist({}, 'r', { title = 'rg: results', items = {} })
     end
 
-    -- 2. Populate
-    --------------
+    -- ii. Populate
+    ---------------
     local current_buffer_size = #entry_buffer
     vim.fn.setqflist(entry_buffer, 'a')
     local previous_total = total_results - current_buffer_size
     entry_buffer = {}
 
-    -- 3. Open (on new searches)
-    ----------------------------
+    -- iii. Open (on new searches)
+    ------------------------------
     if is_first_result then
       if qf_open then
         if qf_auto_resize then
@@ -290,12 +260,16 @@ function M._exec(ctx)
           vim.cmd('copen ' .. qf_win_height)
         end
       end
-      on_first_result()
+      M._set_search_register(parsed_args.pattern, {
+        word = parsed_args.word,
+        fixed = parsed_args.fixed,
+        case = parsed_args.case,
+      })
       is_first_result = false
     end
 
-    -- 4. Resize
-    ------------
+    -- iv. Resize
+    -------------
     -- Respect user config if auto-resizing was disabled.
     if not qf_auto_resize then
       return
@@ -399,7 +373,6 @@ function M._exec(ctx)
   -- NOTE: stderr is buffered (see jobstart options below), so this callback
   -- receives all stderr output in a single call when the job exits.
   local stderr_lines = {}
-
   local on_stderr = function(_, data, _)
     if not data or #data == 0 then
       return
@@ -410,8 +383,8 @@ function M._exec(ctx)
     stderr_lines = data
   end
 
-  -- 4. Command completion handling
-  ---------------------------------
+  -- 4. Command exit handling
+  ---------------------------
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
     -- Ensure any remaining buffered results are displayed.
     flush()
@@ -455,8 +428,8 @@ function M._exec(ctx)
     vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
   end)
 
-  -- 5. Start the job
-  -------------------
+  -- 5. Run command
+  -----------------
   current_job_id = vim.fn.jobstart(cmd, {
     -- NOTE: Immediately close rg's stdin, or it will hang forever while we
     -- never send any data via stdin. This is specific to rg. Other tools like
@@ -513,17 +486,13 @@ end
 --- Translates the ripgrep pattern to Vim regex syntax and enables hlsearch.
 ---
 ---@param rg_pattern string|nil The ripgrep search pattern
----@param search_opts brook.SearchOpts Options affecting pattern translation
-function M._set_search_register(rg_pattern, search_opts)
+---@param pattern_opts brook.PatternOpts Options affecting pattern translation
+function M._set_search_register(rg_pattern, pattern_opts)
   if not rg_pattern then
     return
   end
 
-  local vim_pattern = pattern.rg_to_vim(rg_pattern, {
-    word = search_opts.word,
-    fixed = search_opts.fixed,
-    case = search_opts.case,
-  })
+  local vim_pattern = pattern.rg_to_vim(rg_pattern, pattern_opts)
 
   if vim_pattern == '' then
     return

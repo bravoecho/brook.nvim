@@ -252,8 +252,8 @@ exploration across many files**.
   entries, or after `debounce` milliseconds of inactivity, whichever comes
   first.
 
-* **Lazy execution**: Argument parsing, pattern translation and search register
-  handling are performed only when-and-if at least one result is found.
+* **Lazy execution**: Pattern translation and search register handling are
+  performed only when-and-if at least one result is found.
 
 ```
                                 Neovim Command
@@ -268,28 +268,30 @@ exploration across many files**.
                                       |
                                       | unquoted user tokens
                                       |
+                                Expand Tokens
+                                      |
+                                      | raw patterns, flags and options
+                                      |
+                                      v
+                               Parse and Extract
+                                      |
+                                      | ripgrep pattern + options
+                                      |
                    +------------------+------------------+
                    |                                     |
                    |                                     v
                    |                          Spawn ripgrep (no shell) ------+
                    |                                     |                   |
                    v                                     v                   v
-             Expand Tokens <----------------------- First results       More results...
-                   |          ✓ pattern is valid         |                   |
-    raw patterns,  |                                     |     buffer...     |
- flags and options |                                     |                   |
-                   v                                     v                   |
-            Parse and Extract                    Buffered Flush <------------+
-                   |                                     |
-   ripgrep pattern |                                     v
-     + options     |                              Quickfix List
-                   v
-               Translate
-                   |
-   vimgrep pattern |
-    (very magic)   |
-                   v
-           Set Search Register
+               Translate <------------------------- First results       More results...
+                    |         ✓ pattern is valid         |                   |
+    vimgrep pattern |                                    |     buffer...     |
+     (very magic)   |                                    |                   |
+                    v                                    v                   |
+            Set Search Register                  Buffered Flush <------------+
+                                                         |
+                                                         v
+                                                  Quickfix List
 ```
 
 ## License

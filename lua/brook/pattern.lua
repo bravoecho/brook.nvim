@@ -34,7 +34,7 @@ local M = {}
 ---   - possessive quantifiers: `*+` `++` `?+`
 ---
 ---@param pattern string The ripgrep search pattern
----@param opts? brook.SearchOpts Options affecting pattern translation
+---@param opts? brook.PatternOpts Options affecting pattern translation
 ---@return string|nil vim_pattern The translated Vim regex pattern, nil when pattern is unsupported.
 function M.rg_to_vim(pattern, opts)
   opts = opts or {}

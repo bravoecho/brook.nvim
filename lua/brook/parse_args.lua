@@ -16,37 +16,45 @@ local POSITIONAL_SEPARATOR = '--'
 --- first positional argument. This function handles both cases, as well as
 --- stacked short arguments and quoted tokens.
 ---
+--- NOTE: Currently only the first pattern is used (even when the original
+--- command specified multiple with -e/--regexp). Support to combine multiple
+--- patterns in an alternation for more accurate highlighting may be added in
+--- the future.
+---
 --- NOTE: The tokens must be already shell-unquoted (call shell_unquote_all to
 --- pre-process them).
 ---
----@param unquoted_tokens string[]|nil A list of shell-unquoted command-line tokens
----@return brook.ParsedArgs|nil result Parsed arguments, or nil if malformed
-function M.parse_args(unquoted_tokens)
-  if unquoted_tokens == nil or #unquoted_tokens == 0 then
-    return nil
+---@param tokens string[]|nil A list of shell-unquoted command-line tokens
+---@return brook.ParsedArgs result Parsed arguments, or nil if malformed
+function M.parse_args(tokens)
+  ---@type brook.ParsedArgs
+  local result = {
+    pattern = nil,
+    fixed = false,
+    word = false,
+    case = nil,
+    unique_lines = false,
+    multiline = false,
+  }
+
+  if tokens == nil or #tokens == 0 then
+    return result
   end
 
   -- Step 1 (pre-processing): expand tokens
   -----------------------------------------
   -- Split into separate tokens all the tokens that contain multiple flags, an
   -- option and optionally a value.
-  unquoted_tokens = M._expand_all(unquoted_tokens)
+  tokens = M._expand_all(tokens)
 
   -- Step 2 (short-circuit): use the search pattern option
   --------------------------------------------------------
-  -- search for patterns specified with the -e or --regexp options
+  -- extract patterns specified with the -e or --regexp options
   local i = 1
+  local patterns = {}
 
-  ---@type brook.ParsedArgs
-  local result = {
-    patterns = {},
-    fixed = false,
-    word = false,
-    case = types.search_case.unset,
-  }
-
-  while i <= #unquoted_tokens do
-    local token = unquoted_tokens[i]
+  while i <= #tokens do
+    local token = tokens[i]
     if token == POSITIONAL_SEPARATOR then
       -- we must NOT try to interpret tokens as named arguments after the
       -- positional separator
@@ -54,14 +62,14 @@ function M.parse_args(unquoted_tokens)
     end
     if token == '-e' or token == '--regexp' then
       -- the pattern is the following token
-      local pattern = unquoted_tokens[i + 1]
+      local pattern = tokens[i + 1]
       if not pattern then
-        -- if a pattern option if not followed by a pattern, then the command is
-        -- malformed
-        return nil
+        -- probably malformed
+        i = i + 1
+      else
+        table.insert(patterns, pattern)
+        i = i + 2
       end
-      table.insert(result.patterns, pattern)
-      i = i + 2
     elseif token == '-F' or token == '--fixed-strings' then
       result.fixed = true
       i = i + 1
@@ -75,14 +83,27 @@ function M.parse_args(unquoted_tokens)
       result.case = types.search_case.insensitive
       i = i + 1
     elseif token == '-S' or token == '--smart-case' then
-      result.case = types.search_case.unset
+      result.case = nil
+      i = i + 1
+    elseif token == '-n' or token == '--line-number' then
+      result.unique_lines = true
+      i = i + 1
+    elseif token == '--vimgrep' then
+      result.unique_lines = false
+      i = i + 1
+    elseif token == '-U' or token == '--multiline' or token == '--multiline-dotall' then
+      result.multiline = true
+      i = i + 1
+    elseif token == '--no-multiline' then
+      result.multiline = false
       i = i + 1
     else
       i = i + 1
     end
   end
 
-  if #(result.patterns) > 0 then
+  if #(patterns) > 0 then
+    result.pattern = patterns[1]
     return result
   end
 
@@ -92,36 +113,31 @@ function M.parse_args(unquoted_tokens)
   -- positional argument: start the search from the beginning
   i = 1
 
-  while i <= #unquoted_tokens do
-    local token = unquoted_tokens[i]
+  while i <= #tokens do
+    local token = tokens[i]
     if rg_flags[token] then
-      -- if it's a token, discard it
+      -- if it's a flag, discard it
       i = i + 1
     elseif rg_options[token] then
-      -- if it's an option, discard it with its value
+      -- if it's an option, discard it along with its value
       i = i + 2
-    elseif token == POSITIONAL_SEPARATOR then
-      local pattern = unquoted_tokens[i + 1]
-      if not pattern then
-        return nil
-      else
-        result.patterns = { pattern }
-        return result
-      end
     elseif M._is_unknown_named_arg(token) then
-      -- if the flag is unknown, it's either
-      -- - a typo, in which case the command is malformed
-      -- - ...or a new flag we don't know about in a recent version of ripgrep,
-      --   the command would succeed, but we can't tell for sure if it's a flag
-      --   or an option, so it's better to highlight nothing than getting it
-      --   wrong and confuse the user
-      return nil
+      -- ignore it
+      i = i + 1
+    elseif token == POSITIONAL_SEPARATOR then
+      local pattern = tokens[i + 1]
+      if pattern then
+        result.pattern = pattern
+      end
+      return result
     else
       -- return the first positional argument
-      result.patterns = { token }
+      result.pattern = token
       return result
     end
   end
+
+  return result
 end
 
 --- Checks if the given token looks like a flag or option, but is neither

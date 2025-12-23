@@ -19,25 +19,26 @@
 ---@field qf_win_height integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 
 --- Options controlling ripgrep search behaviour and pattern translation.
----@class brook.SearchOpts
+---@class brook.PatternOpts
 ---@field word? boolean Whether to match whole words only (--word-regexp)
 ---@field fixed? boolean Whether to treat the pattern as a literal string (--fixed-strings)
----@field case? search_case Whether to treat the pattern as case sensitive, case insensitive, or unspecified
+---@field case? brook.SearchCase Whether to treat the pattern as case sensitive, case insensitive, or unspecified
 
 local M = {}
 
----@enum search_case
+---@enum brook.SearchCase
 M.search_case = {
   sensitive = 'case-sensitive',
   insensitive = 'case-insensitive',
-  unset = 'unset',
 }
 
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.ParsedArgs
----@field patterns string[] One or more search patterns
+---@field pattern string|nil The ripgrep search pattern
 ---@field fixed boolean Whether --fixed-strings / -F was specified
 ---@field word boolean Whether --word-regexp / -w was specified
----@field case search_case Whether -s, --case-sensitive, -i or --ignore-case were specified
+---@field case brook.SearchCase|nil Whether -s, --case-sensitive, -i or --ignore-case were specified
+---@field unique_lines boolean Return each line only once: true => use --line-number, false => use --vimgrep
+---@field multiline boolean Whether the pattern should match over multiple lines
 
 return M
