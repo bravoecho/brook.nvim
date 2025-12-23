@@ -218,7 +218,10 @@ function M._exec(ctx)
 
   -- 1. Build command array
   -------------------------
-  local cmd = { 'rg', '--vimgrep', '--no-multiline' }
+  -- NOTE: Limit previews to 300 bytes, to avoid memory explosion on abnormally
+  -- long lines. Matching will still include the whole, only the preview is
+  -- truncated.
+  local cmd = { 'rg', '--vimgrep', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
   if search_opts.word then
     table.insert(cmd, '--word-regexp')
   end

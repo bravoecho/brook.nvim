@@ -224,6 +224,12 @@ exploration across many files**.
 * **Resource Management**: To keep the UI responsive, Brook stops after
   a configurable `max_results` (default 1000).
 
+* **Long Line Protection**: Minified JavaScript, large JSON blobs, and other
+  abnormally long lines can cause memory issues: a single line with many
+  matches could generate gigabytes of output. Brook uses `--max-columns 300`
+  with `--max-columns-preview` to truncate the *preview* shown in the quickfix
+  list while still matching the full line content.
+
 * **Pattern Extraction**: Brook parses the `rg` CLI to distinguish flags from
   search patterns.
 
