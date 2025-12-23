@@ -483,13 +483,22 @@ end
 ---
 --- Example input: "some/path/to/file.txt:137:42:the red fox jumped"
 ---
+--- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+--- Instead, we locate the :line:col: pattern and extract components by position.
+---
 ---@param vimgrep_result string A line in vimgrep format (filename:lnum:col:text)
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
 function M._parse_result(vimgrep_result)
-  local filename, lnum, col, text = vimgrep_result:match('([^:]+):(%d+):(%d+):(.*)')
-  if not filename then
+  -- Find the :line:col: pattern (colon, digits, colon, digits, colon)
+  local start_pos, end_pos, lnum, col = vimgrep_result:find(':(%d+):(%d+):')
+  if not start_pos then
     return nil
   end
+
+  -- Everything before the first colon of :line:col: is the filename
+  local filename = vimgrep_result:sub(1, start_pos - 1)
+  -- Everything after the final colon of :line:col: is the text
+  local text = vimgrep_result:sub(end_pos + 1)
 
   return {
     filename = filename,
