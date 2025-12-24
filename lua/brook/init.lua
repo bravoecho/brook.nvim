@@ -14,6 +14,7 @@ function M.setup(cfg)
     qf_open = true,
     qf_auto_resize = true,
     qf_win_height = 10,
+    unique_lines = false,
   }
 
   cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
@@ -26,6 +27,7 @@ function M.setup(cfg)
     qf_open = cfg.qf_open,
     qf_auto_resize = cfg.qf_auto_resize,
     qf_win_height = cfg.qf_win_height,
+    unique_lines = cfg.unique_lines,
   }
 
   ------------------------------------------------------------------------------

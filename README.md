@@ -46,6 +46,7 @@ power users:
 ## Installation & Setup
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
+
 ```lua
 {
   'bravoecho/brook.nvim',
@@ -68,6 +69,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     qf_open = true,         -- Auto-open the quickfix window when results are found
     qf_auto_resize = true,  -- Resize the quickfix window when more results arrive
     qf_win_height = 10,     -- Fixed or max height (depending on auto-resizing on/off)
+
+    -- Result grouping
+    unique_lines = false,   -- When true, show each line only once (cursor lands at column 1)
   },
 }
 ```
@@ -151,6 +155,14 @@ extension of Vim:
 * **Stopping Long Searches**: If a search is taking too long or returning too
   many results, use `:RgStop` to terminate it immediately. The results collected
   so far remain in the quickfix list.
+
+* **One Result Per Line**: By default, Brook shows one quickfix entry per match,
+  meaning a line with multiple matches appears multiple times. If you prefer
+  each line to appear only once (useful for `:cfdo` workflows where you visit
+  each line anyway), enable `unique_lines = true` in your config. The trade-off
+  is that the cursor will land at column 1 rather than at the exact match
+  position. You can also specify this on an individual search by passing the
+  ripgrep flag `-n`/`--line-number`.
 
 ### Limitations
 

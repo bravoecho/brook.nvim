@@ -48,7 +48,7 @@ function M.selection(text, exec_opts)
       unique_lines = false,
       multiline = false,
     },
-    exec_opts = exec_opts or {},
+    opts = exec_opts or {},
     title = 'rg -F ' .. text,
   })
 end
@@ -74,7 +74,7 @@ function M.word(word, exec_opts)
       unique_lines = false,
       multiline = false,
     },
-    exec_opts = exec_opts or {},
+    opts = exec_opts or {},
     title = 'rg -w ' .. word,
   })
 end
@@ -144,7 +144,7 @@ function M.raw(cmd_args, exec_opts)
   M._exec({
     args = rg_args,
     parsed_args = parsed_args,
-    exec_opts = exec_opts,
+    opts = exec_opts,
     title = 'rg ' .. cmd_args,
   })
 end
@@ -154,7 +154,7 @@ end
 ---@class brook.SearchContext
 ---@field args string[] Shell-unquoted command tokens to be passed to `rg`
 ---@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
----@field exec_opts brook.ExecOpts Control how search is performed and results displayed
+---@field opts brook.ExecOpts Control how search is performed and results displayed
 ---@field title string Used to provide feedback to the user
 
 --- Runs ripgrep with the given argument array.
@@ -176,13 +176,17 @@ function M._exec(ctx)
 
   local args = ctx.args
   local parsed_args = ctx.parsed_args
-  local exec_opts = ctx.exec_opts
+  local opts = ctx.opts
   local title = ctx.title
 
-  local max_results = exec_opts.max_results
-  local qf_win_height = exec_opts.qf_win_height
-  local qf_open = exec_opts.qf_open
-  local qf_auto_resize = exec_opts.qf_auto_resize
+  local max_results = opts.max_results
+  local qf_win_height = opts.qf_win_height
+  local qf_open = opts.qf_open
+  local qf_auto_resize = opts.qf_auto_resize
+
+  -- Allow command line arguments to override global config.
+  local unique_lines = opts.unique_lines
+  unique_lines = parsed_args.unique_lines
 
   vim.notify(title, vim.log.levels.INFO)
 
@@ -191,7 +195,15 @@ function M._exec(ctx)
   -- NOTE: Limit previews to 300 bytes, to avoid memory explosion on abnormally
   -- long lines. Matching will still include the whole, only the preview is
   -- truncated.
-  local cmd = { 'rg', '--vimgrep', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
+  local cmd = { 'rg', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
+  -- When unique_lines is enabled, use --line-number instead of --vimgrep.
+  -- This omits the column number, causing ripgrep to emit each line only once
+  -- regardless of how many matches it contains.
+  if unique_lines then
+    table.insert(cmd, '--line-number')
+  else
+    table.insert(cmd, '--vimgrep')
+  end
   if parsed_args.word then
     table.insert(cmd, '--word-regexp')
   end
@@ -214,8 +226,11 @@ function M._exec(ctx)
   local stopped_at_limit = false
   local did_resize = false
 
-  local buffer_size = exec_opts.buffer_size
-  local flush_debounce = exec_opts.debounce
+  -- Select the appropriate parser based on output format
+  local parse_result = unique_lines and M._parse_line_number or M._parse_vimgrep
+
+  local buffer_size = opts.buffer_size
+  local flush_debounce = opts.debounce
 
   ---@type vim.quickfix.entry
   local entry_buffer = {}
@@ -346,7 +361,7 @@ function M._exec(ctx)
         break
       end
 
-      local entry = M._parse_result(line)
+      local entry = parse_result(line)
       if entry then
         table.insert(entry_buffer, entry)
         total_results = total_results + 1
@@ -454,29 +469,54 @@ end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
 ---
---- Example input: "some/path/to/file.txt:137:42:the red fox jumped"
+--- Format: "file:line:col:text" (default, --vimgrep)
+--- Example: "some/path/to/file.txt:137:42:the red fox jumped"
 ---
 --- Note: Unix filenames can contain colons, so we can't simply split on ':'.
 --- Instead, we locate the :line:col: pattern and extract components by position.
 ---
----@param vimgrep_result string A line in vimgrep format (filename:lnum:col:text)
+---@param result string A line in vimgrep format
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_result(vimgrep_result)
-  -- Find the :line:col: pattern (colon, digits, colon, digits, colon)
-  local start_pos, end_pos, lnum, col = vimgrep_result:find(':(%d+):(%d+):')
+function M._parse_vimgrep(result)
+  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
   if not start_pos then
     return nil
   end
 
-  -- Everything before the first colon of :line:col: is the filename
-  local filename = vimgrep_result:sub(1, start_pos - 1)
-  -- Everything after the final colon of :line:col: is the text
-  local text = vimgrep_result:sub(end_pos + 1)
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
 
   return {
     filename = filename,
     lnum = tonumber(lnum),
     col = tonumber(col),
+    text = text,
+  }
+end
+
+--- Parses a line-number-format result line into a quickfix entry.
+---
+--- Format: "file:line:text" (unique_lines mode, --line-number)
+--- Example: "some/path/to/file.txt:137:the red fox jumped"
+---
+--- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+--- Instead, we locate the :line: pattern and extract components by position.
+---
+---@param result string A line in line-number format
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
+function M._parse_line_number(result)
+  local start_pos, end_pos, lnum = result:find(':(%d+):')
+  if not start_pos then
+    return nil
+  end
+
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
+
+  return {
+    filename = filename,
+    lnum = tonumber(lnum),
+    col = 1, -- Default to column 1 when no column info available
     text = text,
   }
 end
