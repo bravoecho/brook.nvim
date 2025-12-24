@@ -45,7 +45,7 @@ function M.selection(text, exec_opts)
       word = false,
       fixed = true,
       case = nil,
-      unique_lines = false,
+      output_format = nil,
       multiline = false,
     },
     opts = exec_opts or {},
@@ -71,7 +71,7 @@ function M.word(word, exec_opts)
       word = true,
       fixed = true,
       case = nil,
-      unique_lines = false,
+      output_format = nil,
       multiline = false,
     },
     opts = exec_opts or {},
@@ -184,9 +184,11 @@ function M._exec(ctx)
   local qf_open = opts.qf_open
   local qf_auto_resize = opts.qf_auto_resize
 
-  -- Allow command line arguments to override global config.
-  local unique_lines = opts.unique_lines
-  unique_lines = parsed_args.unique_lines
+  -- Determine output format: command-line flags override config.
+  -- Precedence: parsed_args (command line) > opts (config) > default
+  local output_format = parsed_args.output_format
+      or opts.output_format
+      or types.output_format.one_line_per_match
 
   vim.notify(title, vim.log.levels.INFO)
 
@@ -196,13 +198,18 @@ function M._exec(ctx)
   -- long lines. Matching will still include the whole, only the preview is
   -- truncated.
   local cmd = { 'rg', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
-  -- When unique_lines is enabled, use --line-number instead of --vimgrep.
+  -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
   -- This omits the column number, causing ripgrep to emit each line only once
   -- regardless of how many matches it contains.
-  if unique_lines then
-    table.insert(cmd, '--line-number')
-  else
-    table.insert(cmd, '--vimgrep')
+  --
+  -- Only add the flag if the user hasn't already specified one on the command
+  -- line (parsed_args.output_format would be non-nil in that case).
+  if parsed_args.output_format == nil then
+    if output_format == types.output_format.unique_lines then
+      table.insert(cmd, '--line-number')
+    else
+      table.insert(cmd, '--vimgrep')
+    end
   end
   if parsed_args.word then
     table.insert(cmd, '--word-regexp')
@@ -227,7 +234,9 @@ function M._exec(ctx)
   local did_resize = false
 
   -- Select the appropriate parser based on output format
-  local parse_result = unique_lines and M._parse_line_number or M._parse_vimgrep
+  local parse_result = output_format == types.output_format.unique_lines
+      and M._parse_line_number
+      or M._parse_vimgrep
 
   local buffer_size = opts.buffer_size
   local flush_debounce = opts.debounce
@@ -496,7 +505,7 @@ end
 
 --- Parses a line-number-format result line into a quickfix entry.
 ---
---- Format: "file:line:text" (unique_lines mode, --line-number)
+--- Format: "file:line:text" (unique-lines mode, --line-number)
 --- Example: "some/path/to/file.txt:137:the red fox jumped"
 ---
 --- Note: Unix filenames can contain colons, so we can't simply split on ':'.

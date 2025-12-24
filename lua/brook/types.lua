@@ -9,7 +9,7 @@
 ---@field qf_open? boolean Whether the quickfix list should be opened when results arrive (default: true)
 ---@field qf_auto_resize? boolean Whether the quickfix window should grow as results come in (default: true)
 ---@field qf_win_height? integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
----@field unique_lines? boolean When true, show each line only once (cursor lands at column 1)
+---@field output_format? brook.OutputFormat Output format: 'one-line-per-match' (default) or 'unique-lines'
 
 ---@class brook.ExecOpts
 ---@field max_results integer Maximum results before stopping (default: 1000, nil for unlimited)
@@ -18,7 +18,7 @@
 ---@field qf_open boolean Whether the quickfix list should be opened when results arrive (default: true)
 ---@field qf_auto_resize boolean Whether the quickfix window should grow as results come in (default: true)
 ---@field qf_win_height integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
----@field unique_lines boolean When true, show each line only once (cursor lands at column 1)
+---@field output_format brook.OutputFormat Output format: 'one-line-per-match' or 'unique-lines'
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.PatternOpts
@@ -34,13 +34,19 @@ M.search_case = {
   insensitive = 'case-insensitive',
 }
 
+---@enum brook.OutputFormat
+M.output_format = {
+  one_line_per_match = 'one-line-per-match',
+  unique_lines = 'unique-lines',
+}
+
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.ParsedArgs
 ---@field pattern string|nil The ripgrep search pattern
 ---@field fixed boolean Whether --fixed-strings / -F was specified
 ---@field word boolean Whether --word-regexp / -w was specified
 ---@field case brook.SearchCase|nil Whether -s, --case-sensitive, -i or --ignore-case were specified
----@field unique_lines boolean Return each line only once: true => use --line-number, false => use --vimgrep
+---@field output_format brook.OutputFormat|nil Output format override from command line, or nil to use config default
 ---@field multiline boolean Whether the pattern should match over multiple lines
 
 return M

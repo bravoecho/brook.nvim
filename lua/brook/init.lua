@@ -2,6 +2,13 @@ local M = {}
 
 local rg = require('brook.rg')
 local util = require('brook.util')
+local types = require('brook.types')
+
+--- Valid values for output_format config option.
+local valid_output_formats = {
+  [types.output_format.one_line_per_match] = true,
+  [types.output_format.unique_lines] = true,
+}
 
 --- @param cfg? brook.Config User-provided configuration
 function M.setup(cfg)
@@ -14,10 +21,24 @@ function M.setup(cfg)
     qf_open = true,
     qf_auto_resize = true,
     qf_win_height = 10,
-    unique_lines = false,
+    output_format = types.output_format.one_line_per_match,
   }
 
   cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
+
+  -- Validate output_format
+  if cfg.output_format ~= nil and not valid_output_formats[cfg.output_format] then
+    vim.notify(
+      string.format(
+        "brook: invalid output_format '%s', expected '%s' or '%s'",
+        tostring(cfg.output_format),
+        types.output_format.one_line_per_match,
+        types.output_format.unique_lines
+      ),
+      vim.log.levels.ERROR
+    )
+    return
+  end
 
   ---@type brook.ExecOpts
   local exec_opts = {
@@ -27,7 +48,7 @@ function M.setup(cfg)
     qf_open = cfg.qf_open,
     qf_auto_resize = cfg.qf_auto_resize,
     qf_win_height = cfg.qf_win_height,
-    unique_lines = cfg.unique_lines,
+    output_format = cfg.output_format,
   }
 
   ------------------------------------------------------------------------------

@@ -16,7 +16,7 @@ local function result(pattern, overrides)
     word = false,
     fixed = false,
     case = nil,
-    unique_lines = false,
+    output_format = nil,
     multiline = false,
   }
   if overrides then
@@ -163,7 +163,7 @@ test('full: options, pattern, path', function()
 end)
 
 test('full: multiple named args, pattern with spaces, path', function()
-  deep_eq(parse_args({ '-H', '--vimgrep', 'my pattern', 'src/' }), result('my pattern'))
+  deep_eq(parse_args({ '-H', '--vimgrep', 'my pattern', 'src/' }), result('my pattern', { output_format = 'one-line-per-match' }))
 end)
 
 test('full: complex command with pattern containing special chars', function()
@@ -501,35 +501,35 @@ test('case: -i overrides previous -S', function()
 end)
 
 --------------------------------------------------------------------------------
---- Unique lines (--line-number vs --vimgrep) ----------------------------------
+--- Output format (--line-number vs --vimgrep) ---------------------------------
 --------------------------------------------------------------------------------
 
-test('unique-lines: -n sets unique_lines true', function()
-  deep_eq(parse_args({ '-n', 'pattern' }), result('pattern', { unique_lines = true }))
+test('output-format: -n sets unique-lines', function()
+  deep_eq(parse_args({ '-n', 'pattern' }), result('pattern', { output_format = 'unique-lines' }))
 end)
 
-test('unique-lines: --line-number sets unique_lines true', function()
-  deep_eq(parse_args({ '--line-number', 'pattern' }), result('pattern', { unique_lines = true }))
+test('output-format: --line-number sets unique-lines', function()
+  deep_eq(parse_args({ '--line-number', 'pattern' }), result('pattern', { output_format = 'unique-lines' }))
 end)
 
-test('unique-lines: --vimgrep sets unique_lines false', function()
-  deep_eq(parse_args({ '--vimgrep', 'pattern' }), result('pattern', { unique_lines = false }))
+test('output-format: --vimgrep sets one-line-per-match', function()
+  deep_eq(parse_args({ '--vimgrep', 'pattern' }), result('pattern', { output_format = 'one-line-per-match' }))
 end)
 
-test('unique-lines: --vimgrep overrides -n', function()
-  deep_eq(parse_args({ '-n', '--vimgrep', 'pattern' }), result('pattern', { unique_lines = false }))
+test('output-format: --vimgrep overrides -n', function()
+  deep_eq(parse_args({ '-n', '--vimgrep', 'pattern' }), result('pattern', { output_format = 'one-line-per-match' }))
 end)
 
-test('unique-lines: -n overrides --vimgrep', function()
-  deep_eq(parse_args({ '--vimgrep', '-n', 'pattern' }), result('pattern', { unique_lines = true }))
+test('output-format: -n overrides --vimgrep', function()
+  deep_eq(parse_args({ '--vimgrep', '-n', 'pattern' }), result('pattern', { output_format = 'unique-lines' }))
 end)
 
-test('unique-lines: stacked -n with other flags', function()
-  deep_eq(parse_args({ '-Hn', 'pattern' }), result('pattern', { unique_lines = true }))
+test('output-format: stacked -n with other flags', function()
+  deep_eq(parse_args({ '-Hn', 'pattern' }), result('pattern', { output_format = 'unique-lines' }))
 end)
 
-test('unique-lines: false by default', function()
-  deep_eq(parse_args({ 'pattern' }), result('pattern', { unique_lines = false }))
+test('output-format: nil by default', function()
+  deep_eq(parse_args({ 'pattern' }), result('pattern', { output_format = nil }))
 end)
 
 --------------------------------------------------------------------------------
@@ -660,11 +660,11 @@ test('real-world: pcre2 regex', function()
 end)
 
 test('real-world: vimgrep mode explicit', function()
-  deep_eq(parse_args({ '--vimgrep', '-i', 'pattern' }), result('pattern', { case = 'case-insensitive', unique_lines = false }))
+  deep_eq(parse_args({ '--vimgrep', '-i', 'pattern' }), result('pattern', { case = 'case-insensitive', output_format = 'one-line-per-match' }))
 end)
 
 test('real-world: line-number mode', function()
-  deep_eq(parse_args({ '-n', '-w', 'TODO' }), result('TODO', { word = true, unique_lines = true }))
+  deep_eq(parse_args({ '-n', '-w', 'TODO' }), result('TODO', { word = true, output_format = 'unique-lines' }))
 end)
 
 --------------------------------------------------------------------------------
@@ -675,8 +675,8 @@ test('combined: word + fixed + case-insensitive', function()
   deep_eq(parse_args({ '-wFi', 'pattern' }), result('pattern', { word = true, fixed = true, case = 'case-insensitive' }))
 end)
 
-test('combined: multiline + unique_lines', function()
-  deep_eq(parse_args({ '-Un', 'pattern' }), result('pattern', { multiline = true, unique_lines = true }))
+test('combined: multiline + output_format', function()
+  deep_eq(parse_args({ '-Un', 'pattern' }), result('pattern', { multiline = true, output_format = 'unique-lines' }))
 end)
 
 test('combined: all boolean flags', function()
@@ -685,7 +685,7 @@ test('combined: all boolean flags', function()
     fixed = true,
     case = 'case-sensitive',
     multiline = true,
-    unique_lines = true,
+    output_format = 'unique-lines',
   }))
 end)
 

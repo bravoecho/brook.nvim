@@ -33,7 +33,7 @@ function M.parse_args(tokens)
     fixed = false,
     word = false,
     case = nil,
-    unique_lines = false,
+    output_format = nil,
     multiline = false,
   }
 
@@ -86,10 +86,10 @@ function M.parse_args(tokens)
       result.case = nil
       i = i + 1
     elseif token == '-n' or token == '--line-number' then
-      result.unique_lines = true
+      result.output_format = types.output_format.unique_lines
       i = i + 1
     elseif token == '--vimgrep' then
-      result.unique_lines = false
+      result.output_format = types.output_format.one_line_per_match
       i = i + 1
     elseif token == '-U' or token == '--multiline' or token == '--multiline-dotall' then
       result.multiline = true

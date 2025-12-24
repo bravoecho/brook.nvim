@@ -3,7 +3,7 @@
 > The ripgrep wrapper Neovim deserves: fast, shell-safe, and built for the
 > quickfix workflow
 
-**brook.nvim** is an asynchronous ripgrep wrapper for Neovim that prioritizes
+**brook.nvim** is an asynchronous ripgrep wrapper for Neovim that prioritises
 performance and seamless navigation. It doesn't try to be a fuzzy finder; it's
 a precision tool for code exploration and refactoring, the Vim way.
 
@@ -70,8 +70,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     qf_auto_resize = true,  -- Resize the quickfix window when more results arrive
     qf_win_height = 10,     -- Fixed or max height (depending on auto-resizing on/off)
 
-    -- Result grouping
-    unique_lines = false,   -- When true, show each line only once (cursor lands at column 1)
+    -- Output format: how ripgrep results are displayed in the quickfix list
+    -- 'one-line-per-match' (default): each match appears separately, with column position
+    -- 'unique-lines': each line appears only once (cursor lands at column 1)
+    output_format = 'one-line-per-match',
   },
 }
 ```
@@ -159,10 +161,11 @@ extension of Vim:
 * **One Result Per Line**: By default, Brook shows one quickfix entry per match,
   meaning a line with multiple matches appears multiple times. If you prefer
   each line to appear only once (useful for `:cfdo` workflows where you visit
-  each line anyway), enable `unique_lines = true` in your config. The trade-off
-  is that the cursor will land at column 1 rather than at the exact match
-  position. You can also specify this on an individual search by passing the
-  ripgrep flag `-n`/`--line-number`.
+  each line anyway), set `output_format = 'unique-lines'` in your config. The
+  trade-off is that the cursor will land at column 1 rather than at the exact
+  match position. You can also override this per-search using the ripgrep flags
+  `-n`/`--line-number` (for unique lines) or `--vimgrep` (for one line per
+  match).
 
 ### Limitations
 
@@ -181,7 +184,7 @@ extension of Vim:
 
 ---
 
-## Philosophy & Comparisons
+## Design Principles & Comparisons
 
 Brook is inspired by existing search tools. Apart from being a fun and
 satisfying project, Brook focuses on specific requirements.
@@ -237,10 +240,12 @@ exploration across many files**.
   a configurable `max_results` (default 1000).
 
 * **Long Line Protection**: Minified JavaScript, large JSON blobs, and other
-  abnormally long lines can cause memory issues: a single line with many
-  matches could generate gigabytes of output. Brook uses `--max-columns 300`
-  with `--max-columns-preview` to truncate the *preview* shown in the quickfix
-  list while still matching the full line content.
+  abnormally long lines can cause memory issues: a single line with many matches
+  could generate gigabytes of output. Brook uses `--max-columns 300` with
+  `--max-columns-preview` to truncate the *preview* shown in the quickfix list
+  while still matching the full line content. You can also choose to output each
+  line only once, to mitigate this issue (use the `-n`/`--line-number` flag, or
+  see config).
 
 * **Pattern Extraction**: Brook parses the `rg` CLI to distinguish flags from
   search patterns.
@@ -266,6 +271,8 @@ exploration across many files**.
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.
+
+Below is a representation of the processing pipeline:
 
 ```
                                 Neovim Command
