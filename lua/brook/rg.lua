@@ -251,6 +251,7 @@ function M._exec(ctx)
   local flush = function()
     if flush_timer then
       flush_timer:stop()
+      flush_timer = nil
     end
 
     if #entry_buffer == 0 then
@@ -318,7 +319,7 @@ function M._exec(ctx)
 
   local schedule_flush = function()
     if flush_timer then
-      flush_timer:stop()
+      return
     end
 
     flush_timer = vim.defer_fn(flush, flush_debounce)
