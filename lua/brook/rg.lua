@@ -229,6 +229,7 @@ function M._exec(ctx)
   -- 2. Result stream handling
   ----------------------------
   local is_first_result = true
+  local qflist_operation = 'r' -- first time replace the content, then flip to 'a' (append)
   local total_results = 0
   local stopped_at_limit = false
   local did_resize = false
@@ -258,21 +259,15 @@ function M._exec(ctx)
       return
     end
 
-    -- i. Clear
-    -----------
-    if is_first_result then
-      -- Clear the quickfix list.
-      vim.fn.setqflist({}, 'r', { title = 'rg: results', items = {} })
-    end
-
-    -- ii. Populate
-    ---------------
+    -- i. Populate
+    --------------
+    vim.fn.setqflist({}, qflist_operation, { title = 'rg: results', items = entry_buffer })
+    qflist_operation = 'a'
     local current_buffer_size = #entry_buffer
-    vim.fn.setqflist(entry_buffer, 'a')
     local previous_total = total_results - current_buffer_size
     entry_buffer = {}
 
-    -- iii. Open (on new searches)
+    -- ii. Open (on new searches)
     ------------------------------
     if is_first_result then
       if qf_open then
@@ -293,7 +288,7 @@ function M._exec(ctx)
       is_first_result = false
     end
 
-    -- iv. Resize
+    -- iii. Resize
     -------------
     -- Respect user config if auto-resizing was disabled.
     if not qf_auto_resize then
