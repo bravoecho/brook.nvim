@@ -12,19 +12,19 @@ local valid_output_formats = {
 
 --- @param cfg? brook.Config User-provided configuration
 function M.setup(cfg)
-  ---@type brook.Config
-  local defaults = {
-    keymap = '<leader>g',
-    max_results = 1000,
-    buffer_size = 100,
-    debounce = 80,
-    qf_open = true,
-    qf_auto_resize = true,
-    qf_win_height = 10,
-    output_format = types.output_format.one_line_per_match,
-  }
+  cfg = vim.tbl_deep_extend('force', types.defaults, cfg or {})
 
-  cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
+  -- Validate max_results
+  if type(cfg.max_results) ~= 'number'
+      or cfg.max_results > types.max_max_results
+      or cfg.max_results < 1
+  then
+    vim.notify(
+      'brook.nvim: max_results must be a number between 1 and ' .. types.max_max_results,
+      vim.log.levels.ERROR
+    )
+    return
+  end
 
   -- Validate output_format
   if cfg.output_format ~= nil and not valid_output_formats[cfg.output_format] then

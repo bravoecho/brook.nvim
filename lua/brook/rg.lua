@@ -333,22 +333,18 @@ function M._exec(ctx)
       return
     end
 
-    -- Handle incomplete chunks and EOF.
+    -- Handle incomplete chunks and EOF. What remains are all fully-formed lines.
     if #data == 1 and data[1] == '' then
       -- EOF and no dangling buffer: nothing else to do.
-      if stdout_buffer == '' then
-        return
-      end
+      if stdout_buffer == '' then return end
       -- EOF, but there's still a result in the buffer: put it back into `data`
-      -- and proceed normally.
       data[1] = stdout_buffer
       stdout_buffer = ''
     else
       -- Handle ongoing stream
       -- 1. Complete the first chunk using the last one from the previous batch.
       data[1] = stdout_buffer .. data[1]
-      -- 2. Pop the last (potentially incomplete) chunk of this batch. What
-      --    remains are all fully-formed lines.
+      -- 2. Pop the last (potentially incomplete) chunk of this batch.
       stdout_buffer = table.remove(data)
     end
 
@@ -360,7 +356,7 @@ function M._exec(ctx)
     end
 
     for _, line in ipairs(data) do
-      if max_results and total_results >= max_results then
+      if total_results >= max_results then
         stopped_at_limit = true
         flush()
         if current_job_id then
@@ -423,7 +419,10 @@ function M._exec(ctx)
       return
     end
 
-    local stopped_at_limit_msg = 'rg: stopped at limit (configure max_results in setup)'
+    local stopped_at_limit_msg = 'rg: max results: ' .. max_results
+    if max_results < types.max_max_results then
+      stopped_at_limit_msg = stopped_at_limit_msg .. ' (configure in setup)'
+    end
     local terminated_msg = 'rg: stopped manually'
 
     if stopped_at_limit and #stderr_lines > 0 then

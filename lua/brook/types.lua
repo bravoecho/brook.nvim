@@ -3,7 +3,7 @@
 
 ---@class brook.Config
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
----@field max_results? integer Maximum results before stopping (default: 1000, nil for unlimited)
+---@field max_results? integer Maximum results before stopping (default: 1000, range: 1-10,000)
 ---@field debounce? integer Maximum wait in ms before flushing results (default: 80)
 ---@field buffer_size? integer Maximum number of results to buffer before flushing (default: 100)
 ---@field qf_open? boolean Whether the quickfix list should be opened when results arrive (default: true)
@@ -12,7 +12,7 @@
 ---@field output_format? brook.OutputFormat Output format: 'one-line-per-match' (default) or 'unique-lines'
 
 ---@class brook.ExecOpts
----@field max_results integer Maximum results before stopping (default: 1000, nil for unlimited)
+---@field max_results integer Maximum results before stopping (default: 1000, range 1-10,000)
 ---@field debounce integer Maximum wait in ms before flushing results (default: 80)
 ---@field buffer_size integer Maximum number of results to buffer before flushing (default: 100)
 ---@field qf_open boolean Whether the quickfix list should be opened when results arrive (default: true)
@@ -39,6 +39,20 @@ M.output_format = {
   one_line_per_match = 'one-line-per-match',
   unique_lines = 'unique-lines',
 }
+
+---@type brook.Config
+M.defaults = {
+  keymap = '<leader>g',
+  max_results = 1000,
+  buffer_size = 100,
+  debounce = 80,
+  qf_open = true,
+  qf_auto_resize = true,
+  qf_win_height = 10,
+  output_format = M.output_format.one_line_per_match,
+}
+
+M.max_max_results = 10000
 
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.ParsedArgs

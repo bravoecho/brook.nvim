@@ -59,7 +59,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   -- Default options:
   opts = {
     keymap = '<leader>g',
-    max_results = 1000, -- Set to false for unlimited
+    max_results = 1000, -- Valid values: 1-10,000.
 
     -- Buffering and debouncing: adjust to balance performance and responsiveness.
     buffer_size = 100,  -- Results to accumulate before flushing to quickfix
@@ -237,7 +237,12 @@ exploration across many files**.
   to the `ripgrep` executable.
 
 * **Resource Management**: To keep the UI responsive, Brook stops after
-  a configurable `max_results` (default 1000).
+  a configurable `max_results` (default 1000). The maximum accepted value is
+  10,000, and the maximum recommended value is 5,000. Neovim's performance
+  degrades rapidly when the number of items grows too much, memory usage grows
+  unbounded and it doesn't get reclaimed promptly. Any workflow that involves
+  that many entries is unlikely in an interactive editor, and probably best
+  suited for different tools.
 
 * **Long Line Protection**: Minified JavaScript, large JSON blobs, and other
   abnormally long lines can cause memory issues: a single line with many matches
