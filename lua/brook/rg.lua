@@ -13,6 +13,7 @@ local pattern           = require('brook.pattern')
 local tokenise          = require('brook.tokenise').tokenise
 local shell_unquote_all = require('brook.shell_unquote').shell_unquote_all
 local parse_args        = require('brook.parse_args').parse_args
+local fifo              = require('brook.lib.fifo')
 local types             = require('brook.types')
 
 local M                 = {}
@@ -242,8 +243,7 @@ function M._exec(ctx)
   local buffer_size = opts.buffer_size
   local flush_debounce = opts.debounce
 
-  ---@type vim.quickfix.entry
-  local entry_buffer = {}
+  local queue = fifo.new()
 
   ---@type uv_timer_t?
   local flush_timer = nil
@@ -255,17 +255,16 @@ function M._exec(ctx)
       flush_timer = nil
     end
 
-    if #entry_buffer == 0 then
+    if queue.is_empty() then
       return
     end
 
     -- i. Populate
     --------------
-    vim.fn.setqflist({}, qflist_operation, { title = 'rg: results', items = entry_buffer })
+    local current_buffer_size = queue.len()
+    vim.fn.setqflist({}, qflist_operation, { title = 'rg: results', items = queue.drain() })
     qflist_operation = 'a'
-    local current_buffer_size = #entry_buffer
     local previous_total = total_results - current_buffer_size
-    entry_buffer = {}
 
     -- ii. Open (on new searches)
     ------------------------------
@@ -364,13 +363,13 @@ function M._exec(ctx)
 
       local entry = parse_result(line)
       if entry then
-        table.insert(entry_buffer, entry)
+        queue.push(entry)
         total_results = total_results + 1
       end
 
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
-      if #entry_buffer >= buffer_size then
+      if queue.len() >= buffer_size then
         flush()
       end
     end
