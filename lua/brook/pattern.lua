@@ -123,7 +123,8 @@ function M.rg_to_vim(pattern, opts)
       i = i + 1
     elseif char == '{' and not in_char_class then
       -- Non-greedy brace quantifier: {n}? {n,}? {n,m}? -> {-n} {-n,} {-n,m}
-      -- Handle it as an independent subsequence.
+      -- Handle it as an independent subsequence, so we can account for ? at
+      -- the end without backtracking on the main sequence.
       -- Find the opening brace in the result and insert '-' after it.
       local subresult = {}
       while i <= len do

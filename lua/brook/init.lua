@@ -10,7 +10,7 @@ local valid_output_formats = {
   [types.output_format.unique_lines] = true,
 }
 
---- @param cfg? brook.Config User-provided configuration
+--- @param cfg? brook.UserConfig User-provided configuration
 function M.setup(cfg)
   cfg = vim.tbl_deep_extend('force', types.defaults, cfg or {})
 
@@ -40,7 +40,7 @@ function M.setup(cfg)
     return
   end
 
-  ---@type brook.ExecOpts
+  ---@type brook.ExecConfig
   local exec_opts = {
     max_results = cfg.max_results,
     buffer_size = cfg.buffer_size,
@@ -80,7 +80,7 @@ function M.setup(cfg)
 
   -- Stop command
   ------------------------------------------------------------------------------
-  vim.api.nvim_create_user_command('RgStop', rg.stop, { desc = 'Stop current ripgrep search' })
+  vim.api.nvim_create_user_command('RgStop', rg.user_stop, { desc = 'Stop current ripgrep search' })
 
   ------------------------------------------------------------------------------
   --- Keymaps ------------------------------------------------------------------

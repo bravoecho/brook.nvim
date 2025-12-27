@@ -1,7 +1,7 @@
 --- Shared type definitions for the rg plugin.
 ---@module 'brook'
 
----@class brook.Config
+---@class brook.UserConfig
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
 ---@field max_results? integer Maximum results before stopping (default: 1000, range: 1-10,000)
 ---@field debounce? integer Maximum wait in ms before flushing results (default: 80)
@@ -11,7 +11,7 @@
 ---@field qf_win_height? integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 ---@field output_format? brook.OutputFormat Output format: 'one-line-per-match' (default) or 'unique-lines'
 
----@class brook.ExecOpts
+---@class brook.ExecConfig
 ---@field max_results integer Maximum results before stopping (default: 1000, range 1-10,000)
 ---@field debounce integer Maximum wait in ms before flushing results (default: 80)
 ---@field buffer_size integer Maximum number of results to buffer before flushing (default: 100)
@@ -40,7 +40,7 @@ M.output_format = {
   unique_lines = 'unique-lines',
 }
 
----@type brook.Config
+---@type brook.UserConfig
 M.defaults = {
   keymap = '<leader>g',
   max_results = 1000,
