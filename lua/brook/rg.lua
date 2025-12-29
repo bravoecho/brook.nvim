@@ -116,6 +116,19 @@
 ---@type integer|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
+---@type uv.uv_timer_t|nil
+local phase2_timer = nil
+
+local phase2_scheduled = false
+
+local cancel_phase2_timer = function ()
+  if phase2_timer then
+    phase2_timer:stop()
+    phase2_timer = nil
+  end
+  phase2_scheduled = false
+end
+
 --- Whether the user_stop() function was called.
 local stopped_by_user = false
 
@@ -129,6 +142,8 @@ local types = require('brook.types')
 local M = {}
 
 function M.user_stop()
+  cancel_phase2_timer()
+
   if active_rg_job_id then
     stopped_by_user = true
     vim.fn.jobstop(active_rg_job_id)
@@ -278,6 +293,8 @@ end
 function M._exec(ctx)
   stopped_by_user = false
 
+  cancel_phase2_timer()
+
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
     active_rg_job_id = nil
@@ -395,7 +412,6 @@ function M._exec(ctx)
   }
 
   local current_phase = phases.phase_1
-  local phase2_scheduled = false
 
   -- FIFO queue between rg and quickfix.
   --
@@ -474,6 +490,19 @@ function M._exec(ctx)
 
   --- Pulls batches of results from the queue and renders them. May be scheduled.
   local flush_phase2
+
+  local schedule_phase2_timer = function ()
+    -- ensure at most one timer is present at any given time
+    if phase2_timer then
+      return
+    end
+
+    phase2_timer = vim.defer_fn(function ()
+      phase2_timer = nil
+      flush_phase2()
+    end, flush_throttle_ms)
+  end
+
   flush_phase2 = function()
     phase2_scheduled = false
 
@@ -485,7 +514,7 @@ function M._exec(ctx)
 
     if not queue.is_empty() then
       phase2_scheduled = true
-      vim.defer_fn(flush_phase2, flush_throttle_ms)
+      schedule_phase2_timer()
     end
   end
 
@@ -496,7 +525,7 @@ function M._exec(ctx)
       return
     end
     phase2_scheduled = true
-    vim.defer_fn(flush_phase2, flush_throttle_ms)
+    schedule_phase2_timer()
   end
 
   --- Phase-1 consumer: perform the first meaningful "paint".
@@ -654,6 +683,8 @@ function M._exec(ctx)
   --- on_exit is a final "trigger" for consumers: it ensures anything still in
   --- the stdout buffer/queue becomes visible even if rg stops suddenly.
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
+    cancel_phase2_timer()
+
     flush_final()
 
     if exit_code == 0 then
