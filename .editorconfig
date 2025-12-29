@@ -16,13 +16,5 @@ space_around_table_append_operator = true
 # convert '---' to '--- ' or '--' to '-- '
 # space_after_comment_dash = false
 
-align_call_args = false
-align_function_params = false
-align_continuous_assign_statement = false
-align_continuous_rect_table_field = false
 align_continuous_line_space = 2
-align_if_branch = false
-align_array_table = false
-align_continuous_similar_call_args = false
-align_continuous_inline_comment = false
-align_chain_expr = none
+align_continuous_assign_statement = false
