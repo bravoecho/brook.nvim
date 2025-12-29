@@ -74,7 +74,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- The "right" value depends on your preferences and on your hardware.
     -- For the best experience, experimenting with different values is
     -- encouraged.
-    flush_throttle_ms = 5,
+    flush_throttle_ms = 10,
 
     -- Quickfix list management
     qf_open = true,         -- Auto-open the quickfix window when results are found
@@ -289,7 +289,8 @@ exploration across many files**.
   introduced after each flush (in the second phase of the search, after the
   visible quickfix window is filled). You are encouraged to experiment with
   different values of `flush_throttle_ms` depending on preference and hardware.
-  Can be disabled completely by setting `flush_throttle_ms` to 0.
+  Can be disabled completely by setting `flush_throttle_ms` to 0 (not
+  recommended).
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.
