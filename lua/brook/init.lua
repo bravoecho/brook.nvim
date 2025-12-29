@@ -41,9 +41,10 @@ function M.setup(cfg)
   end
 
   ---@type brook.ExecConfig
-  local exec_opts = {
+  local exec_cfg = {
     max_results = cfg.max_results,
     max_batch_size = cfg.max_batch_size,
+    flush_throttle_ms = cfg.flush_throttle_ms,
     qf_open = cfg.qf_open,
     qf_auto_resize = cfg.qf_auto_resize,
     qf_win_height = cfg.qf_win_height,
@@ -68,13 +69,13 @@ function M.setup(cfg)
         return
       end
 
-      rg.word(word, exec_opts)
+      rg.word(word, exec_cfg)
       return
     end
 
     -- General case
     ---------------
-    rg.raw(cmd_opts.args, exec_opts)
+    rg.raw(cmd_opts.args, exec_cfg)
   end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
 
   -- Stop command
@@ -105,7 +106,7 @@ function M.setup(cfg)
       return
     end
 
-    rg.selection(text, exec_opts)
+    rg.selection(text, exec_cfg)
   end, { desc = 'Grep visual selection with ripgrep' })
 end
 

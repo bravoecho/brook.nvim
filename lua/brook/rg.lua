@@ -101,11 +101,16 @@
 ---      - flushes exactly one batch per scheduled callback invocation
 ---      - yields back to Neovim’s main loop between batches
 ---
----      Phase 2 is throughput-oriented but cooperative: it self-schedules
----      additional work using `vim.schedule`, ensuring that the main loop
----      regains control between batches so redraws can occur.
+---      Phase 2 is throughput-oriented: it self-schedules additional work
+---      using `vim.schedule`, ensuring that the main loop regains control
+---      between batches so redraws can occur.
+---
+---      However, it still introduces a very small delay between batches, to
+---      prevent schedule chaining and give the UI time to redraw in extra-fast
+---      output scenarios.
 ---
 ---      Only phase 2 is allowed to self-schedule follow-up flushing.
+---
 ---@module 'brook.rg'
 
 ---@type integer|nil Vim job id returned by vim.fn.jobstart()
@@ -290,6 +295,7 @@ function M._exec(ctx)
   local qf_open = cfg.qf_open
   local qf_auto_resize = cfg.qf_auto_resize
   local max_batch_size = cfg.max_batch_size
+  local flush_throttle_ms = cfg.flush_throttle_ms
 
   -- Determine output format: command-line flags override config.
   -- Precedence: parsed_args (command line) > opts (config) > default
@@ -479,7 +485,7 @@ function M._exec(ctx)
 
     if not queue.is_empty() then
       phase2_scheduled = true
-      vim.schedule(flush_phase2)
+      vim.defer_fn(flush_phase2, flush_throttle_ms)
     end
   end
 
@@ -490,7 +496,7 @@ function M._exec(ctx)
       return
     end
     phase2_scheduled = true
-    vim.schedule(flush_phase2)
+    vim.defer_fn(flush_phase2, flush_throttle_ms)
   end
 
   --- Phase-1 consumer: perform the first meaningful "paint".

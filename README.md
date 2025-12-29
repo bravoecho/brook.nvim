@@ -66,6 +66,15 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- (lower = smoother/more updates; higher = faster/fewer updates)
     max_batch_size = 100,
 
+    -- tiny delay (ms) between quickfix updates, to allow UI redraws under fast output
+    -- (lower = faster throughput; higher = smoother redraws)
+    --
+    -- NOTE: zero or very small values can result in pauses and sudden jumps in
+    -- the number of results. The right value for individual preference strongly
+    -- depends on your hardware. Experimenting with different values is
+    -- encouraged.
+    flush_throttle_ms = 5,
+
     -- Quickfix list management
     qf_open = true,         -- Auto-open the quickfix window when results are found
     qf_auto_resize = true,  -- Resize the quickfix window when more results arrive
@@ -273,6 +282,12 @@ exploration across many files**.
   from immediate flushing. After the initial results, batching kicks in, and
   results are then flushed only after `max_batch_size` entries. Internally, the
   same value is also used as the queue threshold for requesting an update.
+
+* **Throttling**: Under extremely fast output scenarios, redraw starvation can
+  still happen even if flushing is batched. For this reason a tiny delay is
+  introduced after each flush (in the second phase of the search, after the
+  visible quickfix window is filled). You are encouraged to experiment with
+  different values of `flush_throttle_ms` depending on preference and hardware.
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.
