@@ -105,9 +105,9 @@
 ---      using `vim.schedule`, ensuring that the main loop regains control
 ---      between batches so redraws can occur.
 ---
----      However, it still introduces a very small delay between batches, to
----      prevent schedule chaining and give the UI time to redraw in extra-fast
----      output scenarios.
+---      However, it optionally introduces a very small delay between batches,
+---      to prevent schedule chaining and give the UI time to redraw in
+---      extra-fast output scenarios.
 ---
 ---      Only phase 2 is allowed to self-schedule follow-up flushing.
 ---
@@ -116,12 +116,15 @@
 ---@type integer|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
+--- Also used to guard the throttling use case (flush_throttle_ms > 0).
 ---@type uv.uv_timer_t|nil
 local phase2_timer = nil
 
+--- Used to guard the schedule chaining use case (flush_throttle_ms == 0)
 local phase2_scheduled = false
 
-local cancel_phase2_timer = function ()
+--- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
+local cancel_phase2_scheduling = function()
   if phase2_timer then
     phase2_timer:stop()
     phase2_timer = nil
@@ -142,7 +145,7 @@ local types = require('brook.types')
 local M = {}
 
 function M.user_stop()
-  cancel_phase2_timer()
+  cancel_phase2_scheduling()
 
   if active_rg_job_id then
     stopped_by_user = true
@@ -293,7 +296,7 @@ end
 function M._exec(ctx)
   stopped_by_user = false
 
-  cancel_phase2_timer()
+  cancel_phase2_scheduling()
 
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
@@ -489,18 +492,37 @@ function M._exec(ctx)
   end
 
   --- Pulls batches of results from the queue and renders them. May be scheduled.
+  --- Reschedules itself if there are pending entries in the queue.
   local flush_phase2
 
-  local schedule_phase2_timer = function ()
-    -- ensure at most one timer is present at any given time
-    if phase2_timer then
-      return
-    end
+  --- Schedules the next flush in phase 2.
+  ---
+  --- Guards against multiple concurrent schedules: in timer mode, the timer
+  --- itself is the guard; in schedule mode, phase2_scheduled prevents duplicates.
+  ---
+  --- Called both by the producer (to trigger phase-2 work) and by flush_phase2
+  --- itself (to schedule the next batch).
+  local schedule_flush_phase2 = function()
+    if flush_throttle_ms > 0 then
+      -- In timer/throttle mode the timer itself is the guard.
+      -- ensure at most one timer is present at any given time
+      if phase2_timer then
+        return
+      end
 
-    phase2_timer = vim.defer_fn(function ()
-      phase2_timer = nil
-      flush_phase2()
-    end, flush_throttle_ms)
+      phase2_timer = vim.defer_fn(function()
+        -- timer has triggered, can be removed
+        phase2_timer = nil
+        flush_phase2()
+      end, flush_throttle_ms)
+    else
+      -- In schedule mode: a separate guard is needed to prevent multiple schedules.
+      if phase2_scheduled then
+        return
+      end
+      phase2_scheduled = true
+      vim.schedule(flush_phase2)
+    end
   end
 
   flush_phase2 = function()
@@ -513,19 +535,8 @@ function M._exec(ctx)
     update_quickfix(queue.pull(max_batch_size))
 
     if not queue.is_empty() then
-      phase2_scheduled = true
-      schedule_phase2_timer()
+      schedule_flush_phase2()
     end
-  end
-
-  -- Phase-2 scheduling: only phase 2 may schedule work. During phase 1 we avoid
-  -- scheduling entirely so the main loop can become idle and redraw.
-  local schedule_flush_phase2 = function ()
-    if phase2_scheduled then
-      return
-    end
-    phase2_scheduled = true
-    schedule_phase2_timer()
   end
 
   --- Phase-1 consumer: perform the first meaningful "paint".
@@ -683,7 +694,7 @@ function M._exec(ctx)
   --- on_exit is a final "trigger" for consumers: it ensures anything still in
   --- the stdout buffer/queue becomes visible even if rg stops suddenly.
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    cancel_phase2_timer()
+    cancel_phase2_scheduling()
 
     flush_final()
 

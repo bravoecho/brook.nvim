@@ -69,9 +69,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- tiny delay (ms) between quickfix updates, to allow UI redraws under fast output
     -- (lower = faster throughput; higher = smoother redraws)
     --
-    -- NOTE: zero or very small values can result in pauses and sudden jumps in
-    -- the number of results. The right value for individual preference strongly
-    -- depends on your hardware. Experimenting with different values is
+    -- NOTE: zero (meaning throttling is completely disabled) or very small
+    -- values can result in pauses and sudden jumps in the number of results.
+    -- The "right" value depends on your preferences and on your hardware.
+    -- For the best experience, experimenting with different values is
     -- encouraged.
     flush_throttle_ms = 5,
 
@@ -288,6 +289,7 @@ exploration across many files**.
   introduced after each flush (in the second phase of the search, after the
   visible quickfix window is filled). You are encouraged to experiment with
   different values of `flush_throttle_ms` depending on preference and hardware.
+  Can be disabled completely by setting `flush_throttle_ms` to 0.
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.
