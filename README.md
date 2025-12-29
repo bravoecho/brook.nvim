@@ -13,9 +13,10 @@ When it comes to code search, most Neovim users end up choosing between legacy
 Vimscript plugins or modern fuzzy finders. **Brook** sits in the sweet spot for
 power users:
 
-* **Fast & Asynchronous**: Streams results to the quickfix list asynchronously.
-  Even in massive monorepos, results appear as soon as ripgrep returns them,
-  without ever locking your UI.
+* **Fast & Asynchronous**: Ingests results as they arrive and updates quickfix
+  incrementally using cooperative scheduling. Even in large monorepos, results
+  appear as soon as ripgrep returns them, and then in incremental batches,
+  minimising UI locking as much as possible.
 
 * **Shell-Agnostic & Safe**: Unlike other wrappers, Brook bypasses the shell
   entirely. Whether you use Bash, Zsh, or the Fish shell, your patterns won't
@@ -61,9 +62,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap = '<leader>g',
     max_results = 1000, -- Valid values: 1-10,000.
 
-    -- Buffering and debouncing: adjust to balance performance and responsiveness.
-    buffer_size = 100,  -- Results to accumulate before flushing to quickfix
-    debounce = 80,      -- Max wait (ms) before flushing buffered results
+    -- maximum number of results appended to quickfix per update
+    -- (lower = smoother/more updates; higher = faster/fewer updates)
+    max_batch_size = 100,
 
     -- Quickfix list management
     qf_open = true,         -- Auto-open the quickfix window when results are found
@@ -78,7 +79,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-See the Technical Notes below for more details on buffering and debouncing.
+See the Technical Notes below for more details on batching.
 
 > [!TIP]
 > For consistent results, it's recommended to configure both ripgrep and Neovim
@@ -265,14 +266,13 @@ exploration across many files**.
   `rg`. This prevents "UI lag" because the quickfix list is updated
   incrementally rather than waiting for the entire search to finish.
 
-* **Buffering and Debouncing**: The `buffer_size` and `debounce` options control
-  how frequently Brook updates the quickfix list. More frequent updates would
-  feel more responsive, but each UI update is expensive and slows down the
-  search. Also, results beyond the quickfix window height are below the fold,
-  and would not benefit from immediate flushing. After the initial results,
-  buffering kicks in, and results are then flushed only after `buffer_size`
-  entries, or after `debounce` milliseconds of inactivity, whichever comes
-  first.
+* **Batching**: The `max_batch_size` option controls how frequently Brook
+  updates the quickfix list. More frequent updates would feel more responsive,
+  but each UI update is expensive and slows down the search. Also, results
+  beyond the quickfix window height are below the fold, and would not benefit
+  from immediate flushing. After the initial results, batching kicks in, and
+  results are then flushed only after `max_batch_size` entries. Internally, the
+  same value is also used as the queue threshold for requesting an update.
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.

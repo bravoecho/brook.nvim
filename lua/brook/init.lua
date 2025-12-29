@@ -43,8 +43,7 @@ function M.setup(cfg)
   ---@type brook.ExecConfig
   local exec_opts = {
     max_results = cfg.max_results,
-    buffer_size = cfg.buffer_size,
-    debounce = cfg.debounce,
+    max_batch_size = cfg.max_batch_size,
     qf_open = cfg.qf_open,
     qf_auto_resize = cfg.qf_auto_resize,
     qf_win_height = cfg.qf_win_height,

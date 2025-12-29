@@ -5,7 +5,6 @@
 ---@class brook.Fifo
 ---@field push function
 ---@field pull function
----@field drain function
 ---@field len function
 ---@field is_empty function
 
@@ -38,22 +37,6 @@ function M.new()
     F._cursor = slice_end + 1
     local slice = {}
     for i = current_cursor, slice_end do
-      slice[#slice + 1] = F._items[i]
-    end
-    return slice
-  end
-
-  --- Removes and returns all items from the queue.
-  ---
-  --- Returns an empty table if the queue is empty.
-  ---
-  ---@return any[] items All dequeued items (may be empty)
-  function F.drain()
-    if F._cursor > #F._items then return {} end
-    local current_cursor = F._cursor
-    F._cursor = #F._items + 1
-    local slice = {}
-    for i = current_cursor, #F._items do
       slice[#slice + 1] = F._items[i]
     end
     return slice

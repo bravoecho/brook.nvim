@@ -1,8 +1,8 @@
 --- Asynchronous ripgrep execution with quickfix integration.
 ---
 --- This module provides functions to run ripgrep searches asynchronously,
---- incrementally adding results into Neovim's quickfix list. It bypasses the
---- shell for security and portability.
+--- incrementally adding results into Neovim's quickfix list using cooperative
+--- scheduling. It bypasses the shell for security and portability.
 ---
 --- Implementation Notes and Workflow
 --- ---------------------------------
@@ -26,6 +26,11 @@
 ---   new information. In this case the UI cannot reflect the results processed
 ---   so far. This is a scenario known as "redraw starvation".
 ---
+--- * The mitigation is not to force redraws, but to ensure that
+---   - consumer work is bounded per tick of the Neovim event loop, and yields
+---     back to the main loop frequently
+---   - at most one flush-related task is pending at any given time
+---
 --- Workflow:
 ---
 --- To preserve perceived responsiveness without forcing redraws, results are
@@ -41,53 +46,66 @@
 ---
 --- The pipeline consists of four actors.
 ---
----   1. Producer (`on_stdout`): parses stdout lines and enqueues quickfix
----      entries; it also triggers the consumers.
+---   1. Producer (`on_stdout`):
 ---
----   2. FIFO queue: decouples producer and consumer, allowing them to process
----      entries each according to their own cadence.
+---      - parses stdout lines emitted by ripgrep
+---      - enqueues quickfix entries into a FIFO queue
+---      - triggers the appropriate consumer based on the current phase
+---
+---      The producer does not encode UI logic (resizing, redraw timing,
+---      batching strategy). Its only responsibility is to ingest results and
+---      notify the consumer that work is available.
+---
+---   2. FIFO queue:
+---
+---      - decouples producer cadence (ripgrep output rate) from consumer cadence
+---        (Neovim UI update rate)
+---
+---      - allows the consumer to flush entries at its own pace
+---
+---      Usage by phase:
+---
+---        * phase 1 uses `pull(n)` to flush just enough entries to fill the
+---          visible quickfix window, providing immediate feedback
+---
+---        * phase 2 uses `pull(max_batch_size)` repeatedly to flush bounded
+---          batches, yielding to the main loop between batches
 ---
 ---   3. Phase-1 consumer (`flush_phase1`):
 ---
----      - performs the first meaningful "paints", by flushing just enough
----        entries to fill the visible quickfix height
+---      - performs the first meaningful “paint”
+---      - flushes at most the number of entries needed to fill the visible
+---        quickfix window (above the fold)
+---      - never self-schedules (no recursion, timers, or deferred callbacks)
+---      - always runs synchronously on the main loop
 ---
----      - phase 1 never uses timers/recursion to self-schedule
+---      Because phase 1 runs synchronously and then returns control to the
+---      main loop, Neovim naturally reaches an idle point and redraws the UI.
+---      This effectively simulates backpressure for the first visible results
+---      without forcing redraws.
 ---
----      - must run synchronously, and therefore must be invoked from the main
----        loop (scheduled context)
+---      Phase 1 owns the phase transition: once the visible region is filled,
+---      it switches the consumer into phase 2 and triggers it.
 ---
----      - the fact that it's synchronous is what allows Neovim to trigger
----        redraws organically, because it simulates backpressure: each run of
----        the scheduled stdout handler runs on the main event loop, so any
----        operation will have to run to completion (including Neovim API calls
----        such as setqflist), giving Neovim time to redraw, even if more stdout
----        callback instances are already queued up in the background
----
----      - NOTE: as a consequence of this design choice, parsing and storing of
----        results happens on the main loop. This is theoretically inefficient,
----        but it allows this simpler model of synchronous rendering, and those
----        operations have negligible impact over quickfix manipulation and UI
----        rendering. Sending parsing and storing into the background, would
----        require even more complex orchestration and additional semaphores,
----        because in that case also phase-1 consumer operations would need to
----        be asynchronous.
+---      NOTE:
+---      Results are parsed and enqueued on the main loop by design. This keeps
+---      phase-1 rendering synchronous and predictable. The overhead is
+---      negligible relative to quickfix and UI updates, while offloading
+---      parsing would require more complex orchestration and the performance
+---      gains would be undetectable even by a keen human eye.
 ---
 ---   4. Phase-2 consumer (`flush_phase2`):
 ---
----      - drains remaining entries asynchronously, in batches, and with a
----        debounce
+---      - flushes remaining queued entries in bounded batches
+---      - schedules at most one flush-related task at any given time
+---      - flushes exactly one batch per scheduled callback invocation
+---      - yields back to Neovim’s main loop between batches
 ---
----      - prioritizes throughput
+---      Phase 2 is throughput-oriented but cooperative: it self-schedules
+---      additional work using `vim.schedule`, ensuring that the main loop
+---      regains control between batches so redraws can occur.
 ---
----      - on extremely fast bursts, redraw starvation can still happen, but at
----        this point the initial results are already rendered, and the rest
----        will become available quickly, in larger batches; in other words,
----        redraw starvation is acceptable for off-screen items (below the fold
----        of the quickfix window)
----
----      - only phase 2 is allowed to schedule deferred flushing
----
+---      Only phase 2 is allowed to self-schedule follow-up flushing.
 ---@module 'brook.rg'
 
 ---@type integer|nil Vim job id returned by vim.fn.jobstart()
@@ -271,8 +289,7 @@ function M._exec(ctx)
   local qf_win_height = cfg.qf_win_height
   local qf_open = cfg.qf_open
   local qf_auto_resize = cfg.qf_auto_resize
-  local flush_threshold = cfg.buffer_size
-  local flush_debounce_ms = cfg.debounce
+  local max_batch_size = cfg.max_batch_size
 
   -- Determine output format: command-line flags override config.
   -- Precedence: parsed_args (command line) > opts (config) > default
@@ -358,11 +375,12 @@ function M._exec(ctx)
   --     then returns, allowing the main loop to become idle and redraw. See
   --     also flush_phase1.
   --
-  --   * Phase 2 (throughput): drain remaining queued items using a debounce
-  --     timer. Redraw starvation is acceptable here because additional items
-  --     are typically off-screen (below the quickfix fold).
+  --   * Phase 2 (throughput): flushes remaining queued items in bounded batches
+  --     (max_batch_size) using cooperative scheduling (vim.schedule). Each
+  --     batch schedules at most one subsequent batch, guaranteeing the main
+  --     loop gets chances to redraw between updates.
   --
-  -- Only phase 2 may schedule deferred flushing.
+  -- Only phase 2 may schedule flushing.
   ---@enum
   local phases = {
     phase_1 = 'phase-1',
@@ -371,16 +389,16 @@ function M._exec(ctx)
   }
 
   local current_phase = phases.phase_1
+  local phase2_scheduled = false
 
   -- FIFO queue between rg and quickfix.
   --
   -- The queue decouples parsing cadence from UI cadence:
-  --   * phase 1 uses pull(n) to flush a bounded prefix quickly
-  --   * phase 2 uses drain() to flush remaining items efficiently
+  --   * phase 1 uses pull(n) to flush just enough results to fill the visible
+  --     quickfix window
+  --   * phase 2 uses pull(max_batch_size) repeatedly, self-scheduling between
+  --     batches
   local queue = fifo.new()
-
-  ---@type uv_timer_t|nil The luv timer returned by vim.defer_fn
-  local flush_timer = nil
 
   --- Counts how many results are still missing before reaching the target
   --- quickfix window height.
@@ -448,6 +466,33 @@ function M._exec(ctx)
     end
   end
 
+  --- Pulls batches of results from the queue and renders them. May be scheduled.
+  local flush_phase2
+  flush_phase2 = function()
+    phase2_scheduled = false
+
+    if current_phase ~= phases.phase_2 or queue.is_empty() then
+      return
+    end
+
+    update_quickfix(queue.pull(max_batch_size))
+
+    if not queue.is_empty() then
+      phase2_scheduled = true
+      vim.schedule(flush_phase2)
+    end
+  end
+
+  -- Phase-2 scheduling: only phase 2 may schedule work. During phase 1 we avoid
+  -- scheduling entirely so the main loop can become idle and redraw.
+  local schedule_flush_phase2 = function ()
+    if phase2_scheduled then
+      return
+    end
+    phase2_scheduled = true
+    vim.schedule(flush_phase2)
+  end
+
   --- Phase-1 consumer: perform the first meaningful "paint".
   ---
   ---   * Flushes *at most* the number of items needed to reach the visible
@@ -469,6 +514,7 @@ function M._exec(ctx)
     local remaining = remaining_visible_slots()
     if remaining == 0 then
       current_phase = phases.phase_2
+      schedule_flush_phase2()
       return
     end
 
@@ -480,31 +526,8 @@ function M._exec(ctx)
 
     if remaining_visible_slots() == 0 then
       current_phase = phases.phase_2
+      schedule_flush_phase2()
     end
-  end
-
-  --- Drains and renders all entries queued so far. May be scheduled.
-  local flush_phase2 = function()
-    if flush_timer then
-      flush_timer:stop()
-      flush_timer = nil
-    end
-
-    if queue.is_empty() then
-      return
-    end
-
-    update_quickfix(queue.drain())
-  end
-
-  -- Phase-2 scheduling: only phase 2 may defer work. During phase 1 we avoid
-  -- scheduling entirely so the main loop can become idle and redraw.
-  local schedule_flush_phase2 = function()
-    if flush_timer then
-      return
-    end
-
-    flush_timer = vim.defer_fn(flush_phase2, flush_debounce_ms)
   end
 
   --- request_flush will either
@@ -522,7 +545,7 @@ function M._exec(ctx)
     end
   end
 
-  --- Last chunk of the previous batch. See :h channel-lines.
+  --- Last segment of the previous batch. See :h channel-lines.
   local stdout_buffer = ''
 
   -- Producer: stdout handler
@@ -540,7 +563,7 @@ function M._exec(ctx)
       return
     end
 
-    -- Handle incomplete chunks and EOF. What remains are all fully-formed lines.
+    -- Handle incomplete segments and EOF. What remains are all fully-formed lines.
     if #data == 1 and data[1] == '' then
       -- EOF and no dangling buffer: nothing else to do.
       if stdout_buffer == '' then return end
@@ -549,14 +572,14 @@ function M._exec(ctx)
       stdout_buffer = ''
     else
       -- Handle ongoing stream
-      -- 1. Complete the first chunk using the last one from the previous batch.
+      -- 1. Complete the first segment using the last one from the previous batch.
       data[1] = stdout_buffer .. data[1]
-      -- 2. Pop the last (potentially incomplete) chunk of this batch.
+      -- 2. Pop the last (potentially incomplete) segment of this batch.
       stdout_buffer = table.remove(data)
     end
 
     -- NOTE: After removing the last (potentially incomplete) element, data may
-    -- be empty. This is expected when we receive a single partial chunk; it
+    -- be empty. This is expected when we receive a single partial segment; it
     -- will be completed and processed when the next stdout event arrives.
     if #data == 0 then
       return
@@ -583,7 +606,7 @@ function M._exec(ctx)
 
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
-      if queue.len() >= flush_threshold then
+      if queue.len() >= max_batch_size then
         request_flush()
       end
     end
@@ -616,7 +639,9 @@ function M._exec(ctx)
       -- Neovim had a chance to open the quickfix.
       flush_phase1()
     end
-    flush_phase2() -- drain everything remaining in any case, no timer
+    while not queue.is_empty() do
+      update_quickfix(queue.pull(max_batch_size))
+    end
     current_phase = phases.done
   end
 

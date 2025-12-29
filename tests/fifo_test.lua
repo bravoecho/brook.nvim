@@ -100,51 +100,6 @@ test('pull: after emptying returns empty table', function()
 end)
 
 --------------------------------------------------------------------------------
---- drain ----------------------------------------------------------------------
---------------------------------------------------------------------------------
-
-test('drain: from empty queue returns empty table', function()
-  local q = fifo.new()
-  eq(q.drain(), {})
-end)
-
-test('drain: returns all items', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.push('c')
-  eq(q.drain(), { 'a', 'b', 'c' })
-end)
-
-test('drain: leaves queue empty', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.push('c')
-  q.drain()
-  eq(q.len(), 0)
-  eq(q.is_empty(), true)
-end)
-
-test('drain: after partial pull returns remainder', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.push('c')
-  q.push('d')
-  q.pull(2)
-  eq(q.drain(), { 'c', 'd' })
-end)
-
-test('drain: after drain returns empty table', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.drain()
-  eq(q.drain(), {})
-end)
-
---------------------------------------------------------------------------------
 --- len ------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -184,14 +139,6 @@ test('is_empty: false after push', function()
   eq(q.is_empty(), false)
 end)
 
-test('is_empty: true after draining', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.drain()
-  eq(q.is_empty(), true)
-end)
-
 test('is_empty: true after pulling all items', function()
   local q = fifo.new()
   q.push('a')
@@ -211,17 +158,6 @@ test('mixed: push after pull', function()
   q.push('c')
   eq(q.len(), 2)
   eq(q.pull(2), { 'b', 'c' })
-end)
-
-test('mixed: push after drain', function()
-  local q = fifo.new()
-  q.push('a')
-  q.push('b')
-  q.drain()
-  q.push('c')
-  q.push('d')
-  eq(q.len(), 2)
-  eq(q.drain(), { 'c', 'd' })
 end)
 
 --------------------------------------------------------------------------------
