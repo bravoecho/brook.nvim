@@ -9,9 +9,9 @@ a precision tool for code exploration and refactoring, the Vim way.
 
 ## Why Brook?
 
-When it comes to code search, most Neovim users end up choosing between legacy
-Vimscript plugins or modern fuzzy finders. **Brook** sits in the sweet spot for
-power users:
+When it comes to code search, and search-and-replace, most Neovim users end up
+choosing between legacy Vimscript plugins or modern fuzzy finders. **Brook**
+sits in the sweet spot for power users:
 
 * **Fast & Asynchronous**: Ingests results as they arrive and updates quickfix
   incrementally using cooperative scheduling. Even in large monorepos, results
@@ -32,6 +32,12 @@ power users:
   the [pattern translation spec](./tests/pattern_spec.md) for more
   details.
 
+  Search-and-replace is a native Neovim feature, use:
+
+  ```vim
+  :cfdo %s//replacement/gc
+  ```
+
 * **Complementing LSPs**: While LSPs handle symbol renaming, Brook handles
   everything else: refactoring string constants, CSS classes, or complex patterns
   across the entire project with regex precision.
@@ -51,17 +57,34 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   'bravoecho/brook.nvim',
+  dependencies = {
+    -- Result context and Preview
+    -----------------------------
+    -- Optional, highly recommended.
+    -- See: https://github.com/kevinhwang91/nvim-bqf
+    { 'kevinhwang91/nvim-bqf', optional = true },
+  },
+
+  -- Lazy-loading
+  ---------------
   -- Lazy-load by setting cmd and keys.
   cmd = { 'Rg' },
   keys = {
+    -- Same as 'keymap', to preserve lazy loading
     { '<leader>g', mode = 'n', desc = 'Grep (word under cursor)' },
     { '<leader>g', mode = 'x', desc = 'Grep (visual selection)' },
   },
-  -- Default options:
+
+  -- Default options
+  ------------------
   opts = {
-    keymap = '<leader>g',
+    -- Basics
+    ---------
+    keymap = '<leader>g', -- Same as 'keys', to preserve lazy loading.
     max_results = 1000, -- Valid values: 1-10,000.
 
+    -- Performance & Responsiveness
+    --------------------------------
     -- maximum number of results appended to quickfix per update
     -- (lower = smoother/more updates; higher = faster/fewer updates)
     max_batch_size = 100,
@@ -70,17 +93,22 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- (lower = faster throughput; higher = smoother redraws)
     --
     -- NOTE: zero (meaning throttling is completely disabled) or very small
-    -- values can result in pauses and sudden jumps in the number of results.
-    -- The "right" value depends on your preferences and on your hardware.
-    -- For the best experience, experimenting with different values is
-    -- encouraged.
+    -- values are not recommended. They can result in pauses and sudden jumps
+    -- in the number of results. The right value depends on your preferences,
+    -- workflow, and hardware.
+    --
+    -- For the best experience, experimenting with different values of
+    -- max_batch_size and flush_throttle_ms is encouraged.
     flush_throttle_ms = 10,
 
-    -- Quickfix list management
+    -- Quickfix window behaviour
+    ----------------------------
     qf_open = true,         -- Auto-open the quickfix window when results are found
     qf_auto_resize = true,  -- Resize the quickfix window when more results arrive
     qf_win_height = 10,     -- Fixed or max height (depending on auto-resizing on/off)
 
+    -- Results per line
+    -------------------
     -- Output format: how ripgrep results are displayed in the quickfix list
     -- 'one-line-per-match' (default): each match appears separately, with column position
     -- 'unique-lines': each line appears only once (cursor lands at column 1)
@@ -131,7 +159,7 @@ extension of Vim:
 
 2. **Explore**: Browse results with `:cnext`/`:cprev` or your favourite quickfix
    mappings. Benefit from quickfix plugins, like
-   [nvim-bqf](https://github.com/kevinhwang91/nvim-bqf), which I recommend.
+   [nvim-bqf](https://github.com/kevinhwang91/nvim-bqf).
 
    > *Pro Tip: Ensure `:cnext` and `:cprev` are mapped to `]q` and `[q`,
    > a widely used convention for faster browsing.*
