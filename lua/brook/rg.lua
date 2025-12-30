@@ -316,6 +316,7 @@ function M._exec(ctx)
   local qf_auto_resize = cfg.qf_auto_resize
   local max_batch_size = cfg.max_batch_size
   local flush_throttle_ms = cfg.flush_throttle_ms
+  local set_search_register = cfg.set_search_register
 
   -- Determine output format: command-line flags override config.
   -- Precedence: parsed_args (command line) > opts (config) > default
@@ -459,11 +460,13 @@ function M._exec(ctx)
           vim.cmd('copen ' .. qf_win_height)
         end
       end
-      M._set_search_register(parsed_args.pattern, {
-        word = parsed_args.word,
-        fixed = parsed_args.fixed,
-        case = parsed_args.case,
-      })
+      if set_search_register then
+        M._set_search_register(parsed_args.pattern, {
+          word = parsed_args.word,
+          fixed = parsed_args.fixed,
+          case = parsed_args.case,
+        })
+      end
       is_first_batch = false
     end
 
@@ -812,7 +815,8 @@ end
 
 --- Sets Vim's search register to the given ripgrep pattern.
 ---
---- Translates the ripgrep pattern to Vim regex syntax and enables hlsearch.
+--- Translates the ripgrep pattern to Vim regex syntax, sets the search register,
+--- adds the pattern to search history, and enables hlsearch.
 ---
 ---@param rg_pattern string|nil The ripgrep search pattern
 ---@param pattern_opts brook.PatternOpts Options affecting pattern translation
@@ -828,6 +832,7 @@ function M._set_search_register(rg_pattern, pattern_opts)
   end
 
   vim.fn.setreg('/', vim_pattern)
+  vim.fn.histadd('/', vim_pattern)
   vim.opt.hlsearch = true
 end
 

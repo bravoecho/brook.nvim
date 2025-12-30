@@ -10,6 +10,7 @@
 ---@field qf_auto_resize? boolean Whether the quickfix window should grow as results come in (default: true)
 ---@field qf_win_height? integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 ---@field output_format? brook.OutputFormat Output format: 'one-line-per-match' (default) or 'unique-lines'
+---@field set_search_register? boolean Whether to set Vim's search register (/) with the pattern, enabling n/N navigation and hlsearch (default: true)
 
 ---@class brook.ExecConfig
 ---@field max_results integer Maximum results before stopping (default: 1000, range 1-10,000)
@@ -19,6 +20,7 @@
 ---@field qf_auto_resize boolean Whether the quickfix window should grow as results come in (default: true)
 ---@field qf_win_height integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 ---@field output_format brook.OutputFormat Output format: 'one-line-per-match' or 'unique-lines'
+---@field set_search_register boolean Whether to set Vim's search register (/) with the pattern, enabling n/N navigation and hlsearch (default: true)
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.PatternOpts
@@ -50,6 +52,7 @@ M.defaults = {
   qf_auto_resize = true,
   qf_win_height = 10,
   output_format = M.output_format.one_line_per_match,
+  set_search_register = true,
 }
 
 M.max_max_results = 10000

@@ -49,6 +49,7 @@ function M.setup(cfg)
     qf_auto_resize = cfg.qf_auto_resize,
     qf_win_height = cfg.qf_win_height,
     output_format = cfg.output_format,
+    set_search_register = cfg.set_search_register,
   }
 
   ------------------------------------------------------------------------------

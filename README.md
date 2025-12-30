@@ -27,10 +27,11 @@ sits in the sweet spot for power users:
   results that integrate with native navigation and batch operations.
 
 * **Native Search Integration**: Finding text is only half the battle. Brook
-  accurately translates ripgrep patterns to the search register. This turns
-  search results into editable targets, enabling powerful automation. Explore
-  the [pattern translation spec](./tests/pattern_spec.md) for more
-  details.
+  accurately translates ripgrep patterns to the search register, adds them to
+  search history, and enables highlighting. This turns search results into
+  editable targets, enabling powerful automation. Explore the
+  [pattern translation spec](./tests/pattern_spec.md) for more details. This
+  feature can be disabled via configuration if preferred.
 
   Search-and-replace is a native Neovim feature, use:
 
@@ -113,6 +114,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- 'one-line-per-match' (default): each match appears separately, with column position
     -- 'unique-lines': each line appears only once (cursor lands at column 1)
     output_format = 'one-line-per-match',
+
+    -- Search register integration
+    ------------------------------
+    -- When enabled, Brook sets Vim's search register (/) with the translated
+    -- pattern, adds it to search history, and enables hlsearch. This allows
+    -- n/N navigation and seamless :cfdo substitutions.
+    set_search_register = true,
   },
 }
 ```
