@@ -137,7 +137,7 @@ local stopped_by_user = false
 
 local pattern = require('brook.pattern')
 local tokenise = require('brook.tokenise').tokenise
-local shell_unquote_all = require('brook.shell_unquote').shell_unquote_all
+local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
 local parse_args = require('brook.parse_args').parse_args
 local fifo = require('brook.lib.fifo')
 local types = require('brook.types')
@@ -245,7 +245,7 @@ function M.raw(cmd_args, cfg)
   -- Step 2: Unquote
   ------------------
   -- Unquote each token (interprets shell quoting rules)
-  local rg_args = shell_unquote_all(tokens)
+  local rg_args = posix_unquote_all(tokens)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then

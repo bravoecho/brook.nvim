@@ -12,7 +12,7 @@ local ESCAPE = '\\'
 ---   - Backslash escapes: foo\ bar is a single token (outside single quotes)
 ---   - POSIX single-quote escape: 'it'\''s' is a single token
 ---
---- Quotes and escapes are preserved in the output tokens; use shell_unquote
+--- Quotes and escapes are preserved in the output tokens; use posix_unquote
 --- to interpret them.
 ---
 ---@param qargs string The raw command-line string to tokenise

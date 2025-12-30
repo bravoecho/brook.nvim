@@ -1,3 +1,5 @@
+---@module 'brook.posix_unquote'
+
 local M = {}
 
 --- The set of characters that can be escaped in a POSIX shell.
@@ -39,7 +41,7 @@ local ESCAPE = '\\'
 ---
 ---@param token string The shell token to unquote
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
-function M.shell_unquote(token)
+function M.posix_unquote(token)
   local state = states.NORMAL
   local result = {}
   local len = #token
@@ -111,14 +113,14 @@ end
 ---
 ---@param tokens string[]|nil List of shell tokens
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
-function M.shell_unquote_all(tokens)
+function M.posix_unquote_all(tokens)
   if not tokens then
     return nil
   end
 
   local result = {}
   for _, token in ipairs(tokens) do
-    local unquoted = M.shell_unquote(token)
+    local unquoted = M.posix_unquote(token)
     if not unquoted then return nil end
     table.insert(result, unquoted)
   end

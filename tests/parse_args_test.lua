@@ -7,7 +7,7 @@ local deep_eq = h.deep_eq
 local parse_args = require('brook.parse_args').parse_args
 
 -- NOTE: `parse_args` receives already-unquoted tokens. Shell unquoting
--- behaviour is tested separately in shell_unquote_test.lua.
+-- behaviour is tested separately in posix_unquote_test.lua.
 
 -- Helper: default result with pattern set
 local function result(pattern, overrides)
@@ -163,7 +163,8 @@ test('full: options, pattern, path', function()
 end)
 
 test('full: multiple named args, pattern with spaces, path', function()
-  deep_eq(parse_args({ '-H', '--vimgrep', 'my pattern', 'src/' }), result('my pattern', { output_format = 'one-line-per-match' }))
+  deep_eq(parse_args({ '-H', '--vimgrep', 'my pattern', 'src/' }),
+    result('my pattern', { output_format = 'one-line-per-match' }))
 end)
 
 test('full: complex command with pattern containing special chars', function()
@@ -453,7 +454,8 @@ test('case: last flag wins (-s then -i)', function()
 end)
 
 test('case: last flag wins (long form mixed)', function()
-  deep_eq(parse_args({ '--ignore-case', '--case-sensitive', '-i', 'pattern' }), result('pattern', { case = 'case-insensitive' }))
+  deep_eq(parse_args({ '--ignore-case', '--case-sensitive', '-i', 'pattern' }),
+    result('pattern', { case = 'case-insensitive' }))
 end)
 
 test('case: unset by default', function()
@@ -572,7 +574,7 @@ end)
 --- Patterns with embedded quotes (post-unquoting) -----------------------------
 --------------------------------------------------------------------------------
 
--- After shell_unquote, the pattern itself may contain quote characters
+-- After posix_unquote, the pattern itself may contain quote characters
 test('pattern: contains single quote', function()
   deep_eq(parse_args({ "it's" }), result("it's"))
 end)
@@ -660,7 +662,8 @@ test('real-world: pcre2 regex', function()
 end)
 
 test('real-world: vimgrep mode explicit', function()
-  deep_eq(parse_args({ '--vimgrep', '-i', 'pattern' }), result('pattern', { case = 'case-insensitive', output_format = 'one-line-per-match' }))
+  deep_eq(parse_args({ '--vimgrep', '-i', 'pattern' }),
+    result('pattern', { case = 'case-insensitive', output_format = 'one-line-per-match' }))
 end)
 
 test('real-world: line-number mode', function()

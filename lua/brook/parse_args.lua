@@ -1,11 +1,11 @@
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
 -- ripgrep help.
-local rg_named_args        = require('brook.lib.rg_named_args')
-local types                = require('brook.types')
-local rg_flags             = rg_named_args.flags
-local rg_options           = rg_named_args.options
+local rg_named_args = require('brook.lib.rg_named_args')
+local types = require('brook.types')
+local rg_flags = rg_named_args.flags
+local rg_options = rg_named_args.options
 
-local M                    = {}
+local M = {}
 
 local POSITIONAL_SEPARATOR = '--'
 
@@ -21,7 +21,7 @@ local POSITIONAL_SEPARATOR = '--'
 --- patterns in an alternation for more accurate highlighting may be added in
 --- the future.
 ---
---- NOTE: The tokens must be already shell-unquoted (call shell_unquote_all to
+--- NOTE: The tokens must be already shell-unquoted (call posix_unquote_all to
 --- pre-process them).
 ---
 ---@param tokens string[]|nil A list of shell-unquoted command-line tokens
