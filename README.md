@@ -29,9 +29,7 @@ sits in the sweet spot for power users:
 * **Native Search Integration**: Finding text is only half the battle. Brook
   accurately translates ripgrep patterns to the search register, adds them to
   search history, and enables highlighting. This turns search results into
-  editable targets, enabling powerful automation. Explore the
-  [pattern translation spec](./tests/pattern_spec.md) for more details. This
-  feature can be disabled via configuration if preferred.
+  editable targets.
 
   Search-and-replace is a native Neovim feature, use:
 
@@ -69,11 +67,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   -- Lazy-loading
   ---------------
   -- Lazy-load by setting cmd and keys.
-  cmd = { 'Rg' },
+  cmd = { 'Rg', 'RgStop' },
   keys = {
     -- Same as 'keymap', to preserve lazy loading
     { '<leader>g', mode = 'n', desc = 'Grep (word under cursor)' },
     { '<leader>g', mode = 'x', desc = 'Grep (visual selection)' },
+    -- Same as 'stop_keymap', to preserve lazy loading
+    { '<leader>G', mode = 'n', desc = 'Stop ripgrep search' },
   },
 
   -- Default options
@@ -82,6 +82,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Basics
     ---------
     keymap = '<leader>g', -- Same as 'keys', to preserve lazy loading.
+    stop_keymap = '<leader>G', -- Same as 'keys', to preserve lazy loading.
     max_results = 1000, -- Valid values: 1-10,000.
 
     -- Performance & Responsiveness
@@ -202,8 +203,8 @@ extension of Vim:
   and highlighting respect your choice.
 
 * **Stopping Long Searches**: If a search is taking too long or returning too
-  many results, use `:RgStop` to terminate it immediately. The results collected
-  so far remain in the quickfix list.
+  many results, press `<leader>G` (or use `:RgStop`) to terminate it immediately.
+  The results collected so far remain in the quickfix list.
 
 * **One Result Per Line**: By default, Brook shows one quickfix entry per match,
   meaning a line with multiple matches appears multiple times. If you prefer

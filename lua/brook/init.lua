@@ -91,6 +91,10 @@ function M.setup(cfg)
   ------------------------------------------------------------------------------
   vim.keymap.set({ 'n' }, cfg.keymap, ':Rg ', { desc = 'Grep with rg' })
 
+  -- Stop command
+  ------------------------------------------------------------------------------
+  vim.keymap.set({ 'n' }, cfg.stop_keymap, rg.user_stop, { desc = 'Stop current ripgrep search' })
+
   -- Visual selection (single line)
   ---------------------------------
   vim.keymap.set({ 'x' }, cfg.keymap, function()

@@ -3,6 +3,7 @@
 
 ---@class brook.UserConfig
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')
+---@field stop_keymap? string Keymap for stopping searches (default: '<leader>G')
 ---@field max_results? integer Maximum results before stopping (default: 1000, range: 1-10,000)
 ---@field max_batch_size? integer Maximum number of results to buffer before flushing (default: 100)
 ---@field flush_throttle_ms? integer A short time, in milliseconds, to give Neovim the opportunity to redraw between batches (default: 10)
@@ -45,6 +46,7 @@ M.output_format = {
 ---@type brook.UserConfig
 M.defaults = {
   keymap = '<leader>g',
+  stop_keymap = '<leader>G',
   max_results = 1000,
   max_batch_size = 100,
   flush_throttle_ms = 10,
