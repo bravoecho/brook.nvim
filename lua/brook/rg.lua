@@ -232,8 +232,8 @@ end
 ---@param cmd_args string The raw command-line arguments
 ---@param cfg? brook.ExecConfig Plugin options
 function M.raw(cmd_args, cfg)
-  -- Step 1: Tokenise
-  -------------------
+  -- 1. Tokenise
+  --------------
   -- Tokenise the command string (split on whitespace, respect quotes)
   local tokens = tokenise(cmd_args)
 
@@ -242,8 +242,8 @@ function M.raw(cmd_args, cfg)
     return
   end
 
-  -- Step 2: Unquote
-  ------------------
+  -- 2. Unquote
+  -------------
   -- Unquote each token (interprets shell quoting rules)
   local rg_args = posix_unquote_all(tokens)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
@@ -253,20 +253,20 @@ function M.raw(cmd_args, cfg)
     return
   end
 
-  -- Step 3: Parse ripgrep arguments
-  ----------------------------------
+  -- 3. Parse ripgrep arguments
+  -----------------------------
   -- Minimal parsing, just enough to support Neovim features
   local parsed_args = parse_args(rg_args)
 
-  -- Step 4: Enforce single-line search
-  -------------------------------------
+  -- 4. Enforce single-line search
+  --------------------------------
   if parsed_args.multiline then
     vim.notify('rg: multiline search not supported', vim.log.levels.ERROR)
     return
   end
 
-  -- Step 5: Run the search
-  -------------------------
+  -- 5. Run the search
+  --------------------
   M._exec({
     args = rg_args,
     parsed_args = parsed_args,
@@ -282,6 +282,30 @@ end
 ---@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
 ---@field cfg brook.ExecConfig Control how search is performed and results displayed
 ---@field title string Used to provide feedback to the user
+
+--- Phases
+---
+--- Two-phase consumer strategy to avoid redraw starvation without forcing
+--- redraws:
+---
+---   * Phase 1 (first paint): flush just enough items to fill the target
+---     quickfix window height. Phase 1 never self-schedules (no timers,
+---     recursion or defer_fn): it runs only when invoked by the producer, and
+---     then returns, allowing the main loop to become idle and redraw. See
+---     also flush_phase1.
+---
+---   * Phase 2 (throughput): flushes remaining queued items in bounded batches
+---     (max_batch_size) using cooperative scheduling (vim.schedule). Each
+---     batch schedules at most one subsequent batch, guaranteeing the main
+---     loop gets chances to redraw between updates.
+---
+--- Only phase 2 may schedule flushing.
+---@enum
+local phases = {
+  phase_1 = 'phase-1',
+  phase_2 = 'phase-2',
+  done = 'done',
+}
 
 --- Runs ripgrep with the given argument array.
 ---
@@ -335,8 +359,8 @@ function M._exec(ctx)
   -------------------------
 
   -- NOTE: Limit previews to 300 bytes, to avoid memory explosion on abnormally
-  -- long lines. Matching will still include the whole, only the preview is
-  -- truncated.
+  -- long lines. Matching will still include the whole line, only the preview
+  -- is truncated.
   local cmd = { 'rg', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
 
   -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
@@ -390,30 +414,6 @@ function M._exec(ctx)
   local flushed_results = 0
   local stopped_at_limit = false
   local did_resize = false
-
-  -- Phases
-  --
-  -- Two-phase consumer strategy to avoid redraw starvation without forcing
-  -- redraws:
-  --
-  --   * Phase 1 (first paint): flush just enough items to fill the target
-  --     quickfix window height. Phase 1 never self-schedules (no timers,
-  --     recursion or defer_fn): it runs only when invoked by the producer, and
-  --     then returns, allowing the main loop to become idle and redraw. See
-  --     also flush_phase1.
-  --
-  --   * Phase 2 (throughput): flushes remaining queued items in bounded batches
-  --     (max_batch_size) using cooperative scheduling (vim.schedule). Each
-  --     batch schedules at most one subsequent batch, guaranteeing the main
-  --     loop gets chances to redraw between updates.
-  --
-  -- Only phase 2 may schedule flushing.
-  ---@enum
-  local phases = {
-    phase_1 = 'phase-1',
-    phase_2 = 'phase-2',
-    done = 'done',
-  }
 
   local current_phase = phases.phase_1
 
@@ -529,13 +529,14 @@ function M._exec(ctx)
   end
 
   flush_phase2 = function()
-    phase2_scheduled = false
-
     if current_phase ~= phases.phase_2 or queue.is_empty() then
       return
     end
 
     update_quickfix(queue.pull(max_batch_size))
+
+    -- Wait until quickfix is updated before unlocking next flush.
+    phase2_scheduled = false
 
     if not queue.is_empty() then
       schedule_flush_phase2()
@@ -556,6 +557,7 @@ function M._exec(ctx)
   ---
   --- See also the Phases section above.
   local flush_phase1 = function()
+    -- TODO: check if phase check is needed (it's already guarded at call sites).
     if current_phase ~= phases.phase_1 or queue.is_empty() then
       return
     end
@@ -573,10 +575,15 @@ function M._exec(ctx)
 
     update_quickfix(items)
 
-    if remaining_visible_slots() == 0 then
-      current_phase = phases.phase_2
-      schedule_flush_phase2()
-    end
+    -- NOTE: Transitioning to phase 2 is not needed here. Waiting until the
+    -- next flush attempt by the producer will in fact give an even better
+    -- chance to have an organic redraw, even when the throttle values is very
+    -- low.
+    --
+    -- if remaining_visible_slots() == 0 then
+    --   current_phase = phases.phase_2
+    --   schedule_flush_phase2()
+    -- end
   end
 
   --- request_flush will either
