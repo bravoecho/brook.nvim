@@ -313,21 +313,22 @@ exploration across many files**.
   `rg`. This prevents "UI lag" because the quickfix list is updated
   incrementally rather than waiting for the entire search to finish.
 
-* **Batching**: The `max_batch_size` option controls how frequently Brook
-  updates the quickfix list. More frequent updates would feel more responsive,
-  but each UI update is expensive and slows down the search. Also, results
-  beyond the quickfix window height are below the fold, and would not benefit
-  from immediate flushing. After the initial results, batching kicks in, and
-  results are then flushed only after `max_batch_size` entries. Internally, the
-  same value is also used as the queue threshold for requesting an update.
+* **Batching**: Results are flushed to the quickfix list in three phases.
+  Phase 1 fills the visible quickfix window as quickly as possible for
+  immediate feedback. Phase 2, while ripgrep is still running, flushes in
+  bounded batches (`max_batch_size` entries) with optional throttling to
+  balance throughput against UI responsiveness. Phase 3, after ripgrep exits,
+  drains any remaining queued entries quickly using larger batches (10x
+  `max_batch_size`) and a minimal interval (1ms), so final results appear
+  promptly without the throttling that was useful during active search.
 
 * **Throttling**: Under extremely fast output scenarios, redraw starvation can
   still happen even if flushing is batched. For this reason a tiny delay is
-  introduced after each flush (in the second phase of the search, after the
-  visible quickfix window is filled). You are encouraged to experiment with
-  different values of `flush_throttle_ms` depending on preference and hardware.
-  Can be disabled completely by setting `flush_throttle_ms` to 0 (not
-  recommended).
+  introduced after each flush during phase 2 (after the visible quickfix
+  window is filled, while ripgrep is still running). You are encouraged to
+  experiment with different values of `flush_throttle_ms` depending on
+  preference and hardware. Can be disabled completely by setting
+  `flush_throttle_ms` to 0 (not recommended).
 
 * **Lazy execution**: Pattern translation and search register handling are
   performed only when-and-if at least one result is found.

@@ -34,7 +34,7 @@
 --- Workflow:
 ---
 --- To preserve perceived responsiveness without forcing redraws, results are
---- handled via a producer/consumer pipeline and two consumer phases.
+--- handled via a producer/consumer pipeline and three consumer phases.
 ---
 --- Producer and consumer keep track of the entries separately:
 ---
@@ -44,7 +44,7 @@
 ---   * UI-related operations (phase completion, resizing) are based on flushed
 ---     items, rather than parsed items
 ---
---- The pipeline consists of four actors.
+--- The pipeline consists of five actors.
 ---
 ---   1. Producer (`on_stdout`):
 ---
@@ -70,6 +70,9 @@
 ---
 ---        * phase 2 uses `pull(max_batch_size)` repeatedly to flush bounded
 ---          batches, yielding to the main loop between batches
+---
+---        * phase 3 uses `pull(max_batch_size * 10)` to drain quickly after
+---          ripgrep exits
 ---
 ---   3. Phase-1 consumer (`flush_phase1`):
 ---
@@ -109,7 +112,19 @@
 ---      to prevent schedule chaining and give the UI time to redraw in
 ---      extra-fast output scenarios.
 ---
----      Only phase 2 is allowed to self-schedule follow-up flushing.
+---      Only phases 2 and 3 are allowed to self-schedule follow-up flushing.
+---
+---   5. Phase-3 consumer (`flush_phase3`):
+---
+---      - triggered by `on_exit` when ripgrep finishes
+---      - drains remaining queued entries quickly using larger batches
+---        (10x max_batch_size) and a minimal interval (1ms)
+---      - still yields to the event loop between batches to allow UI redraws
+---      - notifies the user of completion once the queue is fully drained
+---
+---      Phase 3 exists because phase 2's throttling, while useful during active
+---      search to preserve responsiveness, would feel sluggish once the search
+---      is complete. Users expect the final results to appear promptly.
 ---
 ---@module 'brook.rg'
 
@@ -123,6 +138,10 @@ local phase2_timer = nil
 --- Used to guard the schedule chaining use case (flush_throttle_ms == 0)
 local phase2_scheduled = false
 
+--- Timer for phase 3 (post-exit drain).
+---@type uv.uv_timer_t|nil
+local phase3_timer = nil
+
 --- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
 local cancel_phase2_scheduling = function()
   if phase2_timer then
@@ -130,6 +149,14 @@ local cancel_phase2_scheduling = function()
     phase2_timer = nil
   end
   phase2_scheduled = false
+end
+
+--- Cancels phase 3 scheduling.
+local cancel_phase3_scheduling = function()
+  if phase3_timer then
+    phase3_timer:stop()
+    phase3_timer = nil
+  end
 end
 
 --- Whether the user_stop() function was called.
@@ -146,6 +173,7 @@ local M = {}
 
 function M.user_stop()
   cancel_phase2_scheduling()
+  cancel_phase3_scheduling()
 
   if active_rg_job_id then
     stopped_by_user = true
@@ -285,7 +313,7 @@ end
 
 --- Phases
 ---
---- Two-phase consumer strategy to avoid redraw starvation without forcing
+--- Three-phase consumer strategy to avoid redraw starvation without forcing
 --- redraws:
 ---
 ---   * Phase 1 (first paint): flush just enough items to fill the target
@@ -294,16 +322,25 @@ end
 ---     then returns, allowing the main loop to become idle and redraw. See
 ---     also flush_phase1.
 ---
----   * Phase 2 (throughput): flushes remaining queued items in bounded batches
----     (max_batch_size) using cooperative scheduling (vim.schedule). Each
----     batch schedules at most one subsequent batch, guaranteeing the main
+---   * Phase 2 (ripgrep running): flushes remaining queued items in bounded
+---     batches (max_batch_size) using cooperative scheduling.
+---     Each batch schedules at most one subsequent batch, ensuring the main
 ---     loop gets chances to redraw between updates.
 ---
---- Only phase 2 may schedule flushing.
+---   * Phase 3 (post-exit drain): when ripgrep finishes, any entries still
+---     in the queue need to be flushed. Phase 2's throttling, useful to
+---     preserve responsiveness, would feel sluggish once the search is
+---     complete. So phase 3 uses a much shorter interval (1ms) and larger
+---     batches (10x max_batch_size), to drain quickly while still yielding
+---     to the event loop for UI redraws.
+---
+--- Only phases 2 and 3 may schedule flushing.
+---
 ---@enum
 local phases = {
   phase_1 = 'phase-1',
   phase_2 = 'phase-2',
+  phase_3 = 'phase-3',
   done = 'done',
 }
 
@@ -321,6 +358,7 @@ function M._exec(ctx)
   stopped_by_user = false
 
   cancel_phase2_scheduling()
+  cancel_phase3_scheduling()
 
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
@@ -420,10 +458,8 @@ function M._exec(ctx)
   -- FIFO queue between rg and quickfix.
   --
   -- The queue decouples parsing cadence from UI cadence:
-  --   * phase 1 uses pull(n) to flush just enough results to fill the visible
-  --     quickfix window
-  --   * phase 2 uses pull(max_batch_size) repeatedly, self-scheduling between
-  --     batches
+  --   * phase 1 pulls just enough results to fill the visible quickfix window
+  --   * phase 2 and 3 pull in batches, and self-reschedule
   local queue = fifo.new()
 
   --- Counts how many results are still missing before reaching the target
@@ -494,8 +530,15 @@ function M._exec(ctx)
     end
   end
 
-  --- Pulls batches of results from the queue and renders them. May be scheduled.
-  --- Reschedules itself if there are pending entries in the queue.
+  --- Phase 2 consumer: flush while ripgrep is still running.
+  ---
+  ---   * Pulls batches of results from the queue and renders them.
+  ---
+  ---   * Is triggered by phase 1.
+  ---
+  ---   * Reschedules itself if there are pending entries in the queue.
+  ---
+  --- See also the `phases` enum.
   local flush_phase2
 
   --- Schedules the next flush in phase 2.
@@ -543,6 +586,11 @@ function M._exec(ctx)
     end
   end
 
+  local start_phase2 = function()
+    current_phase = phases.phase_2
+    schedule_flush_phase2()
+  end
+
   --- Phase-1 consumer: perform the first meaningful "paint".
   ---
   ---   * Flushes *at most* the number of items needed to reach the visible
@@ -555,7 +603,7 @@ function M._exec(ctx)
   ---   * Owns the phase transition: when the visible region is filled, it moves
   ---     the consumer into phase2 (throughput mode).
   ---
-  --- See also the Phases section above.
+  --- See also the `phases` enum.
   local flush_phase1 = function()
     -- TODO: check if phase check is needed (it's already guarded at call sites).
     if current_phase ~= phases.phase_1 or queue.is_empty() then
@@ -564,26 +612,19 @@ function M._exec(ctx)
 
     local remaining = remaining_visible_slots()
     if remaining == 0 then
-      current_phase = phases.phase_2
-      schedule_flush_phase2()
+      start_phase2()
       return
     end
 
     -- Pull only the minimum necessary to fill the quickfix window above the
     -- fold.
-    local items = queue.pull(remaining)
+    update_quickfix(queue.pull(remaining))
 
-    update_quickfix(items)
-
-    -- NOTE: Transitioning to phase 2 is not needed here. Waiting until the
-    -- next flush attempt by the producer will in fact give an even better
-    -- chance to have an organic redraw, even when the throttle values is very
-    -- low.
-    --
-    -- if remaining_visible_slots() == 0 then
-    --   current_phase = phases.phase_2
-    --   schedule_flush_phase2()
-    -- end
+    -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
+    -- the next `on_stdout` run.
+    if remaining_visible_slots() == 0 then
+      start_phase2()
+    end
   end
 
   --- request_flush will either
@@ -672,9 +713,10 @@ function M._exec(ctx)
 
   -- 3. Error message handling
   ----------------------------
+
+  local stderr_lines = {}
   -- NOTE: stderr is buffered (see jobstart options below), so this callback
   -- receives all stderr output in a single call when the job exits.
-  local stderr_lines = {}
   local on_stderr = function(_, data, _)
     if not data or #data == 0 then
       return
@@ -688,25 +730,23 @@ function M._exec(ctx)
   -- 4. Command exit handling
   ---------------------------
 
-  --- Performs a final flush, both phase-1 and phase-2.
-  local flush_final = function()
-    if current_phase == phases.phase_1 then
-      -- in the unlikely circumstance that the ripgrep process exits before
-      -- Neovim had a chance to open the quickfix.
-      flush_phase1()
-    end
-    while not queue.is_empty() do
-      update_quickfix(queue.pull(max_batch_size))
-    end
-    current_phase = phases.done
-  end
+  local phase3_drain_interval_ms = 1
 
-  --- on_exit is a final "trigger" for consumers: it ensures anything still in
-  --- the stdout buffer/queue becomes visible even if rg stops suddenly.
-  local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    cancel_phase2_scheduling()
+  -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
+  -- and we want to drain quickly. Each batch still yields to the event loop,
+  -- so larger batches just mean fewer round-trips.
+  local phase3_batch_size = max_batch_size * 10
 
-    flush_final()
+  --- Exit state captured by on_exit, used by notify_completion.
+  local exit_state = nil
+
+  --- Shows the final notification once all results have been flushed.
+  local notify_completion = function()
+    if not exit_state then
+      return
+    end
+
+    local exit_code = exit_state.exit_code
 
     if exit_code == 0 then
       vim.notify(string.format('rg: %d matches', total_results), vim.log.levels.INFO)
@@ -743,6 +783,50 @@ function M._exec(ctx)
 
     table.insert(stderr_lines, 'rg: exited with code ' .. exit_code)
     vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
+  end
+
+  --- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
+  ---
+  ---   * Triggered by `on_exit`.
+  ---
+  ---   * Self reschedules until the queue is drained.
+  ---
+  ---   * Notifies user of completion.
+  ---
+  --- See also the `phases` enum.
+  local flush_phase3
+  flush_phase3 = function()
+    update_quickfix(queue.pull(phase3_batch_size))
+
+    if queue.is_empty() then
+      current_phase = phases.done
+      notify_completion()
+      return
+    end
+
+    phase3_timer = vim.defer_fn(flush_phase3, phase3_drain_interval_ms)
+  end
+
+  --- Starts phase 3: cancels phase 2 and begins fast drain.
+  local start_phase3 = function()
+    cancel_phase2_scheduling()
+    current_phase = phases.phase_3
+    flush_phase3()
+  end
+
+  --- on_exit is a final trigger for consumers: it ensures anything still in
+  --- the stdout buffer/queue becomes visible even if rg stops suddenly.
+  local on_exit = vim.schedule_wrap(function(_, exit_code, _)
+    -- Capture exit state for notify_completion (called at end of phase 3).
+    exit_state = { exit_code = exit_code }
+
+    if current_phase == phases.phase_1 then
+      -- Handle edge case where ripgrep exited before the quickfix window was
+      -- fully populated. Flush synchronously to ensure results are visible.
+      flush_phase1()
+    end
+
+    start_phase3()
   end)
 
   -- 5. Run command
@@ -763,7 +847,7 @@ function M._exec(ctx)
   })
 
   if active_rg_job_id <= 0 then
-    vim.notify('failed to start rg', vim.log.levels.ERROR)
+    vim.notify('rg: failed to start: is ripgrep installed?', vim.log.levels.ERROR)
     active_rg_job_id = nil
   end
 end
