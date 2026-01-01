@@ -52,12 +52,18 @@ function M.setup(cfg)
     set_search_register = cfg.set_search_register,
   }
 
+  local desc = {
+    search = 'Search with ripgrep',
+    selection = 'Search selection with ripgrep',
+    stop = 'Stop ripgrep search',
+  }
+
   ------------------------------------------------------------------------------
   --- Commands -----------------------------------------------------------------
   ------------------------------------------------------------------------------
 
   -- Search command
-  ------------------------------------------------------------------------------
+  -----------------
   vim.api.nvim_create_user_command('Rg', function(cmd_opts)
     local args = vim.trim(cmd_opts.args)
 
@@ -77,23 +83,19 @@ function M.setup(cfg)
     -- General case
     ---------------
     rg.raw(cmd_opts.args, exec_cfg)
-  end, { nargs = '*', desc = 'Grep with ripgrep', complete = 'file' })
+  end, { nargs = '*', desc = desc.search, complete = 'file' })
 
   -- Stop command
-  ------------------------------------------------------------------------------
-  vim.api.nvim_create_user_command('RgStop', rg.user_stop, { desc = 'Stop current ripgrep search' })
+  ---------------
+  vim.api.nvim_create_user_command('RgStop', rg.user_stop, { desc = desc.stop })
 
   ------------------------------------------------------------------------------
   --- Keymaps ------------------------------------------------------------------
   ------------------------------------------------------------------------------
 
   -- Open command
-  ------------------------------------------------------------------------------
-  vim.keymap.set({ 'n' }, cfg.keymap, ':Rg ', { desc = 'Grep with rg' })
-
-  -- Stop command
-  ------------------------------------------------------------------------------
-  vim.keymap.set({ 'n' }, cfg.stop_keymap, rg.user_stop, { desc = 'Stop current ripgrep search' })
+  ---------------
+  vim.keymap.set({ 'n' }, cfg.keymap, ':Rg ', { desc = desc.search })
 
   -- Visual selection (single line)
   ---------------------------------
@@ -112,7 +114,11 @@ function M.setup(cfg)
     end
 
     rg.selection(text, exec_cfg)
-  end, { desc = 'Grep visual selection with ripgrep' })
+  end, { desc = desc.selection })
+
+  -- Stop command
+  ---------------
+  vim.keymap.set({ 'n' }, cfg.stop_keymap, rg.user_stop, { desc = desc.stop })
 end
 
 return M
