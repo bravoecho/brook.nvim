@@ -193,7 +193,7 @@ end
 --- quotes included.
 ---
 ---@param text string The literal text to search for
----@param cfg? brook.ExecConfig Plugin options
+---@param cfg brook.ExecConfig Plugin options
 function M.selection(text, cfg)
   M._exec({
     args = { '--', text },
@@ -205,7 +205,7 @@ function M.selection(text, cfg)
       output_format = nil,
       multiline = false,
     },
-    cfg = cfg or {},
+    cfg = cfg,
     title = 'rg -F ' .. text,
   })
 end
@@ -219,7 +219,7 @@ end
 --- is already a plain string without any shell quoting.
 ---
 ---@param word string The word to search for (typically from <cword>)
----@param cfg? brook.ExecConfig Plugin options
+---@param cfg brook.ExecConfig Plugin options
 function M.word(word, cfg)
   M._exec({
     args = { '--', word },
@@ -231,7 +231,7 @@ function M.word(word, cfg)
       output_format = nil,
       multiline = false,
     },
-    cfg = cfg or {},
+    cfg = cfg,
     title = 'rg -w ' .. word,
   })
 end
@@ -258,7 +258,7 @@ end
 ---   `:Rg -w 'foo bar'`         -> `rg --vimgrep -w "foo bar"`
 ---
 ---@param cmd_args string The raw command-line arguments
----@param cfg? brook.ExecConfig Plugin options
+---@param cfg brook.ExecConfig Plugin options
 function M.raw(cmd_args, cfg)
   -- 1. Tokenise
   --------------
@@ -298,7 +298,7 @@ function M.raw(cmd_args, cfg)
   M._exec({
     args = rg_args,
     parsed_args = parsed_args,
-    cfg = cfg or {},
+    cfg = cfg,
     title = 'rg ' .. cmd_args,
   })
 end
