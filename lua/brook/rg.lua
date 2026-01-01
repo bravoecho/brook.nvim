@@ -368,21 +368,11 @@ function M._exec(ctx)
   -- 0. Setup
   -----------
 
-  local parsed_args = ctx.parsed_args
   local cfg = ctx.cfg
-  local title = ctx.title
-
-  local max_results = cfg.max_results
-  local qf_win_height = cfg.qf_win_height
-  local qf_open = cfg.qf_open
-  local qf_auto_resize = cfg.qf_auto_resize
-  local max_batch_size = cfg.max_batch_size
-  local flush_throttle_ms = cfg.flush_throttle_ms
-  local set_search_register = cfg.set_search_register
 
   -- Determine output format: command-line flags override config.
   -- Precedence: parsed_args (command line) > opts (config) > default
-  local output_format = parsed_args.output_format
+  local output_format = ctx.parsed_args.output_format
       or cfg.output_format
       or types.output_format.one_line_per_match
 
@@ -391,7 +381,7 @@ function M._exec(ctx)
       and M._parse_line_number
       or M._parse_vimgrep
 
-  vim.notify(title, vim.log.levels.INFO)
+  vim.notify(ctx.title, vim.log.levels.INFO)
 
   -- 1. Build command array
   -------------------------
@@ -408,22 +398,20 @@ function M._exec(ctx)
   -- Only add the flag if the user hasn't already specified one on the command
   -- line (parsed_args.output_format would be non-nil in that case).
 
-  if parsed_args.output_format == nil then
-    if output_format == types.output_format.unique_lines then
-      table.insert(cmd, '--line-number')
-    else
-      table.insert(cmd, '--vimgrep')
-    end
+  if output_format == types.output_format.unique_lines then
+    table.insert(cmd, '--line-number')
+  else
+    table.insert(cmd, '--vimgrep')
   end
-  if parsed_args.word then
+  if ctx.parsed_args.word then
     table.insert(cmd, '--word-regexp')
   end
-  if parsed_args.fixed then
+  if ctx.parsed_args.fixed then
     table.insert(cmd, '--fixed-strings')
   end
-  if parsed_args.case == types.search_case.sensitive then
+  if ctx.parsed_args.case == types.search_case.sensitive then
     table.insert(cmd, '--case-sensitive')
-  elseif parsed_args.case == types.search_case.insensitive then
+  elseif ctx.parsed_args.case == types.search_case.insensitive then
     table.insert(cmd, '--ignore-case')
   end
   for _, arg in ipairs(ctx.args) do
@@ -434,7 +422,7 @@ function M._exec(ctx)
   ----------------------------
 
   local is_first_batch = true
-  local qflist_operation = 'r' -- first time replace the content, then flip to 'a' (append)
+  local qflist_operation = 'r' -- first time replace the content, then switch to 'a' (append)
 
   -- Counters and flags
   --
@@ -465,7 +453,7 @@ function M._exec(ctx)
   --- Counts how many results are still missing before reaching the target
   --- quickfix window height.
   local remaining_visible_slots = function()
-    return math.max(0, qf_win_height - flushed_results)
+    return math.max(0, cfg.qf_win_height - flushed_results)
   end
 
   --- Performs Neovim-side side effects:
@@ -486,21 +474,21 @@ function M._exec(ctx)
     -- ii. Open (on new searches)
     ------------------------------
     if is_first_batch then
-      if qf_open then
-        if qf_auto_resize then
+      if cfg.qf_open then
+        if cfg.qf_auto_resize then
           -- Open directly with the size corresponding to initial content, to
           -- avoid "flickering".
           vim.cmd('copen ' .. current_buffer_size)
         else
           -- Set the final height right away if the user has disabled auto-resizing.
-          vim.cmd('copen ' .. qf_win_height)
+          vim.cmd('copen ' .. cfg.qf_win_height)
         end
       end
-      if set_search_register then
-        M._set_search_register(parsed_args.pattern, {
-          word = parsed_args.word,
-          fixed = parsed_args.fixed,
-          case = parsed_args.case,
+      if cfg.set_search_register then
+        M._set_search_register(ctx.parsed_args.pattern, {
+          word = ctx.parsed_args.word,
+          fixed = ctx.parsed_args.fixed,
+          case = ctx.parsed_args.case,
         })
       end
       is_first_batch = false
@@ -509,7 +497,7 @@ function M._exec(ctx)
     -- iii. Resize
     --------------
     -- Respect user config if auto-resizing was disabled.
-    if not qf_auto_resize then
+    if not cfg.qf_auto_resize then
       return
     end
 
@@ -519,11 +507,11 @@ function M._exec(ctx)
       return
     end
 
-    if previous_flushed < qf_win_height then
+    if previous_flushed < cfg.qf_win_height then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(flushed_results, qf_win_height))
-        if flushed_results >= qf_win_height then
+        vim.api.nvim_win_set_height(qf_winid, math.min(flushed_results, cfg.qf_win_height))
+        if flushed_results >= cfg.qf_win_height then
           did_resize = true
         end
       end
@@ -549,7 +537,7 @@ function M._exec(ctx)
   --- Called both by the producer (to trigger phase-2 work) and by flush_phase2
   --- itself (to schedule the next batch).
   local schedule_flush_phase2 = function()
-    if flush_throttle_ms > 0 then
+    if cfg.flush_throttle_ms > 0 then
       -- In timer/throttle mode the timer itself is the guard.
       -- ensure at most one timer is present at any given time
       if phase2_timer then
@@ -560,7 +548,7 @@ function M._exec(ctx)
         -- timer has triggered, can be removed
         phase2_timer = nil
         flush_phase2()
-      end, flush_throttle_ms)
+      end, cfg.flush_throttle_ms)
     else
       -- In schedule mode: a separate guard is needed to prevent multiple schedules.
       if phase2_scheduled then
@@ -576,7 +564,7 @@ function M._exec(ctx)
       return
     end
 
-    update_quickfix(queue.pull(max_batch_size))
+    update_quickfix(queue.pull(cfg.max_batch_size))
 
     -- Wait until quickfix is updated before unlocking next flush.
     phase2_scheduled = false
@@ -683,7 +671,7 @@ function M._exec(ctx)
     end
 
     for _, line in ipairs(data) do
-      if total_results >= max_results then
+      if total_results >= cfg.max_results then
         -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
         -- and to avoid leaving Neovim in a slowed state after the search.
         stopped_at_limit = true
@@ -703,7 +691,7 @@ function M._exec(ctx)
 
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
-      if queue.len() >= max_batch_size then
+      if queue.len() >= cfg.max_batch_size then
         request_flush()
       end
     end
@@ -735,7 +723,7 @@ function M._exec(ctx)
   -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
   -- and we want to drain quickly. Each batch still yields to the event loop,
   -- so larger batches just mean fewer round-trips.
-  local phase3_batch_size = max_batch_size * 10
+  local phase3_batch_size = cfg.max_batch_size * 10
 
   --- Exit state captured by on_exit, used by notify_completion.
   local exit_state = nil
@@ -759,8 +747,8 @@ function M._exec(ctx)
     end
 
     if stopped_at_limit then
-      local msg = 'rg: stopped at limit (' .. max_results .. ')'
-      if max_results < types.max_max_results then
+      local msg = 'rg: stopped at limit (' .. cfg.max_results .. ')'
+      if cfg.max_results < types.max_max_results then
         msg = msg .. ' (configure in setup)'
       end
       if #stderr_lines > 0 then
