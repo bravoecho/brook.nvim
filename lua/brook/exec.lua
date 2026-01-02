@@ -290,37 +290,7 @@ function M._exec(ctx)
   -- 1. Build command array
   -------------------------
 
-  -- NOTE: Limit previews to 300 characters, to avoid memory explosion on
-  -- abnormally long lines. Matching will still include the whole line, only
-  -- the preview is truncated.
-  local cmd = { 'rg', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
-
-  -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
-  -- This omits the column number, causing ripgrep to emit each line only once
-  -- regardless of how many matches it contains.
-  --
-  -- Only add the flag if the user hasn't already specified one on the command
-  -- line (parsed_args.output_format would be non-nil in that case).
-
-  if cfg.output_format == types.output_format.unique_lines then
-    table.insert(cmd, '--line-number')
-  else
-    table.insert(cmd, '--vimgrep')
-  end
-  if ctx.parsed_args.word then
-    table.insert(cmd, '--word-regexp')
-  end
-  if ctx.parsed_args.fixed then
-    table.insert(cmd, '--fixed-strings')
-  end
-  if ctx.parsed_args.case == types.search_case.sensitive then
-    table.insert(cmd, '--case-sensitive')
-  elseif ctx.parsed_args.case == types.search_case.insensitive then
-    table.insert(cmd, '--ignore-case')
-  end
-  for _, arg in ipairs(ctx.args) do
-    table.insert(cmd, arg)
-  end
+  local cmd = M._build_rg_cmd(ctx)
 
   -- 2. Result stream handling
   ----------------------------
@@ -716,6 +686,52 @@ function M._exec(ctx)
   end
 
   return M._user_cancel_function(active_rg_job_id, session)
+end
+
+---@param ctx brook.SearchContext Search context with all execution parameters
+---@return string[] cmd Command table for jobstart()
+function M._build_rg_cmd(ctx)
+  -- NOTE: Limit previews to 300 characters, to avoid memory explosion on
+  -- abnormally long lines. Matching will still include the whole line, only
+  -- the preview is truncated.
+  local max_preview_chars = '300'
+
+  local cmd = {
+    'rg',
+    '--no-multiline',
+    '--max-columns', max_preview_chars,
+    '--max-columns-preview',
+    '--color', 'never',
+  }
+
+  -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
+  -- This omits the column number, causing ripgrep to emit each line only once
+  -- regardless of how many matches it contains.
+  if ctx.cfg.output_format == types.output_format.unique_lines then
+    table.insert(cmd, '--line-number')
+  else
+    table.insert(cmd, '--vimgrep')
+  end
+
+  if ctx.parsed_args.word then
+    table.insert(cmd, '--word-regexp')
+  end
+
+  if ctx.parsed_args.fixed then
+    table.insert(cmd, '--fixed-strings')
+  end
+
+  if ctx.parsed_args.case == types.search_case.sensitive then
+    table.insert(cmd, '--case-sensitive')
+  elseif ctx.parsed_args.case == types.search_case.insensitive then
+    table.insert(cmd, '--ignore-case')
+  end
+
+  for _, arg in ipairs(ctx.args) do
+    table.insert(cmd, arg)
+  end
+
+  return cmd
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
