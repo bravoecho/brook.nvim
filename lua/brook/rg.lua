@@ -159,9 +159,6 @@ local cancel_phase3_scheduling = function()
   end
 end
 
---- Whether the user_stop() function was called.
-local stopped_by_user = false
-
 local pattern = require('brook.pattern')
 local tokenise = require('brook.tokenise').tokenise
 local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
@@ -170,17 +167,6 @@ local fifo = require('brook.lib.fifo')
 local types = require('brook.types')
 
 local M = {}
-
-function M.user_stop()
-  cancel_phase2_scheduling()
-  cancel_phase3_scheduling()
-
-  if active_rg_job_id then
-    stopped_by_user = true
-    vim.fn.jobstop(active_rg_job_id)
-    active_rg_job_id = nil
-  end
-end
 
 --- Searches for a literal pattern using ripgrep.
 ---
@@ -295,6 +281,10 @@ function M.raw(cmd_args, cfg)
 
   -- 5. Run the search
   --------------------
+
+  -- Give precedence to output format specified in the command, if present.
+  cfg.output_format = parsed_args.output_format or cfg.output_format
+
   M._exec({
     args = rg_args,
     parsed_args = parsed_args,
@@ -336,13 +326,44 @@ end
 ---
 --- Only phases 2 and 3 may schedule flushing.
 ---
----@enum
+---@enum brook.ExecPhase
 local phases = {
   phase_1 = 'phase-1',
   phase_2 = 'phase-2',
   phase_3 = 'phase-3',
   done = 'done',
 }
+
+---@enum brook.QuickfixOperation
+local qf_operation = {
+  replace = 'r',
+  append = 'a',
+}
+
+---@class brook.ExecSession
+---@field is_first_batch boolean
+---@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
+---@field total_results integer Number of matches parsed from ripgrep (producer-side)
+---@field flushed_results integer Number of entries actually pushed into quickfix (consumer-side, UI)
+---@field stopped_at_limit boolean
+---@field stopped_by_user boolean
+---@field did_resize boolean Whether the quickfix window has rearched its target height
+---@field current_phase brook.ExecPhase
+---@field queue brook.Fifo FIFO queue between rg and quickfix, decouples producer (rg's stdout) from consumer (quickfix)
+
+---@type brook.ExecSession
+local session = nil
+
+function M.user_stop()
+  cancel_phase2_scheduling()
+  cancel_phase3_scheduling()
+
+  if active_rg_job_id then
+    session.stopped_by_user = true
+    vim.fn.jobstop(active_rg_job_id)
+    active_rg_job_id = nil
+  end
+end
 
 --- Runs ripgrep with the given argument array.
 ---
@@ -355,8 +376,6 @@ local phases = {
 ---
 ---@param ctx brook.SearchContext Search context with all execution parameters
 function M._exec(ctx)
-  stopped_by_user = false
-
   cancel_phase2_scheduling()
   cancel_phase3_scheduling()
 
@@ -370,14 +389,21 @@ function M._exec(ctx)
 
   local cfg = ctx.cfg
 
-  -- Determine output format: command-line flags override config.
-  -- Precedence: parsed_args (command line) > opts (config) > default
-  local output_format = ctx.parsed_args.output_format
-      or cfg.output_format
-      or types.output_format.one_line_per_match
+  ---@type brook.ExecSession
+  session = {
+    is_first_batch = true,
+    qf_operation = qf_operation.replace,
+    total_results = 0,
+    flushed_results = 0,
+    stopped_at_limit = false,
+    stopped_by_user = false,
+    did_resize = false,
+    current_phase = phases.phase_1,
+    queue = fifo.new(),
+  }
 
   -- Select the appropriate parser based on output format
-  local parse_line = output_format == types.output_format.unique_lines
+  local parse_line = cfg.output_format == types.output_format.unique_lines
       and M._parse_line_number
       or M._parse_vimgrep
 
@@ -386,9 +412,9 @@ function M._exec(ctx)
   -- 1. Build command array
   -------------------------
 
-  -- NOTE: Limit previews to 300 bytes, to avoid memory explosion on abnormally
-  -- long lines. Matching will still include the whole line, only the preview
-  -- is truncated.
+  -- NOTE: Limit previews to 300 characters, to avoid memory explosion on
+  -- abnormally long lines. Matching will still include the whole line, only
+  -- the preview is truncated.
   local cmd = { 'rg', '--no-multiline', '--max-columns', '300', '--max-columns-preview', '--color', 'never' }
 
   -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
@@ -398,7 +424,7 @@ function M._exec(ctx)
   -- Only add the flag if the user hasn't already specified one on the command
   -- line (parsed_args.output_format would be non-nil in that case).
 
-  if output_format == types.output_format.unique_lines then
+  if cfg.output_format == types.output_format.unique_lines then
     table.insert(cmd, '--line-number')
   else
     table.insert(cmd, '--vimgrep')
@@ -421,39 +447,10 @@ function M._exec(ctx)
   -- 2. Result stream handling
   ----------------------------
 
-  local is_first_batch = true
-  local qflist_operation = 'r' -- first time replace the content, then switch to 'a' (append)
-
-  -- Counters and flags
-  --
-  -- Results are tracked separately for producer and consumer:
-  --
-  --   * total_results (producer-side): number of matches parsed from rg
-  --
-  --   * flushed_results (consumer-side): number of entries actually pushed into quickfix
-  --
-  -- `total_results` is not used for UI logic (resizing, phase transitions),
-  -- because in fast-output scenarios it can jump far ahead of what has been
-  -- flushed.
-
-  local total_results = 0
-  local flushed_results = 0
-  local stopped_at_limit = false
-  local did_resize = false
-
-  local current_phase = phases.phase_1
-
-  -- FIFO queue between rg and quickfix.
-  --
-  -- The queue decouples parsing cadence from UI cadence:
-  --   * phase 1 pulls just enough results to fill the visible quickfix window
-  --   * phase 2 and 3 pull in batches, and self-reschedule
-  local queue = fifo.new()
-
   --- Counts how many results are still missing before reaching the target
   --- quickfix window height.
   local remaining_visible_slots = function()
-    return math.max(0, cfg.qf_win_height - flushed_results)
+    return math.max(0, cfg.qf_win_height - session.flushed_results)
   end
 
   --- Performs Neovim-side side effects:
@@ -466,14 +463,14 @@ function M._exec(ctx)
     if current_buffer_size == 0 then
       return
     end
-    vim.fn.setqflist({}, qflist_operation, { title = 'rg: results', items = items })
-    qflist_operation = 'a' -- make it an append for all subsequent runs
-    local previous_flushed = flushed_results
-    flushed_results = flushed_results + current_buffer_size
+    vim.fn.setqflist({}, session.qf_operation, { title = 'rg: results', items = items })
+    session.qf_operation = qf_operation.append
+    local previous_flushed = session.flushed_results
+    session.flushed_results = session.flushed_results + current_buffer_size
 
     -- ii. Open (on new searches)
     ------------------------------
-    if is_first_batch then
+    if session.is_first_batch then
       if cfg.qf_open then
         if cfg.qf_auto_resize then
           -- Open directly with the size corresponding to initial content, to
@@ -491,7 +488,7 @@ function M._exec(ctx)
           case = ctx.parsed_args.case,
         })
       end
-      is_first_batch = false
+      session.is_first_batch = false
     end
 
     -- iii. Resize
@@ -503,16 +500,16 @@ function M._exec(ctx)
 
     -- Avoid resizing after the final height was reached, in case the user has
     -- resized manually since.
-    if did_resize then
+    if session.did_resize then
       return
     end
 
     if previous_flushed < cfg.qf_win_height then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(flushed_results, cfg.qf_win_height))
-        if flushed_results >= cfg.qf_win_height then
-          did_resize = true
+        vim.api.nvim_win_set_height(qf_winid, math.min(session.flushed_results, cfg.qf_win_height))
+        if session.flushed_results >= cfg.qf_win_height then
+          session.did_resize = true
         end
       end
     end
@@ -560,22 +557,22 @@ function M._exec(ctx)
   end
 
   flush_phase2 = function()
-    if current_phase ~= phases.phase_2 or queue.is_empty() then
+    if session.current_phase ~= phases.phase_2 or session.queue.is_empty() then
       return
     end
 
-    update_quickfix(queue.pull(cfg.max_batch_size))
+    update_quickfix(session.queue.pull(cfg.max_batch_size))
 
     -- Wait until quickfix is updated before unlocking next flush.
     phase2_scheduled = false
 
-    if not queue.is_empty() then
+    if not session.queue.is_empty() then
       schedule_flush_phase2()
     end
   end
 
   local start_phase2 = function()
-    current_phase = phases.phase_2
+    session.current_phase = phases.phase_2
     schedule_flush_phase2()
   end
 
@@ -594,7 +591,7 @@ function M._exec(ctx)
   --- See also the `phases` enum.
   local flush_phase1 = function()
     -- TODO: check if phase check is needed (it's already guarded at call sites).
-    if current_phase ~= phases.phase_1 or queue.is_empty() then
+    if session.current_phase ~= phases.phase_1 or session.queue.is_empty() then
       return
     end
 
@@ -606,7 +603,7 @@ function M._exec(ctx)
 
     -- Pull only the minimum necessary to fill the quickfix window above the
     -- fold.
-    update_quickfix(queue.pull(remaining))
+    update_quickfix(session.queue.pull(remaining))
 
     -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
     -- the next `on_stdout` run.
@@ -623,9 +620,9 @@ function M._exec(ctx)
   --- Since it may run synchronously (depending on phase) it must be called from
   --- a scheduled context (Neovim's main loop).
   local request_flush = function()
-    if current_phase == phases.phase_1 then
+    if session.current_phase == phases.phase_1 then
       flush_phase1()
-    elseif current_phase == phases.phase_2 then
+    elseif session.current_phase == phases.phase_2 then
       schedule_flush_phase2()
     end
   end
@@ -671,10 +668,10 @@ function M._exec(ctx)
     end
 
     for _, line in ipairs(data) do
-      if total_results >= cfg.max_results then
+      if session.total_results >= cfg.max_results then
         -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
         -- and to avoid leaving Neovim in a slowed state after the search.
-        stopped_at_limit = true
+        session.stopped_at_limit = true
         request_flush()
         if active_rg_job_id then
           vim.fn.jobstop(active_rg_job_id)
@@ -685,13 +682,13 @@ function M._exec(ctx)
 
       local entry = parse_line(line)
       if entry then
-        queue.push(entry)
-        total_results = total_results + 1
+        session.queue.push(entry)
+        session.total_results = session.total_results + 1
       end
 
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
-      if queue.len() >= cfg.max_batch_size then
+      if session.queue.len() >= cfg.max_batch_size then
         request_flush()
       end
     end
@@ -737,7 +734,7 @@ function M._exec(ctx)
     local exit_code = exit_state.exit_code
 
     if exit_code == 0 then
-      vim.notify(string.format('rg: %d matches', total_results), vim.log.levels.INFO)
+      vim.notify(string.format('rg: %d matches', session.total_results), vim.log.levels.INFO)
       return
     end
 
@@ -746,7 +743,7 @@ function M._exec(ctx)
       return
     end
 
-    if stopped_at_limit then
+    if session.stopped_at_limit then
       local msg = 'rg: stopped at limit (' .. cfg.max_results .. ')'
       if cfg.max_results < types.max_max_results then
         msg = msg .. ' (configure in setup)'
@@ -759,7 +756,7 @@ function M._exec(ctx)
       return
     end
 
-    if stopped_by_user then
+    if session.stopped_by_user then
       local msg = 'rg: stopped manually'
       if #stderr_lines > 0 then
         table.insert(stderr_lines, msg)
@@ -784,10 +781,10 @@ function M._exec(ctx)
   --- See also the `phases` enum.
   local flush_phase3
   flush_phase3 = function()
-    update_quickfix(queue.pull(phase3_batch_size))
+    update_quickfix(session.queue.pull(phase3_batch_size))
 
-    if queue.is_empty() then
-      current_phase = phases.done
+    if session.queue.is_empty() then
+      session.current_phase = phases.done
       notify_completion()
       return
     end
@@ -798,7 +795,7 @@ function M._exec(ctx)
   --- Starts phase 3: cancels phase 2 and begins fast drain.
   local start_phase3 = function()
     cancel_phase2_scheduling()
-    current_phase = phases.phase_3
+    session.current_phase = phases.phase_3
     flush_phase3()
   end
 
@@ -808,7 +805,7 @@ function M._exec(ctx)
     -- Capture exit state for notify_completion (called at end of phase 3).
     exit_state = { exit_code = exit_code }
 
-    if current_phase == phases.phase_1 then
+    if session.current_phase == phases.phase_1 then
       -- Handle edge case where ripgrep exited before the quickfix window was
       -- fully populated. Flush synchronously to ensure results are visible.
       flush_phase1()
