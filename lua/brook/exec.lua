@@ -128,7 +128,7 @@
 ---
 ---@module 'brook.exec'
 
----@type integer|nil Vim job id returned by vim.fn.jobstart()
+---@type number|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
 --- Also used to guard the throttling use case (flush_throttle_ms > 0).
@@ -214,8 +214,8 @@ local qf_operation = {
 ---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
 ---@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
----@field total_results integer Number of matches parsed from ripgrep (producer-side)
----@field flushed_results integer Number of entries actually pushed into quickfix (consumer-side, UI)
+---@field total_results number Number of matches parsed from ripgrep (producer-side)
+---@field flushed_results number Number of entries actually pushed into quickfix (consumer-side, UI)
 ---@field stopped_at_limit boolean
 ---@field stopped_by_user boolean
 ---@field did_resize boolean Whether the quickfix window has rearched its target height
@@ -308,34 +308,15 @@ function M._exec(ctx)
   -- 4. Error message handling
   ----------------------------
 
-  -- NOTE: stderr is buffered (see jobstart options below), so this callback
-  -- receives all stderr output in a single call when the job exits.
   local on_stderr = function(_, data, _)
-    if not data or #data == 0 then
-      return
-    end
-    if data[#data] == '' then
-      table.remove(data)
-    end
-    current_session.stderr_lines = data
+    M._on_stderr(data, current_session)
   end
 
   -- 5. Command exit handling
   ---------------------------
 
-  --- on_exit is a final trigger for consumers: it ensures anything still in
-  --- the stdout buffer/queue becomes visible even if rg stops suddenly.
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    -- Capture exit state for notify_completion (called at end of phase 3).
-    current_session.exit_code = exit_code
-
-    if current_session.current_phase == phases.phase_1 then
-      -- Handle edge case where ripgrep exited before the quickfix window was
-      -- fully populated. Flush synchronously to ensure results are visible.
-      M._flush_phase1(ctx, current_session)
-    end
-
-    M._start_phase3(ctx, current_session)
+    M._on_exit(exit_code, ctx, current_session)
   end)
 
   -- 6. Run command
@@ -485,7 +466,7 @@ end
 --- Performs Neovim-side side effects:
 ---   * setqflist(...) updates the quickfix list
 ---   * optional copen + window resizing for first results
----@param items any[] TODO: assign correct type
+---@param items vim.quickfix.entry[] TODO: assign correct type
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._update_quickfix(items, ctx, session)
@@ -682,7 +663,7 @@ end
 ---
 ---   * Triggered by `on_exit`.
 ---
----   * Self reschedules until the queue is drained.
+---   * Self-reschedules until the queue is drained.
 ---
 ---   * Notifies user of completion.
 ---
@@ -761,6 +742,39 @@ function M._notify_completion(ctx, session)
 
   table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
   vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
+end
+
+-- stderr is buffered (see jobstart options below), so this callback
+-- receives all stderr output in a single call when the job exits.
+--
+---@param data string[]
+---@param session brook.ExecSession
+function M._on_stderr(data, session)
+  if not data or #data == 0 then
+    return
+  end
+  if data[#data] == '' then
+    table.remove(data)
+  end
+  session.stderr_lines = data
+end
+
+--- on_exit is a final trigger for consumers: it ensures anything still in
+--- the stdout buffer/queue becomes visible even if rg stops suddenly.
+---
+---@param exit_code number
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._on_exit(exit_code, ctx, session)
+  -- Capture exit state for notify_completion (called at end of phase 3).
+  session.exit_code = exit_code
+  if session.current_phase == phases.phase_1 then
+    -- Handle edge case where ripgrep exited before the quickfix window was
+    -- fully populated. Flush synchronously to ensure results are visible.
+    M._flush_phase1(ctx, session)
+  end
+
+  M._start_phase3(ctx, session)
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
