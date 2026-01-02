@@ -295,21 +295,6 @@ function M._exec(ctx)
   -- 3. Result stream handling
   ----------------------------
 
-  --- request_flush will either
-  ---
-  ---   - flush synchronously (phase 1)...
-  ---   - ...or schedule a flush (phase 2)
-  ---
-  --- Since it may run synchronously (depending on phase) it must be called from
-  --- a scheduled context (Neovim's main loop).
-  local request_flush = function()
-    if current_session.current_phase == phases.phase_1 then
-      M._flush_phase1(ctx, current_session)
-    elseif current_session.current_phase == phases.phase_2 then
-      M._schedule_flush_phase2(ctx, current_session)
-    end
-  end
-
   --- Last segment of the previous batch. See :h channel-lines.
   local stdout_buffer = ''
 
@@ -355,7 +340,7 @@ function M._exec(ctx)
         -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
         -- and to avoid leaving Neovim in a slowed state after the search.
         current_session.stopped_at_limit = true
-        request_flush()
+        M._request_flush(ctx, current_session)
         if active_rg_job_id then
           vim.fn.jobstop(active_rg_job_id)
           active_rg_job_id = nil
@@ -372,11 +357,11 @@ function M._exec(ctx)
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
       if current_session.queue.len() >= ctx.cfg.max_batch_size then
-        request_flush()
+        M._request_flush(ctx, current_session)
       end
     end
 
-    request_flush()
+    M._request_flush(ctx, current_session)
   end)
 
   -- 4. Error message handling
@@ -632,6 +617,23 @@ function M._update_quickfix(items, ctx, session)
         session.did_resize = true
       end
     end
+  end
+end
+
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._request_flush(ctx, session)
+  --- request_flush will either
+  ---
+  ---   - flush synchronously (phase 1)...
+  ---   - ...or schedule a flush (phase 2)
+  ---
+  --- Since it may run synchronously (depending on phase) it must be called from
+  --- a scheduled context (Neovim's main loop).
+  if session.current_phase == phases.phase_1 then
+    M._flush_phase1(ctx, session)
+  elseif session.current_phase == phases.phase_2 then
+    M._schedule_flush_phase2(ctx, session)
   end
 end
 
