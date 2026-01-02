@@ -222,6 +222,8 @@ local qf_operation = {
 ---@field current_phase brook.ExecPhase
 ---@field queue brook.Fifo FIFO queue between rg and quickfix, decouples producer (rg's stdout) from consumer (quickfix)
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
+---@field stderr_lines string[]
+---@field exit_code number|nil
 
 ---@type brook.ExecSession
 local current_session = nil
@@ -279,6 +281,8 @@ function M._exec(ctx)
     current_phase = phases.phase_1,
     queue = fifo.new(),
     stdout_buffer = '',
+    stderr_lines = {},
+    exit_code = nil,
   }
 
   -- Select the appropriate parser based on output format
@@ -304,7 +308,6 @@ function M._exec(ctx)
   -- 4. Error message handling
   ----------------------------
 
-  local stderr_lines = {}
   -- NOTE: stderr is buffered (see jobstart options below), so this callback
   -- receives all stderr output in a single call when the job exits.
   local on_stderr = function(_, data, _)
@@ -314,101 +317,17 @@ function M._exec(ctx)
     if data[#data] == '' then
       table.remove(data)
     end
-    stderr_lines = data
+    current_session.stderr_lines = data
   end
 
   -- 5. Command exit handling
   ---------------------------
 
-  local phase3_drain_interval_ms = 1
-
-  -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
-  -- and we want to drain quickly. Each batch still yields to the event loop,
-  -- so larger batches just mean fewer round-trips.
-  local phase3_batch_size = ctx.cfg.max_batch_size * 10
-
-  --- Exit state captured by on_exit, used by notify_completion.
-  local exit_state = nil
-
-  --- Shows the final notification once all results have been flushed.
-  local notify_completion = function()
-    if not exit_state then
-      return
-    end
-
-    local exit_code = exit_state.exit_code
-
-    if exit_code == 0 then
-      vim.notify(string.format('rg: %d matches', current_session.total_results), vim.log.levels.INFO)
-      return
-    end
-
-    if exit_code == 1 then
-      vim.notify('rg: no matches', vim.log.levels.WARN)
-      return
-    end
-
-    if current_session.stopped_at_limit then
-      local msg = 'rg: stopped at limit (' .. ctx.cfg.max_results .. ')'
-      if ctx.cfg.max_results < types.max_max_results then
-        msg = msg .. ' (configure in setup)'
-      end
-      if #stderr_lines > 0 then
-        table.insert(stderr_lines, msg)
-        msg = table.concat(stderr_lines, '\n')
-      end
-      vim.notify(msg, vim.log.levels.WARN)
-      return
-    end
-
-    if current_session.stopped_by_user then
-      local msg = 'rg: stopped manually'
-      if #stderr_lines > 0 then
-        table.insert(stderr_lines, msg)
-        msg = table.concat(stderr_lines, '\n')
-      end
-      vim.notify(msg, vim.log.levels.WARN)
-      return
-    end
-
-    table.insert(stderr_lines, 'rg: exited with code ' .. exit_code)
-    vim.notify(table.concat(stderr_lines, '\n'), vim.log.levels.ERROR)
-  end
-
-  --- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
-  ---
-  ---   * Triggered by `on_exit`.
-  ---
-  ---   * Self reschedules until the queue is drained.
-  ---
-  ---   * Notifies user of completion.
-  ---
-  --- See also the `phases` enum.
-  local flush_phase3
-  flush_phase3 = function()
-    M._update_quickfix(current_session.queue.pull(phase3_batch_size), ctx, current_session)
-
-    if current_session.queue.is_empty() then
-      current_session.current_phase = phases.done
-      notify_completion()
-      return
-    end
-
-    phase3_timer = vim.defer_fn(flush_phase3, phase3_drain_interval_ms)
-  end
-
-  --- Starts phase 3: cancels phase 2 and begins fast drain.
-  local start_phase3 = function()
-    cancel_phase2_scheduling()
-    current_session.current_phase = phases.phase_3
-    flush_phase3()
-  end
-
   --- on_exit is a final trigger for consumers: it ensures anything still in
   --- the stdout buffer/queue becomes visible even if rg stops suddenly.
   local on_exit = vim.schedule_wrap(function(_, exit_code, _)
     -- Capture exit state for notify_completion (called at end of phase 3).
-    exit_state = { exit_code = exit_code }
+    current_session.exit_code = exit_code
 
     if current_session.current_phase == phases.phase_1 then
       -- Handle edge case where ripgrep exited before the quickfix window was
@@ -416,7 +335,7 @@ function M._exec(ctx)
       M._flush_phase1(ctx, current_session)
     end
 
-    start_phase3()
+    M._start_phase3(ctx, current_session)
   end)
 
   -- 6. Run command
@@ -757,6 +676,91 @@ end
 function M._start_phase2(ctx, session)
   session.current_phase = phases.phase_2
   M._schedule_flush_phase2(ctx, session)
+end
+
+--- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
+---
+---   * Triggered by `on_exit`.
+---
+---   * Self reschedules until the queue is drained.
+---
+---   * Notifies user of completion.
+---
+--- See also the `phases` enum.
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._flush_phase3(ctx, session)
+  -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
+  -- and we want to drain quickly. Each batch still yields to the event loop,
+  -- so larger batches just mean fewer round-trips.
+  local phase3_batch_size = ctx.cfg.max_batch_size * 10
+  local phase3_drain_interval_ms = 1
+
+  M._update_quickfix(session.queue.pull(phase3_batch_size), ctx, session)
+
+  if session.queue.is_empty() then
+    session.current_phase = phases.done
+    M._notify_completion(ctx, session)
+    return
+  end
+
+  phase3_timer = vim.defer_fn(function()
+    M._flush_phase3(ctx, session)
+  end, phase3_drain_interval_ms)
+end
+
+--- Starts phase 3: cancels phase 2 and begins fast drain.
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._start_phase3(ctx, session)
+  cancel_phase2_scheduling()
+  session.current_phase = phases.phase_3
+  M._flush_phase3(ctx, session)
+end
+
+--- Shows the final notification once all results have been flushed.
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._notify_completion(ctx, session)
+  if not session.exit_code then
+    return
+  end
+
+  if session.exit_code == 0 then
+    vim.notify(string.format('rg: %d matches', session.total_results), vim.log.levels.INFO)
+    return
+  end
+
+  if session.exit_code == 1 then
+    vim.notify('rg: no matches', vim.log.levels.WARN)
+    return
+  end
+
+  if session.stopped_at_limit then
+    local msg = 'rg: stopped at limit (' .. ctx.cfg.max_results .. ')'
+    if ctx.cfg.max_results < types.max_max_results then
+      msg = msg .. ' (configure in setup)'
+    end
+    if #session.stderr_lines > 0 then
+      table.insert(session.stderr_lines, msg)
+      msg = table.concat(session.stderr_lines, '\n')
+    end
+    vim.notify(msg, vim.log.levels.WARN)
+    return
+  end
+
+  if session.stopped_by_user then
+    local msg = 'rg: stopped manually'
+    if #session.stderr_lines > 0 then
+      table.insert(session.stderr_lines, msg)
+      msg = table.concat(session.stderr_lines, '\n')
+    end
+    vim.notify(msg, vim.log.levels.WARN)
+    return
+  end
+
+  table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
+  vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
