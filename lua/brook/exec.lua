@@ -295,48 +295,6 @@ function M._exec(ctx)
   -- 3. Result stream handling
   ----------------------------
 
-  --- Counts how many results are still missing before reaching the target
-  --- quickfix window height.
-  local remaining_visible_slots = function()
-    return math.max(0, ctx.cfg.qf_win_height - current_session.flushed_results)
-  end
-
-  --- Phase-1 consumer: perform the first meaningful "paint".
-  ---
-  ---   * Flushes *at most* the number of items needed to reach the visible
-  ---     quickfix window height (above the fold).
-  ---
-  ---   * Never self-schedules (no timers/recursion/defer_fn). This function must
-  ---     run synchronously and return control to the main loop so Neovim can
-  ---     become idle and redraw.
-  ---
-  ---   * Owns the phase transition: when the visible region is filled, it moves
-  ---     the consumer into phase2 (throughput mode).
-  ---
-  --- See also the `phases` enum.
-  local flush_phase1 = function()
-    -- TODO: check if phase check is needed (it's already guarded at call sites).
-    if current_session.current_phase ~= phases.phase_1 or current_session.queue.is_empty() then
-      return
-    end
-
-    local remaining = remaining_visible_slots()
-    if remaining == 0 then
-      M._start_phase2(ctx, current_session)
-      return
-    end
-
-    -- Pull only the minimum necessary to fill the quickfix window above the
-    -- fold.
-    M._update_quickfix(current_session.queue.pull(remaining), ctx, current_session)
-
-    -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
-    -- the next `on_stdout` run.
-    if remaining_visible_slots() == 0 then
-      M._start_phase2(ctx, current_session)
-    end
-  end
-
   --- request_flush will either
   ---
   ---   - flush synchronously (phase 1)...
@@ -346,7 +304,7 @@ function M._exec(ctx)
   --- a scheduled context (Neovim's main loop).
   local request_flush = function()
     if current_session.current_phase == phases.phase_1 then
-      flush_phase1()
+      M._flush_phase1(ctx, current_session)
     elseif current_session.current_phase == phases.phase_2 then
       M._schedule_flush_phase2(ctx, current_session)
     end
@@ -533,7 +491,7 @@ function M._exec(ctx)
     if current_session.current_phase == phases.phase_1 then
       -- Handle edge case where ripgrep exited before the quickfix window was
       -- fully populated. Flush synchronously to ensure results are visible.
-      flush_phase1()
+      M._flush_phase1(ctx, current_session)
     end
 
     start_phase3()
@@ -675,6 +633,51 @@ function M._update_quickfix(items, ctx, session)
       end
     end
   end
+end
+
+--- Phase-1 consumer: perform the first meaningful "paint".
+---
+---   * Flushes *at most* the number of items needed to reach the visible
+---     quickfix window height (above the fold).
+---
+---   * Never self-schedules (no timers/recursion/defer_fn). This function must
+---     run synchronously and return control to the main loop so Neovim can
+---     become idle and redraw.
+---
+---   * Owns the phase transition: when the visible region is filled, it moves
+---     the consumer into phase2 (throughput mode).
+---
+--- See also the `phases` enum.
+---
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._flush_phase1(ctx, session)
+  -- TODO: check if phase check is needed (it's already guarded at call sites).
+  if session.current_phase ~= phases.phase_1 or session.queue.is_empty() then
+    return
+  end
+
+  local remaining = M._remaining_visible_slots(ctx, session)
+  if remaining == 0 then
+    M._start_phase2(ctx, session)
+    return
+  end
+
+  -- Pull only the minimum necessary to fill the quickfix window above the
+  -- fold.
+  M._update_quickfix(session.queue.pull(remaining), ctx, session)
+
+  -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
+  -- the next `on_stdout` run.
+  if M._remaining_visible_slots(ctx, session) == 0 then
+    M._start_phase2(ctx, session)
+  end
+end
+
+--- Counts how many results are still missing before reaching the target
+--- quickfix window height.
+function M._remaining_visible_slots(ctx, session)
+  return math.max(0, ctx.cfg.qf_win_height - session.flushed_results)
 end
 
 --- Phase 2 consumer: flush while ripgrep is still running.
