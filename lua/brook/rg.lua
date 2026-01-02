@@ -180,8 +180,9 @@ local M = {}
 ---
 ---@param text string The literal text to search for
 ---@param cfg brook.ExecConfig Plugin options
+---@return function|nil cancel_fn Function to use to cancel the current job
 function M.selection(text, cfg)
-  M._exec({
+  return M._exec({
     args = { '--', text },
     parsed_args = {
       pattern = text,
@@ -206,8 +207,9 @@ end
 ---
 ---@param word string The word to search for (typically from <cword>)
 ---@param cfg brook.ExecConfig Plugin options
+---@return function|nil cancel_fn Function to use to cancel the current job
 function M.word(word, cfg)
-  M._exec({
+  return M._exec({
     args = { '--', word },
     parsed_args = {
       pattern = word,
@@ -245,6 +247,7 @@ end
 ---
 ---@param cmd_args string The raw command-line arguments
 ---@param cfg brook.ExecConfig Plugin options
+---@return function|nil cancel_fn Function to use to cancel the current job
 function M.raw(cmd_args, cfg)
   -- 1. Tokenise
   --------------
@@ -253,7 +256,7 @@ function M.raw(cmd_args, cfg)
 
   if not tokens or #tokens == 0 then
     vim.notify('rg: no arguments provided', vim.log.levels.ERROR)
-    return
+    return nil
   end
 
   -- 2. Unquote
@@ -264,7 +267,7 @@ function M.raw(cmd_args, cfg)
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then
     vim.notify('rg: malformed command: could not unquote', vim.log.levels.ERROR)
-    return
+    return nil
   end
 
   -- 3. Parse ripgrep arguments
@@ -276,7 +279,7 @@ function M.raw(cmd_args, cfg)
   --------------------------------
   if parsed_args.multiline then
     vim.notify('rg: multiline search not supported', vim.log.levels.ERROR)
-    return
+    return nil
   end
 
   -- 5. Run the search
@@ -285,7 +288,7 @@ function M.raw(cmd_args, cfg)
   -- Give precedence to output format specified in the command, if present.
   cfg.output_format = parsed_args.output_format or cfg.output_format
 
-  M._exec({
+  return M._exec({
     args = rg_args,
     parsed_args = parsed_args,
     cfg = cfg,
@@ -354,14 +357,19 @@ local qf_operation = {
 ---@type brook.ExecSession
 local session = nil
 
-function M.user_stop()
-  cancel_phase2_scheduling()
-  cancel_phase3_scheduling()
+---@param job_id number|nil ID of the job to cancel
+---@param sesh brook.ExecSession Session to invalidate
+---@return function
+function M._user_cancel_function(job_id, sesh)
+  return function()
+    cancel_phase2_scheduling()
+    cancel_phase3_scheduling()
 
-  if active_rg_job_id then
-    session.stopped_by_user = true
-    vim.fn.jobstop(active_rg_job_id)
-    active_rg_job_id = nil
+    if job_id and job_id == active_rg_job_id then
+      sesh.stopped_by_user = true
+      vim.fn.jobstop(job_id)
+      active_rg_job_id = nil
+    end
   end
 end
 
@@ -375,6 +383,7 @@ end
 ---   - shell injection vulnerabilities
 ---
 ---@param ctx brook.SearchContext Search context with all execution parameters
+---@return function|nil cancel_fn
 function M._exec(ctx)
   cancel_phase2_scheduling()
   cancel_phase3_scheduling()
@@ -834,7 +843,10 @@ function M._exec(ctx)
   if active_rg_job_id <= 0 then
     vim.notify('rg: failed to start: is ripgrep installed?', vim.log.levels.ERROR)
     active_rg_job_id = nil
+    return nil
   end
+
+  return M._user_cancel_function(active_rg_job_id, session)
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.

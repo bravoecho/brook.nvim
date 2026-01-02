@@ -58,6 +58,9 @@ function M.setup(cfg)
     stop = 'Stop ripgrep search',
   }
 
+  ---@type function|nil Function to be used to cancel any current job
+  local cancel_fn = nil
+
   ------------------------------------------------------------------------------
   --- Commands -----------------------------------------------------------------
   ------------------------------------------------------------------------------
@@ -76,18 +79,23 @@ function M.setup(cfg)
         return
       end
 
-      rg.word(word, exec_cfg)
+      cancel_fn = rg.word(word, exec_cfg)
       return
     end
 
     -- General case
     ---------------
-    rg.raw(cmd_opts.args, exec_cfg)
+    cancel_fn = rg.raw(cmd_opts.args, exec_cfg)
   end, { nargs = '*', desc = desc.search, complete = 'file' })
 
   -- Stop command
   ---------------
-  vim.api.nvim_create_user_command('RgStop', rg.user_stop, { desc = desc.stop })
+  vim.api.nvim_create_user_command('RgStop', function()
+    if cancel_fn then
+      cancel_fn()
+      cancel_fn = nil
+    end
+  end, { desc = desc.stop })
 
   ------------------------------------------------------------------------------
   --- Keymaps ------------------------------------------------------------------
@@ -113,12 +121,17 @@ function M.setup(cfg)
       return
     end
 
-    rg.selection(text, exec_cfg)
+    cancel_fn = rg.selection(text, exec_cfg)
   end, { desc = desc.selection })
 
   -- Stop command
   ---------------
-  vim.keymap.set({ 'n' }, cfg.stop_keymap, rg.user_stop, { desc = desc.stop })
+  vim.keymap.set({ 'n' }, cfg.stop_keymap, function()
+    if cancel_fn then
+      cancel_fn()
+      cancel_fn = nil
+    end
+  end, { desc = desc.stop })
 end
 
 return M
