@@ -253,6 +253,8 @@ end
 ---@param ctx brook.SearchContext Search context with all execution parameters
 ---@return function|nil cancel_fn
 function M._exec(ctx)
+  -- 0. Cleanup
+  -------------
   cancel_phase2_scheduling()
   cancel_phase3_scheduling()
 
@@ -261,10 +263,8 @@ function M._exec(ctx)
     active_rg_job_id = nil
   end
 
-  -- 0. Setup
-  -----------
-
-  local cfg = ctx.cfg
+  -- 1. Init
+  ----------
 
   ---@type brook.ExecSession
   current_session = {
@@ -280,25 +280,25 @@ function M._exec(ctx)
   }
 
   -- Select the appropriate parser based on output format
-  local parse_line = cfg.output_format == types.output_format.unique_lines
+  local parse_line = ctx.cfg.output_format == types.output_format.unique_lines
       and M._parse_line_number
       or M._parse_vimgrep
 
   -- Echo the original command back to the user.
   vim.notify('rg ' .. ctx.parsed_args.raw, vim.log.levels.INFO)
 
-  -- 1. Build command array
+  -- 2. Build command array
   -------------------------
 
   local cmd = M._build_rg_cmd(ctx)
 
-  -- 2. Result stream handling
+  -- 3. Result stream handling
   ----------------------------
 
   --- Counts how many results are still missing before reaching the target
   --- quickfix window height.
   local remaining_visible_slots = function()
-    return math.max(0, cfg.qf_win_height - current_session.flushed_results)
+    return math.max(0, ctx.cfg.qf_win_height - current_session.flushed_results)
   end
 
   --- Performs Neovim-side side effects:
@@ -319,17 +319,17 @@ function M._exec(ctx)
     -- ii. Open (on new searches)
     ------------------------------
     if current_session.is_first_batch then
-      if cfg.qf_open then
-        if cfg.qf_auto_resize then
+      if ctx.cfg.qf_open then
+        if ctx.cfg.qf_auto_resize then
           -- Open directly with the size corresponding to initial content, to
           -- avoid "flickering".
           vim.cmd('copen ' .. current_buffer_size)
         else
           -- Set the final height right away if the user has disabled auto-resizing.
-          vim.cmd('copen ' .. cfg.qf_win_height)
+          vim.cmd('copen ' .. ctx.cfg.qf_win_height)
         end
       end
-      if cfg.set_search_register then
+      if ctx.cfg.set_search_register then
         M._set_search_register(ctx.parsed_args.pattern, {
           word = ctx.parsed_args.word,
           fixed = ctx.parsed_args.fixed,
@@ -342,7 +342,7 @@ function M._exec(ctx)
     -- iii. Resize
     --------------
     -- Respect user config if auto-resizing was disabled.
-    if not cfg.qf_auto_resize then
+    if not ctx.cfg.qf_auto_resize then
       return
     end
 
@@ -352,11 +352,11 @@ function M._exec(ctx)
       return
     end
 
-    if previous_flushed < cfg.qf_win_height then
+    if previous_flushed < ctx.cfg.qf_win_height then
       local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
       if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(current_session.flushed_results, cfg.qf_win_height))
-        if current_session.flushed_results >= cfg.qf_win_height then
+        vim.api.nvim_win_set_height(qf_winid, math.min(current_session.flushed_results, ctx.cfg.qf_win_height))
+        if current_session.flushed_results >= ctx.cfg.qf_win_height then
           current_session.did_resize = true
         end
       end
@@ -382,7 +382,7 @@ function M._exec(ctx)
   --- Called both by the producer (to trigger phase-2 work) and by flush_phase2
   --- itself (to schedule the next batch).
   local schedule_flush_phase2 = function()
-    if cfg.flush_throttle_ms > 0 then
+    if ctx.cfg.flush_throttle_ms > 0 then
       -- In timer/throttle mode the timer itself is the guard.
       -- ensure at most one timer is present at any given time
       if phase2_timer then
@@ -393,7 +393,7 @@ function M._exec(ctx)
         -- timer has triggered, can be removed
         phase2_timer = nil
         flush_phase2()
-      end, cfg.flush_throttle_ms)
+      end, ctx.cfg.flush_throttle_ms)
     else
       -- In schedule mode: a separate guard is needed to prevent multiple schedules.
       if phase2_scheduled then
@@ -409,7 +409,7 @@ function M._exec(ctx)
       return
     end
 
-    update_quickfix(current_session.queue.pull(cfg.max_batch_size))
+    update_quickfix(current_session.queue.pull(ctx.cfg.max_batch_size))
 
     -- Wait until quickfix is updated before unlocking next flush.
     phase2_scheduled = false
@@ -516,7 +516,7 @@ function M._exec(ctx)
     end
 
     for _, line in ipairs(data) do
-      if current_session.total_results >= cfg.max_results then
+      if current_session.total_results >= ctx.cfg.max_results then
         -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
         -- and to avoid leaving Neovim in a slowed state after the search.
         current_session.stopped_at_limit = true
@@ -536,7 +536,7 @@ function M._exec(ctx)
 
       -- Don't wait until the entire result batch is processed, if there are
       -- already enough results to flush.
-      if current_session.queue.len() >= cfg.max_batch_size then
+      if current_session.queue.len() >= ctx.cfg.max_batch_size then
         request_flush()
       end
     end
@@ -544,7 +544,7 @@ function M._exec(ctx)
     request_flush()
   end)
 
-  -- 3. Error message handling
+  -- 4. Error message handling
   ----------------------------
 
   local stderr_lines = {}
@@ -560,7 +560,7 @@ function M._exec(ctx)
     stderr_lines = data
   end
 
-  -- 4. Command exit handling
+  -- 5. Command exit handling
   ---------------------------
 
   local phase3_drain_interval_ms = 1
@@ -568,7 +568,7 @@ function M._exec(ctx)
   -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
   -- and we want to drain quickly. Each batch still yields to the event loop,
   -- so larger batches just mean fewer round-trips.
-  local phase3_batch_size = cfg.max_batch_size * 10
+  local phase3_batch_size = ctx.cfg.max_batch_size * 10
 
   --- Exit state captured by on_exit, used by notify_completion.
   local exit_state = nil
@@ -592,8 +592,8 @@ function M._exec(ctx)
     end
 
     if current_session.stopped_at_limit then
-      local msg = 'rg: stopped at limit (' .. cfg.max_results .. ')'
-      if cfg.max_results < types.max_max_results then
+      local msg = 'rg: stopped at limit (' .. ctx.cfg.max_results .. ')'
+      if ctx.cfg.max_results < types.max_max_results then
         msg = msg .. ' (configure in setup)'
       end
       if #stderr_lines > 0 then
@@ -662,7 +662,7 @@ function M._exec(ctx)
     start_phase3()
   end)
 
-  -- 5. Run command
+  -- 6. Run command
   -----------------
   active_rg_job_id = vim.fn.jobstart(cmd, {
     -- NOTE: Close stdin immediately. Unlike tools like ag, ripgrep waits on
@@ -685,6 +685,7 @@ function M._exec(ctx)
     return nil
   end
 
+  -- 7. Set up cancellation
   return M._user_cancel_function(active_rg_job_id, current_session)
 end
 
