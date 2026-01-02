@@ -221,6 +221,7 @@ local qf_operation = {
 ---@field did_resize boolean Whether the quickfix window has rearched its target height
 ---@field current_phase brook.ExecPhase
 ---@field queue brook.Fifo FIFO queue between rg and quickfix, decouples producer (rg's stdout) from consumer (quickfix)
+---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 
 ---@type brook.ExecSession
 local current_session = nil
@@ -277,6 +278,7 @@ function M._exec(ctx)
     did_resize = false,
     current_phase = phases.phase_1,
     queue = fifo.new(),
+    stdout_buffer = '',
   }
 
   -- Select the appropriate parser based on output format
@@ -295,73 +297,8 @@ function M._exec(ctx)
   -- 3. Result stream handling
   ----------------------------
 
-  --- Last segment of the previous batch. See :h channel-lines.
-  local stdout_buffer = ''
-
-  -- Producer: stdout handler
-  --
-  -- This callback should stay "dumb": parse complete lines, enqueue entries,
-  -- and then trigger the appropriate consumer. It intentionally does not
-  -- encode UI logic (resizing, redraws, etc.).
   local on_stdout = vim.schedule_wrap(function(_, data, _)
-    if not active_rg_job_id then
-      return
-    end
-
-    -- Should never happen according to docs.
-    if not data then
-      return
-    end
-
-    -- Handle incomplete segments and EOF. What remains are all fully-formed lines.
-    if #data == 1 and data[1] == '' then
-      -- EOF and no dangling buffer: nothing else to do.
-      if stdout_buffer == '' then return end
-      -- EOF, but there's still a result in the buffer: put it back into `data`
-      data[1] = stdout_buffer
-      stdout_buffer = ''
-    else
-      -- Handle ongoing stream
-      -- 1. Complete the first segment using the last one from the previous batch.
-      data[1] = stdout_buffer .. data[1]
-      -- 2. Pop the last (potentially incomplete) segment of this batch.
-      stdout_buffer = table.remove(data)
-    end
-
-    -- NOTE: After removing the last (potentially incomplete) element, data may
-    -- be empty. This is expected when we receive a single partial segment; it
-    -- will be completed and processed when the next stdout event arrives.
-    if #data == 0 then
-      return
-    end
-
-    for _, line in ipairs(data) do
-      if current_session.total_results >= ctx.cfg.max_results then
-        -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
-        -- and to avoid leaving Neovim in a slowed state after the search.
-        current_session.stopped_at_limit = true
-        M._request_flush(ctx, current_session)
-        if active_rg_job_id then
-          vim.fn.jobstop(active_rg_job_id)
-          active_rg_job_id = nil
-        end
-        break
-      end
-
-      local entry = parse_line(line)
-      if entry then
-        current_session.queue.push(entry)
-        current_session.total_results = current_session.total_results + 1
-      end
-
-      -- Don't wait until the entire result batch is processed, if there are
-      -- already enough results to flush.
-      if current_session.queue.len() >= ctx.cfg.max_batch_size then
-        M._request_flush(ctx, current_session)
-      end
-    end
-
-    M._request_flush(ctx, current_session)
+    M._on_stdout(data, ctx, current_session, parse_line)
   end)
 
   -- 4. Error message handling
@@ -553,6 +490,77 @@ function M._build_rg_cmd(ctx)
   end
 
   return cmd
+end
+
+--- Producer: stdout handler
+---
+--- This callback should stay "dumb": parse complete lines, enqueue entries,
+--- and then trigger the appropriate consumer. It intentionally does not
+--- encode UI logic (resizing, redraws, etc.).
+---
+---@param data string[] stdout segments yielded by the on_stdout callaback. See :h channel-lines
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+---@param parse_line function The appropriate parser based on output format
+function M._on_stdout(data, ctx, session, parse_line)
+  if not active_rg_job_id then
+    return
+  end
+
+  -- Should never happen according to docs.
+  if not data then
+    return
+  end
+
+  -- Handle incomplete segments and EOF. What remains are all fully-formed lines.
+  if #data == 1 and data[1] == '' then
+    -- EOF and no dangling buffer: nothing else to do.
+    if session.stdout_buffer == '' then return end
+    -- EOF, but there's still a result in the buffer: put it back into `data`
+    data[1] = session.stdout_buffer
+    session.stdout_buffer = ''
+  else
+    -- Handle ongoing stream
+    -- 1. Complete the first segment using the last one from the previous batch.
+    data[1] = session.stdout_buffer .. data[1]
+    -- 2. Pop the last (potentially incomplete) segment of this batch.
+    session.stdout_buffer = table.remove(data)
+  end
+
+  -- NOTE: After removing the last (potentially incomplete) element, data may
+  -- be empty. This is expected when we receive a single partial segment; it
+  -- will be completed and processed when the next stdout event arrives.
+  if #data == 0 then
+    return
+  end
+
+  for _, line in ipairs(data) do
+    if session.total_results >= ctx.cfg.max_results then
+      -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
+      -- and to avoid leaving Neovim in a slowed state after the search.
+      session.stopped_at_limit = true
+      M._request_flush(ctx, session)
+      if active_rg_job_id then
+        vim.fn.jobstop(active_rg_job_id)
+        active_rg_job_id = nil
+      end
+      break
+    end
+
+    local entry = parse_line(line)
+    if entry then
+      session.queue.push(entry)
+      session.total_results = session.total_results + 1
+    end
+
+    -- Don't wait until the entire result batch is processed, if there are
+    -- already enough results to flush.
+    if session.queue.len() >= ctx.cfg.max_batch_size then
+      M._request_flush(ctx, session)
+    end
+  end
+
+  M._request_flush(ctx, session)
 end
 
 --- Performs Neovim-side side effects:
