@@ -301,68 +301,6 @@ function M._exec(ctx)
     return math.max(0, ctx.cfg.qf_win_height - current_session.flushed_results)
   end
 
-  --- Performs Neovim-side side effects:
-  ---   * setqflist(...) updates the quickfix list
-  ---   * optional copen + window resizing for first results
-  local update_quickfix = function(items)
-    -- i. Populate
-    --------------
-    local current_buffer_size = #items
-    if current_buffer_size == 0 then
-      return
-    end
-    vim.fn.setqflist({}, current_session.qf_operation, { title = 'rg: results', items = items })
-    current_session.qf_operation = qf_operation.append
-    local previous_flushed = current_session.flushed_results
-    current_session.flushed_results = current_session.flushed_results + current_buffer_size
-
-    -- ii. Open (on new searches)
-    ------------------------------
-    if current_session.is_first_batch then
-      if ctx.cfg.qf_open then
-        if ctx.cfg.qf_auto_resize then
-          -- Open directly with the size corresponding to initial content, to
-          -- avoid "flickering".
-          vim.cmd('copen ' .. current_buffer_size)
-        else
-          -- Set the final height right away if the user has disabled auto-resizing.
-          vim.cmd('copen ' .. ctx.cfg.qf_win_height)
-        end
-      end
-      if ctx.cfg.set_search_register then
-        M._set_search_register(ctx.parsed_args.pattern, {
-          word = ctx.parsed_args.word,
-          fixed = ctx.parsed_args.fixed,
-          case = ctx.parsed_args.case,
-        })
-      end
-      current_session.is_first_batch = false
-    end
-
-    -- iii. Resize
-    --------------
-    -- Respect user config if auto-resizing was disabled.
-    if not ctx.cfg.qf_auto_resize then
-      return
-    end
-
-    -- Avoid resizing after the final height was reached, in case the user has
-    -- resized manually since.
-    if current_session.did_resize then
-      return
-    end
-
-    if previous_flushed < ctx.cfg.qf_win_height then
-      local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
-      if qf_winid ~= 0 then
-        vim.api.nvim_win_set_height(qf_winid, math.min(current_session.flushed_results, ctx.cfg.qf_win_height))
-        if current_session.flushed_results >= ctx.cfg.qf_win_height then
-          current_session.did_resize = true
-        end
-      end
-    end
-  end
-
   --- Phase 2 consumer: flush while ripgrep is still running.
   ---
   ---   * Pulls batches of results from the queue and renders them.
@@ -409,7 +347,7 @@ function M._exec(ctx)
       return
     end
 
-    update_quickfix(current_session.queue.pull(ctx.cfg.max_batch_size))
+    M._update_quickfix(current_session.queue.pull(ctx.cfg.max_batch_size), ctx, current_session)
 
     -- Wait until quickfix is updated before unlocking next flush.
     phase2_scheduled = false
@@ -451,7 +389,7 @@ function M._exec(ctx)
 
     -- Pull only the minimum necessary to fill the quickfix window above the
     -- fold.
-    update_quickfix(current_session.queue.pull(remaining))
+    M._update_quickfix(current_session.queue.pull(remaining), ctx, current_session)
 
     -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
     -- the next `on_stdout` run.
@@ -629,7 +567,7 @@ function M._exec(ctx)
   --- See also the `phases` enum.
   local flush_phase3
   flush_phase3 = function()
-    update_quickfix(current_session.queue.pull(phase3_batch_size))
+    M._update_quickfix(current_session.queue.pull(phase3_batch_size), ctx, current_session)
 
     if current_session.queue.is_empty() then
       current_session.current_phase = phases.done
@@ -733,6 +671,71 @@ function M._build_rg_cmd(ctx)
   end
 
   return cmd
+end
+
+--- Performs Neovim-side side effects:
+---   * setqflist(...) updates the quickfix list
+---   * optional copen + window resizing for first results
+---@param items any[] TODO: assign correct type
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._update_quickfix(items, ctx, session)
+  -- i. Populate
+  --------------
+  local current_buffer_size = #items
+  if current_buffer_size == 0 then
+    return
+  end
+  vim.fn.setqflist({}, session.qf_operation, { title = 'rg: results', items = items })
+  session.qf_operation = qf_operation.append
+  local previous_flushed = session.flushed_results
+  session.flushed_results = session.flushed_results + current_buffer_size
+
+  -- ii. Open (on new searches)
+  ------------------------------
+  if session.is_first_batch then
+    if ctx.cfg.qf_open then
+      if ctx.cfg.qf_auto_resize then
+        -- Open directly with the size corresponding to initial content, to
+        -- avoid "flickering".
+        vim.cmd('copen ' .. current_buffer_size)
+      else
+        -- Set the final height right away if the user has disabled auto-resizing.
+        vim.cmd('copen ' .. ctx.cfg.qf_win_height)
+      end
+    end
+    if ctx.cfg.set_search_register then
+      M._set_search_register(ctx.parsed_args.pattern, {
+        word = ctx.parsed_args.word,
+        fixed = ctx.parsed_args.fixed,
+        case = ctx.parsed_args.case,
+      })
+    end
+    session.is_first_batch = false
+  end
+
+  -- iii. Resize
+  --------------
+  -- Respect user config if auto-resizing was disabled.
+  if not ctx.cfg.qf_auto_resize then
+    return
+  end
+
+  -- Avoid resizing after the final height was reached, in case the user has
+  -- resized manually since.
+  if session.did_resize then
+    return
+  end
+
+  if previous_flushed < ctx.cfg.qf_win_height then
+    local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
+    if qf_winid ~= 0 then
+      vim.api.nvim_win_set_height(qf_winid, math.min(session.flushed_results, ctx.cfg.qf_win_height))
+      if session.flushed_results >= ctx.cfg.qf_win_height then
+        session.did_resize = true
+      end
+    end
+  end
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
