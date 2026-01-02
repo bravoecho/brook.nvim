@@ -67,5 +67,6 @@ M.max_max_results = 10000
 ---@field case brook.SearchCase|nil Whether -s, --case-sensitive, -i or --ignore-case were specified
 ---@field output_format brook.OutputFormat|nil Output format override from command line, or nil to use config default
 ---@field multiline boolean Whether the pattern should match over multiple lines
+---@field raw string Original user command, forwarded so it can be echoed back
 
 return M

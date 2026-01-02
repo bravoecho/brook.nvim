@@ -30,9 +30,9 @@ function M.selection(text, cfg)
       case = nil,
       output_format = nil,
       multiline = false,
+      raw = 'rg -F ' .. text,
     },
     cfg = cfg,
-    title = 'rg -F ' .. text,
   })
 end
 
@@ -57,9 +57,9 @@ function M.word(word, cfg)
       case = nil,
       output_format = nil,
       multiline = false,
+      raw = 'rg -w ' .. word,
     },
     cfg = cfg,
-    title = 'rg -w ' .. word,
   })
 end
 
@@ -112,7 +112,7 @@ function M.raw(cmd_args, cfg)
   -- 3. Parse ripgrep arguments
   -----------------------------
   -- Minimal parsing, just enough to support Neovim features
-  local parsed_args = parse_args(rg_args)
+  local parsed_args = parse_args(rg_args, cmd_args)
 
   -- 4. Enforce single-line search
   --------------------------------

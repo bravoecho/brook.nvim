@@ -25,8 +25,9 @@ local POSITIONAL_SEPARATOR = '--'
 --- pre-process them).
 ---
 ---@param tokens string[]|nil A list of shell-unquoted command-line tokens
+---@param raw string Original raw command, only to be forwarded
 ---@return brook.ParsedArgs result Parsed arguments, or nil if malformed
-function M.parse_args(tokens)
+function M.parse_args(tokens, raw)
   ---@type brook.ParsedArgs
   local result = {
     pattern = nil,
@@ -35,6 +36,7 @@ function M.parse_args(tokens)
     case = nil,
     output_format = nil,
     multiline = false,
+    raw = raw,
   }
 
   if tokens == nil or #tokens == 0 then

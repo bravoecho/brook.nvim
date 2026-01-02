@@ -171,7 +171,6 @@ local M = {}
 ---@field args string[] Shell-unquoted command tokens to be passed to `rg`
 ---@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
 ---@field cfg brook.ExecConfig Control how search is performed and results displayed
----@field title string Used to provide feedback to the user
 
 --- Phases
 ---
@@ -212,7 +211,7 @@ local qf_operation = {
   append = 'a',
 }
 
----@class brook.ExecSession
+---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
 ---@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
 ---@field total_results integer Number of matches parsed from ripgrep (producer-side)
@@ -285,7 +284,8 @@ function M._exec(ctx)
       and M._parse_line_number
       or M._parse_vimgrep
 
-  vim.notify(ctx.title, vim.log.levels.INFO)
+  -- Echo the original command back to the user.
+  vim.notify('rg ' .. ctx.parsed_args.raw, vim.log.levels.INFO)
 
   -- 1. Build command array
   -------------------------
