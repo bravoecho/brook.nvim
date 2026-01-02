@@ -343,6 +343,7 @@ function M._exec(ctx)
   end
 
   -- 7. Set up cancellation
+  -------------------------
   return M._user_cancel_function(active_rg_job_id, current_session)
 end
 
@@ -466,7 +467,7 @@ end
 --- Performs Neovim-side side effects:
 ---   * setqflist(...) updates the quickfix list
 ---   * optional copen + window resizing for first results
----@param items vim.quickfix.entry[] TODO: assign correct type
+---@param items vim.quickfix.entry[]
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._update_quickfix(items, ctx, session)
@@ -528,16 +529,17 @@ function M._update_quickfix(items, ctx, session)
   end
 end
 
+--- request_flush will either
+---
+---   - flush synchronously (phase 1)...
+---   - ...or schedule a flush (phase 2)
+---
+--- Since it may run synchronously (depending on phase) it must be called from
+--- a scheduled context (Neovim's main loop).
+---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._request_flush(ctx, session)
-  --- request_flush will either
-  ---
-  ---   - flush synchronously (phase 1)...
-  ---   - ...or schedule a flush (phase 2)
-  ---
-  --- Since it may run synchronously (depending on phase) it must be called from
-  --- a scheduled context (Neovim's main loop).
   if session.current_phase == phases.phase_1 then
     M._flush_phase1(ctx, session)
   elseif session.current_phase == phases.phase_2 then
@@ -562,20 +564,19 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._flush_phase1(ctx, session)
-  -- TODO: check if phase check is needed (it's already guarded at call sites).
   if session.current_phase ~= phases.phase_1 or session.queue.is_empty() then
     return
   end
 
-  local remaining = M._remaining_visible_slots(ctx, session)
-  if remaining == 0 then
+  local remaining_visible_slots = M._remaining_visible_slots(ctx, session)
+  if remaining_visible_slots == 0 then
     M._start_phase2(ctx, session)
     return
   end
 
   -- Pull only the minimum necessary to fill the quickfix window above the
   -- fold.
-  M._update_quickfix(session.queue.pull(remaining), ctx, session)
+  M._update_quickfix(session.queue.pull(remaining_visible_slots), ctx, session)
 
   -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
   -- the next `on_stdout` run.
@@ -668,6 +669,7 @@ end
 ---   * Notifies user of completion.
 ---
 --- See also the `phases` enum.
+---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._flush_phase3(ctx, session)
