@@ -301,67 +301,6 @@ function M._exec(ctx)
     return math.max(0, ctx.cfg.qf_win_height - current_session.flushed_results)
   end
 
-  --- Phase 2 consumer: flush while ripgrep is still running.
-  ---
-  ---   * Pulls batches of results from the queue and renders them.
-  ---
-  ---   * Is triggered by phase 1.
-  ---
-  ---   * Reschedules itself if there are pending entries in the queue.
-  ---
-  --- See also the `phases` enum.
-  local flush_phase2
-
-  --- Schedules the next flush in phase 2.
-  ---
-  --- Guards against multiple concurrent schedules: in timer mode, the timer
-  --- itself is the guard; in schedule mode, phase2_scheduled prevents duplicates.
-  ---
-  --- Called both by the producer (to trigger phase-2 work) and by flush_phase2
-  --- itself (to schedule the next batch).
-  local schedule_flush_phase2 = function()
-    if ctx.cfg.flush_throttle_ms > 0 then
-      -- In timer/throttle mode the timer itself is the guard.
-      -- ensure at most one timer is present at any given time
-      if phase2_timer then
-        return
-      end
-
-      phase2_timer = vim.defer_fn(function()
-        -- timer has triggered, can be removed
-        phase2_timer = nil
-        flush_phase2()
-      end, ctx.cfg.flush_throttle_ms)
-    else
-      -- In schedule mode: a separate guard is needed to prevent multiple schedules.
-      if phase2_scheduled then
-        return
-      end
-      phase2_scheduled = true
-      vim.schedule(flush_phase2)
-    end
-  end
-
-  flush_phase2 = function()
-    if current_session.current_phase ~= phases.phase_2 or current_session.queue.is_empty() then
-      return
-    end
-
-    M._update_quickfix(current_session.queue.pull(ctx.cfg.max_batch_size), ctx, current_session)
-
-    -- Wait until quickfix is updated before unlocking next flush.
-    phase2_scheduled = false
-
-    if not current_session.queue.is_empty() then
-      schedule_flush_phase2()
-    end
-  end
-
-  local start_phase2 = function()
-    current_session.current_phase = phases.phase_2
-    schedule_flush_phase2()
-  end
-
   --- Phase-1 consumer: perform the first meaningful "paint".
   ---
   ---   * Flushes *at most* the number of items needed to reach the visible
@@ -383,7 +322,7 @@ function M._exec(ctx)
 
     local remaining = remaining_visible_slots()
     if remaining == 0 then
-      start_phase2()
+      M._start_phase2(ctx, current_session)
       return
     end
 
@@ -394,7 +333,7 @@ function M._exec(ctx)
     -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
     -- the next `on_stdout` run.
     if remaining_visible_slots() == 0 then
-      start_phase2()
+      M._start_phase2(ctx, current_session)
     end
   end
 
@@ -409,7 +348,7 @@ function M._exec(ctx)
     if current_session.current_phase == phases.phase_1 then
       flush_phase1()
     elseif current_session.current_phase == phases.phase_2 then
-      schedule_flush_phase2()
+      M._schedule_flush_phase2(ctx, current_session)
     end
   end
 
@@ -736,6 +675,75 @@ function M._update_quickfix(items, ctx, session)
       end
     end
   end
+end
+
+--- Phase 2 consumer: flush while ripgrep is still running.
+---
+---   * Pulls batches of results from the queue and renders them.
+---
+---   * Is triggered by phase 1.
+---
+---   * Reschedules itself if there are pending entries in the queue.
+---
+--- See also the `phases` enum.
+---
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._flush_phase2(ctx, session)
+  if session.current_phase ~= phases.phase_2 or session.queue.is_empty() then
+    return
+  end
+
+  M._update_quickfix(session.queue.pull(ctx.cfg.max_batch_size), ctx, session)
+
+  -- Wait until quickfix is updated before unlocking next flush.
+  phase2_scheduled = false
+
+  if not session.queue.is_empty() then
+    M._schedule_flush_phase2(ctx, session)
+  end
+end
+
+--- Schedules the next flush in phase 2.
+---
+--- Guards against multiple concurrent schedules: in timer mode, the timer
+--- itself is the guard; in schedule mode, phase2_scheduled prevents duplicates.
+---
+--- Called both by the producer (to trigger phase-2 work) and by flush_phase2
+--- itself (to schedule the next batch).
+---
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._schedule_flush_phase2(ctx, session)
+  if ctx.cfg.flush_throttle_ms > 0 then
+    -- In timer/throttle mode the timer itself is the guard.
+    -- ensure at most one timer is present at any given time
+    if phase2_timer then
+      return
+    end
+
+    phase2_timer = vim.defer_fn(function()
+      -- timer has triggered, can be removed
+      phase2_timer = nil
+      M._flush_phase2(ctx, session)
+    end, ctx.cfg.flush_throttle_ms)
+  else
+    -- In schedule mode: a separate guard is needed to prevent multiple schedules.
+    if phase2_scheduled then
+      return
+    end
+    phase2_scheduled = true
+    vim.schedule(function()
+      M._flush_phase2(ctx, session)
+    end)
+  end
+end
+
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._start_phase2(ctx, session)
+  session.current_phase = phases.phase_2
+  M._schedule_flush_phase2(ctx, session)
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.
