@@ -40,6 +40,9 @@ local M = {}
 --- Module-level State ---------------------------------------------------------
 --------------------------------------------------------------------------------
 
+-- The module serves as a singleton, and this is the state that persists between
+-- searches and to support cancellation.
+
 ---@type number|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
@@ -418,70 +421,9 @@ function M._on_exit(exit_code, ctx, session)
   M._start_phase3(ctx, session)
 end
 
---- Performs Neovim-side side effects:
----   * setqflist(...) updates the quickfix list
----   * optional copen + window resizing for first results
----@param items vim.quickfix.entry[]
----@param ctx brook.SearchContext
----@param session brook.ExecSession
-function M._update_quickfix(items, ctx, session)
-  -- i. Populate
-  --------------
-  local current_buffer_size = #items
-  if current_buffer_size == 0 then
-    return
-  end
-  vim.fn.setqflist({}, session.qf_operation, { title = 'rg: results', items = items })
-  session.qf_operation = qf_operation.append
-  local previous_flushed = session.flushed_results
-  session.flushed_results = session.flushed_results + current_buffer_size
-
-  -- ii. Open (on new searches)
-  ------------------------------
-  if session.is_first_batch then
-    if ctx.cfg.qf_open then
-      if ctx.cfg.qf_auto_resize then
-        -- Open directly with the size corresponding to initial content, to
-        -- avoid "flickering".
-        vim.cmd('copen ' .. current_buffer_size)
-      else
-        -- Set the final height right away if the user has disabled auto-resizing.
-        vim.cmd('copen ' .. ctx.cfg.qf_win_height)
-      end
-    end
-    if ctx.cfg.set_search_register then
-      M._set_search_register(ctx.parsed_args.pattern, {
-        word = ctx.parsed_args.word,
-        fixed = ctx.parsed_args.fixed,
-        case = ctx.parsed_args.case,
-      })
-    end
-    session.is_first_batch = false
-  end
-
-  -- iii. Resize
-  --------------
-  -- Respect user config if auto-resizing was disabled.
-  if not ctx.cfg.qf_auto_resize then
-    return
-  end
-
-  -- Avoid resizing after the final height was reached, in case the user has
-  -- resized manually since.
-  if session.did_resize then
-    return
-  end
-
-  if previous_flushed < ctx.cfg.qf_win_height then
-    local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
-    if qf_winid ~= 0 then
-      vim.api.nvim_win_set_height(qf_winid, math.min(session.flushed_results, ctx.cfg.qf_win_height))
-      if session.flushed_results >= ctx.cfg.qf_win_height then
-        session.did_resize = true
-      end
-    end
-  end
-end
+--------------------------------------------------------------------------------
+--- Consumer: Dispatch ---------------------------------------------------------
+--------------------------------------------------------------------------------
 
 --- request_flush will either
 ---
@@ -500,6 +442,10 @@ function M._request_flush(ctx, session)
     M._schedule_flush_phase2(ctx, session)
   end
 end
+
+--------------------------------------------------------------------------------
+--- Consumer: Phase 1 (First Paint) --------------------------------------------
+--------------------------------------------------------------------------------
 
 --- Phase-1 consumer: perform the first meaningful "paint".
 ---
@@ -544,6 +490,10 @@ end
 function M._remaining_visible_slots(ctx, session)
   return math.max(0, ctx.cfg.qf_win_height - session.flushed_results)
 end
+
+--------------------------------------------------------------------------------
+--- Consumer: Phase 2 (Streaming) ----------------------------------------------
+--------------------------------------------------------------------------------
 
 --- Phase 2 consumer: flush while ripgrep is still running.
 ---
@@ -623,6 +573,10 @@ function M._cancel_phase2_scheduling()
   phase2_scheduled = false
 end
 
+--------------------------------------------------------------------------------
+--- Consumer: Phase 3 (Post-exit Drain) ----------------------------------------
+--------------------------------------------------------------------------------
+
 --- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
 ---
 ---   * Triggered by `on_exit`.
@@ -664,6 +618,98 @@ function M._cancel_phase3_scheduling()
     phase3_timer:stop()
     phase3_timer = nil
   end
+end
+
+--------------------------------------------------------------------------------
+--- Consumer: UI Utils ---------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Performs Neovim-side side effects:
+---   * setqflist(...) updates the quickfix list
+---   * optional copen + window resizing for first results
+---@param items vim.quickfix.entry[]
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._update_quickfix(items, ctx, session)
+  -- i. Populate
+  --------------
+  local current_buffer_size = #items
+  if current_buffer_size == 0 then
+    return
+  end
+  vim.fn.setqflist({}, session.qf_operation, { title = 'rg: results', items = items })
+  session.qf_operation = qf_operation.append
+  local previous_flushed = session.flushed_results
+  session.flushed_results = session.flushed_results + current_buffer_size
+
+  -- ii. Open (on new searches)
+  ------------------------------
+  if session.is_first_batch then
+    if ctx.cfg.qf_open then
+      if ctx.cfg.qf_auto_resize then
+        -- Open directly with the size corresponding to initial content, to
+        -- avoid "flickering".
+        vim.cmd('copen ' .. current_buffer_size)
+      else
+        -- Set the final height right away if the user has disabled auto-resizing.
+        vim.cmd('copen ' .. ctx.cfg.qf_win_height)
+      end
+    end
+    if ctx.cfg.set_search_register then
+      M._set_search_register(ctx.parsed_args.pattern, {
+        word = ctx.parsed_args.word,
+        fixed = ctx.parsed_args.fixed,
+        case = ctx.parsed_args.case,
+      })
+    end
+    session.is_first_batch = false
+  end
+
+  -- iii. Resize
+  --------------
+  -- Respect user config if auto-resizing was disabled.
+  if not ctx.cfg.qf_auto_resize then
+    return
+  end
+
+  -- Avoid resizing after the final height was reached, in case the user has
+  -- resized manually since.
+  if session.did_resize then
+    return
+  end
+
+  if previous_flushed < ctx.cfg.qf_win_height then
+    local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
+    if qf_winid ~= 0 then
+      vim.api.nvim_win_set_height(qf_winid, math.min(session.flushed_results, ctx.cfg.qf_win_height))
+      if session.flushed_results >= ctx.cfg.qf_win_height then
+        session.did_resize = true
+      end
+    end
+  end
+end
+
+--- Sets Vim's search register to the given ripgrep pattern.
+---
+--- Translates the ripgrep pattern to Vim regex syntax, sets the search register,
+--- adds the pattern to search history, and enables hlsearch.
+---
+---@param rg_pattern string|nil The ripgrep search pattern
+---@param pattern_opts brook.PatternOpts Options affecting pattern translation
+function M._set_search_register(rg_pattern, pattern_opts)
+  if not rg_pattern then
+    return
+  end
+
+  local vim_pattern = pattern.rg_to_vim(rg_pattern, pattern_opts)
+
+  if vim_pattern == '' then
+    return
+  end
+
+  vim.fn.setreg('/', vim_pattern)
+  vim.fn.histadd('/', vim_pattern)
+  vim.opt.hlsearch = true
 end
 
 --- Shows the final notification once all results have been flushed.
@@ -709,29 +755,6 @@ function M._notify_completion(ctx, session)
 
   table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
   vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
-end
-
---- Sets Vim's search register to the given ripgrep pattern.
----
---- Translates the ripgrep pattern to Vim regex syntax, sets the search register,
---- adds the pattern to search history, and enables hlsearch.
----
----@param rg_pattern string|nil The ripgrep search pattern
----@param pattern_opts brook.PatternOpts Options affecting pattern translation
-function M._set_search_register(rg_pattern, pattern_opts)
-  if not rg_pattern then
-    return
-  end
-
-  local vim_pattern = pattern.rg_to_vim(rg_pattern, pattern_opts)
-
-  if vim_pattern == '' then
-    return
-  end
-
-  vim.fn.setreg('/', vim_pattern)
-  vim.fn.histadd('/', vim_pattern)
-  vim.opt.hlsearch = true
 end
 
 return M
