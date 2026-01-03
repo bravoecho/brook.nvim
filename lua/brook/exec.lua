@@ -44,22 +44,6 @@ local phase2_scheduled = false
 ---@type uv.uv_timer_t|nil
 local phase3_timer = nil
 
---- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
-local cancel_phase2_scheduling = function()
-  if phase2_timer then
-    phase2_timer:stop()
-    phase2_timer = nil
-  end
-  phase2_scheduled = false
-end
-
---- Cancels phase 3 scheduling.
-local cancel_phase3_scheduling = function()
-  if phase3_timer then
-    phase3_timer:stop()
-    phase3_timer = nil
-  end
-end
 
 local pattern = require('brook.pattern')
 local fifo = require('brook.lib.fifo')
@@ -135,8 +119,8 @@ local current_session = nil
 ---@return function
 function M._user_cancel_function(job_id, session)
   return function()
-    cancel_phase2_scheduling()
-    cancel_phase3_scheduling()
+    M._cancel_phase2_scheduling()
+    M._cancel_phase3_scheduling()
 
     if job_id and job_id == active_rg_job_id then
       session.stopped_by_user = true
@@ -160,8 +144,8 @@ end
 function M._exec(ctx)
   -- 0. Cleanup
   -------------
-  cancel_phase2_scheduling()
-  cancel_phase3_scheduling()
+  M._cancel_phase2_scheduling()
+  M._cancel_phase3_scheduling()
 
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
@@ -562,6 +546,15 @@ function M._start_phase2(ctx, session)
   M._schedule_flush_phase2(ctx, session)
 end
 
+--- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
+function M._cancel_phase2_scheduling()
+  if phase2_timer then
+    phase2_timer:stop()
+    phase2_timer = nil
+  end
+  phase2_scheduled = false
+end
+
 --- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
 ---
 ---   * Triggered by `on_exit`.
@@ -592,9 +585,17 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._start_phase3(ctx, session)
-  cancel_phase2_scheduling()
+  M._cancel_phase2_scheduling()
   session.current_phase = phases.phase_3
   M._flush_phase3(ctx, session)
+end
+
+--- Cancels phase 3 scheduling.
+function M._cancel_phase3_scheduling()
+  if phase3_timer then
+    phase3_timer:stop()
+    phase3_timer = nil
+  end
 end
 
 --- Shows the final notification once all results have been flushed.
