@@ -114,21 +114,9 @@ local qf_operation = {
 ---@field stderr_lines string[]
 ---@field exit_code number|nil
 
----@param job_id number|nil ID of the job to cancel
----@param session brook.ExecSession Session to invalidate
----@return function
-function M._user_cancel_function(job_id, session)
-  return function()
-    M._cancel_phase2_scheduling()
-    M._cancel_phase3_scheduling()
-
-    if job_id and job_id == active_rg_job_id then
-      session.stopped_by_user = true
-      vim.fn.jobstop(job_id)
-      active_rg_job_id = nil
-    end
-  end
-end
+--------------------------------------------------------------------------------
+--- Entry point ----------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 --- Runs ripgrep with the given argument array.
 ---
@@ -142,8 +130,8 @@ end
 ---@param ctx brook.SearchContext Search context with all execution parameters
 ---@return function|nil cancel_fn
 function M._exec(ctx)
-  -- 0. Cleanup
-  -------------
+  -- Cleanup previous search
+  --------------------------
   M._cancel_phase2_scheduling()
   M._cancel_phase3_scheduling()
 
@@ -152,9 +140,8 @@ function M._exec(ctx)
     active_rg_job_id = nil
   end
 
-  -- 1. Init
-  ----------
-
+  -- Initialise session
+  ---------------------
   ---@type brook.ExecSession
   current_session = {
     is_first_batch = true,
@@ -171,55 +158,33 @@ function M._exec(ctx)
     exit_code = nil,
   }
 
-  -- Select the appropriate parser based on output format
   local parse_line = ctx.cfg.output_format == types.output_format.unique_lines
       and M._parse_line_number
       or M._parse_vimgrep
 
-  -- Echo the original command back to the user.
   vim.notify('rg ' .. ctx.parsed_args.raw, vim.log.levels.INFO)
 
-  -- 2. Build command array
-  -------------------------
-
-  local cmd = M._build_rg_cmd(ctx)
-
-  -- 3. Result stream handling
-  ----------------------------
-
-  local on_stdout = vim.schedule_wrap(function(_, data, _)
-    M._on_stdout(data, ctx, current_session, parse_line)
-  end)
-
-  -- 4. Error message handling
-  ----------------------------
-
-  local on_stderr = function(_, data, _)
-    M._on_stderr(data, current_session)
-  end
-
-  -- 5. Command exit handling
-  ---------------------------
-
-  local on_exit = vim.schedule_wrap(function(_, exit_code, _)
-    M._on_exit(exit_code, ctx, current_session)
-  end)
-
-  -- 6. Run command
-  -----------------
-  active_rg_job_id = vim.fn.jobstart(cmd, {
-    -- NOTE: Close stdin immediately. Unlike tools like ag, ripgrep waits on
-    -- stdin indefinitely, when invoked programmatically. Without this, the job
-    -- never exits (it remains alive until Neovim itself terminates).
+  -- Run ripgrep
+  --------------
+  active_rg_job_id = vim.fn.jobstart(M._build_rg_cmd(ctx), {
+    -- Close stdin immediately: ripgrep waits on stdin indefinitely when
+    -- invoked programmatically.
     stdin = 'null',
-    on_stdout = on_stdout,
-    -- NOTE: Buffer stderr so we receive all error output in a single callback.
-    -- This avoids partial-line issues without the complexity of manual
-    -- buffering, since stderr is typically small (error messages or lists of
-    -- unreadable files).
+
+    on_stdout = vim.schedule_wrap(function(_, data, _)
+      M._on_stdout(data, ctx, current_session, parse_line)
+    end),
+
+    -- Buffer stderr to receive all error output in a single callback.
     stderr_buffered = true,
-    on_stderr = on_stderr,
-    on_exit = on_exit,
+
+    on_stderr = function(_, data, _)
+      M._on_stderr(data, current_session)
+    end,
+
+    on_exit = vim.schedule_wrap(function(_, exit_code, _)
+      M._on_exit(exit_code, ctx, current_session)
+    end),
   })
 
   if active_rg_job_id <= 0 then
@@ -228,8 +193,8 @@ function M._exec(ctx)
     return nil
   end
 
-  -- 7. Set up cancellation
-  -------------------------
+  -- Set up cancellation
+  ----------------------
   return M._user_cancel_function(active_rg_job_id, current_session)
 end
 
@@ -277,6 +242,22 @@ function M._build_rg_cmd(ctx)
   end
 
   return cmd
+end
+
+---@param job_id number|nil ID of the job to cancel
+---@param session brook.ExecSession Session to invalidate
+---@return function
+function M._user_cancel_function(job_id, session)
+  return function()
+    M._cancel_phase2_scheduling()
+    M._cancel_phase3_scheduling()
+
+    if job_id and job_id == active_rg_job_id then
+      session.stopped_by_user = true
+      vim.fn.jobstop(job_id)
+      active_rg_job_id = nil
+    end
+  end
 end
 
 --- Producer: stdout handler
