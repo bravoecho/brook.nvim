@@ -21,6 +21,10 @@ local ESCAPE = '\\'
 --- Quotes and escapes are preserved in the output tokens; use posix_unquote
 --- to interpret them.
 ---
+--- See:
+---   - https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_07
+---   - https://www.gnu.org/software/bash/manual/html_node/Quote-Removal.html
+---
 ---@param qargs string The raw command-line string to tokenise
 ---@return string[] tokens List of tokens (may be empty if input is blank)
 function M.tokenise(qargs)
