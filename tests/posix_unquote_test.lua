@@ -174,9 +174,16 @@ test('rg: escaped double quotes', function()
   eq(posix_unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
 end)
 
-test('rg: quoted options and flags, double-quoted pattern option', function()
+test('rg: quoted options and flags, double-quoted pattern option (outer)', function()
   deep_eq(
     posix_unquote_all({ "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
+  )
+end)
+
+test('rg: quoted options and flags, double-quoted pattern option (inner)', function()
+  deep_eq(
+    posix_unquote_all({ "-e='\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
     { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
   )
 end)
@@ -184,7 +191,7 @@ end)
 test('rg: quoted options and flags, single-quoted pattern option', function()
   deep_eq(
     posix_unquote_all({ "-e='more data'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
-    { "-e='more data'", '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
+    { '-e=more data', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
   )
 end)
 

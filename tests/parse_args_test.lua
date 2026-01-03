@@ -674,15 +674,13 @@ test('real-world: line-number mode', function()
   deep_eq(parse_args({ '-n', '-w', 'TODO' }, raw), result('TODO', { word = true, output_format = 'unique-lines' }))
 end)
 
-test('real-world: quoted options and flags', function()
-  -- FIXME: parsing quoted options and flags
-  -- deep_eq(
-  --   parse_args(
-  --     { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' },
-  --     raw
-  --   ),
-  --   result('more data', { output_format = 'one-line-per-match' })
-  -- )
+test('real-world: tokens are assumed to be already shell-unquoted (what ripgrep would see)', function()
+  -- The result includes the double quotes because the parser assumes the tokens
+  -- are pre-unquoted. See:
+  --
+  -- https://www.gnu.org/software/bash/manual/html_node/Quote-Removal.html
+  -- https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_07
+  deep_eq(parse_args({ '-e="more data"' }, raw), result('"more data"'))
 end)
 
 --------------------------------------------------------------------------------
