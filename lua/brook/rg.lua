@@ -78,19 +78,11 @@ end
 --- but without actually invoking a shell process.
 ---
 --- Unquoting is necessary here because the user types their command using shell
---- syntax. When they type:
----
----     :Rg 'hello world' src/
----
---- ...they expect the quotes to be *syntax* (grouping words), not *content*.
---- The search pattern should be `hello world`, not `'hello world'`. This is
---- different from rg.selection() and rg.word(), where we have pre-built Lua
---- strings that go directly to rg without any shell syntax involved.
----
---- Examples:
----   `:Rg pattern src/`         -> `rg --vimgrep pattern src/`
----   `:Rg 'hello world' src/`   -> `rg --vimgrep "hello world" src/`
----   `:Rg -w 'foo bar'`         -> `rg --vimgrep -w "foo bar"`
+--- syntax. When they type `:Rg 'hello world' src/`, they expect the quotes to
+--- be *syntax* (grouping words), not *content*. The search pattern should be
+--- `hello world`, not `'hello world'`. This is different from selection() and
+--- word(), where we have Lua strings that go directly to rg without any shell
+--- syntax involved.
 ---
 ---@param cmd_args string The raw command-line arguments
 ---@param cfg brook.ExecConfig Plugin options
