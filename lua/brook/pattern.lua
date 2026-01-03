@@ -1,5 +1,20 @@
-local types = require 'brook.types'
+--- Pattern translation: ripgrep regex => Vim "very magic" regex.
+---
+--- While best-effort, it covers a wide range of practical use cases.
+---
+--- It does not cover:
+---
+---   * ripgrep features not supported by vimgrep
+---   * vimgrep syntax with no ripgrep equivalent
+---   * lookarounds (high complexity, limited utility in code search)
+---
+--- When translation is not possible, the search still works; only highlighting and
+--- n/N navigation are unavailable.
+---
+---@module 'brook.pattern'
 local M = {}
+
+local types = require 'brook.types'
 
 --- Translates a ripgrep pattern to Vim regex syntax.
 ---

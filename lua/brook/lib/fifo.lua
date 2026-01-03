@@ -1,4 +1,8 @@
---- Simple FIFO queue.
+--- Simple FIFO queue for producer/consumer decoupling.
+---
+---   * cursor-based for more consistent performance
+---   * no compaction (negligible memory use compared to quickfix, garbage
+---     collected at the end of each search)
 ---
 ---@module 'brook.lib.fifo'
 
@@ -37,7 +41,7 @@ function M.new()
     F._cursor = slice_end + 1
     local slice = {}
     for i = current_cursor, slice_end do
-      slice[#slice + 1] = F._items[i]
+      slice[#slice+1] = F._items[i]
     end
     return slice
   end

@@ -1,11 +1,20 @@
+--- Ripgrep argument parsing:
+---
+---   * extracts the ripgrep search pattern (first positional, first after
+---     separator, --regexp/-e option)
+---
+---   * interprets a minimal subset of ripgrep arguments, only for the purpose
+---     of better integration with Neovim's features (quickfix, search register)
+---
+---@module 'brook.parse_args'
+local M = {}
+
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
 -- ripgrep help.
 local rg_named_args = require('brook.lib.rg_named_args')
 local types = require('brook.types')
 local rg_flags = rg_named_args.flags
 local rg_options = rg_named_args.options
-
-local M = {}
 
 local POSITIONAL_SEPARATOR = '--'
 

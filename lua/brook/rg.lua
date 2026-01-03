@@ -1,3 +1,11 @@
+--- Public search interface:
+---
+---   * visual selection (literal)
+---   * current word (literal, with word boundaries)
+---   * user-provided search command
+---
+--- Delegates to the exec.lua module.
+---
 ---@module 'brook.rg'
 
 local exec = require('brook.exec')._exec

@@ -1,3 +1,7 @@
+--- POSIX shell unquoting: interpreting quoted tokens into plain strings.
+---
+--- Decouples from the user's shell and from Neovim's unquoting.
+---
 ---@module 'brook.posix_unquote'
 
 local M = {}

@@ -1,3 +1,9 @@
+--- Shell-style tokenisation: splitting a command string into logical arguments
+--- (beyond the whitespace-based splitting provided by Neovim for user commands.)
+---
+--- See also the companion module posix_unquote.lua
+---
+---@module 'brook.tokenise'
 local M = {}
 
 local SINGLE_QUOTE = "'"

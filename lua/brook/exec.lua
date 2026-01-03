@@ -1,130 +1,32 @@
---- Asynchronous ripgrep execution with quickfix integration.
+--- Asynchronous ripgrep execution with streaming quickfix integration.
 ---
---- This module provides functions to run ripgrep searches asynchronously,
---- incrementally adding results into Neovim's quickfix list using cooperative
---- scheduling. It bypasses the shell for security and portability.
+--- Challenges that can cause UI freeze (redraw starvation):
 ---
---- Implementation Notes and Workflow
---- ---------------------------------
+---   * ripgrep can produce results faster than Neovim can render them
 ---
---- Constraints:
+---   * Neovim does not backpressure built in
 ---
---- * Ripgrep often produces matches faster than Neovim can populate the
----   quickfix list. Unlike Unix pipelines, Neovim job channels do not provide
----   backpressure for stdout; instead, the stdout handler will continue to be
----   triggered at the pace of the external command.
+---   * the quickfix list is memory-intensive
 ---
---- * The quickfix list is not designed for streaming, or for a large number
----   of results. Large lists use a lot of memory and degrade overall editor
----   performance even after the job exits. This module therefore enforces an
----   upper bound to the maximum number of results; beyond that limit, the
----   ripgrep process is stopped.
+--- To provide consistent performance and responsiveness, this module:
 ---
---- * Neovim can only redraw when the main loop becomes idle; if work is already
----   scheduled in response to stdout events, the Neovim event loop will
----   prioritize that work over re-rendering the corresponding buffer with the
----   new information. In this case the UI cannot reflect the results processed
----   so far. This is a scenario known as "redraw starvation".
+---   * decouples producer (ripgrep's stdout) and consumer (quickfix rendering)
+---     by interposing a queue, so that both can work at their optimal pace
 ---
---- * The mitigation is not to force redraws, but to ensure that
----   - consumer work is bounded per tick of the Neovim event loop, and yields
----     back to the main loop frequently
----   - at most one flush-related task is pending at any given time
+---   * orchestrates quickfix updates in different phases
+---     1. first paint
+---     2. steady streaming (ripgrep still running)
+---     3. turbo-drain (ripgrep has finished)
 ---
---- Workflow:
+--- Other key features:
 ---
---- To preserve perceived responsiveness without forcing redraws, results are
---- handled via a producer/consumer pipeline and three consumer phases.
+---   * capped results (configurable up to 10,000) to prevent memory bloat
+---     and editor slowdown
 ---
---- Producer and consumer keep track of the entries separately:
+---   * bypasss shell for compatibility and security
 ---
----   * Job orchestration is based on the total number of results received and
----     parsed
----
----   * UI-related operations (phase completion, resizing) are based on flushed
----     items, rather than parsed items
----
---- The pipeline consists of five actors.
----
----   1. Producer (`on_stdout`):
----
----      - parses stdout lines emitted by ripgrep
----      - enqueues quickfix entries into a FIFO queue
----      - triggers the appropriate consumer based on the current phase
----
----      The producer does not encode UI logic (resizing, redraw timing,
----      batching strategy). Its only responsibility is to ingest results and
----      notify the consumer that work is available.
----
----   2. FIFO queue:
----
----      - decouples producer cadence (ripgrep output rate) from consumer cadence
----        (Neovim UI update rate)
----
----      - allows the consumer to flush entries at its own pace
----
----      Usage by phase:
----
----        * phase 1 uses `pull(n)` to flush just enough entries to fill the
----          visible quickfix window, providing immediate feedback
----
----        * phase 2 uses `pull(max_batch_size)` repeatedly to flush bounded
----          batches, yielding to the main loop between batches
----
----        * phase 3 uses `pull(max_batch_size * 10)` to drain quickly after
----          ripgrep exits
----
----   3. Phase-1 consumer (`flush_phase1`):
----
----      - performs the first meaningful “paint”
----      - flushes at most the number of entries needed to fill the visible
----        quickfix window (above the fold)
----      - never self-schedules (no recursion, timers, or deferred callbacks)
----      - always runs synchronously on the main loop
----
----      Because phase 1 runs synchronously and then returns control to the
----      main loop, Neovim naturally reaches an idle point and redraws the UI.
----      This effectively simulates backpressure for the first visible results
----      without forcing redraws.
----
----      Phase 1 owns the phase transition: once the visible region is filled,
----      it switches the consumer into phase 2 and triggers it.
----
----      NOTE:
----      Results are parsed and enqueued on the main loop by design. This keeps
----      phase-1 rendering synchronous and predictable. The overhead is
----      negligible relative to quickfix and UI updates, while offloading
----      parsing would require more complex orchestration and the performance
----      gains would be undetectable even by a keen human eye.
----
----   4. Phase-2 consumer (`flush_phase2`):
----
----      - flushes remaining queued entries in bounded batches
----      - schedules at most one flush-related task at any given time
----      - flushes exactly one batch per scheduled callback invocation
----      - yields back to Neovim’s main loop between batches
----
----      Phase 2 is throughput-oriented: it self-schedules additional work
----      using `vim.schedule`, ensuring that the main loop regains control
----      between batches so redraws can occur.
----
----      However, it optionally introduces a very small delay between batches,
----      to prevent schedule chaining and give the UI time to redraw in
----      extra-fast output scenarios.
----
----      Only phases 2 and 3 are allowed to self-schedule follow-up flushing.
----
----   5. Phase-3 consumer (`flush_phase3`):
----
----      - triggered by `on_exit` when ripgrep finishes
----      - drains remaining queued entries quickly using larger batches
----        (10x max_batch_size) and a minimal interval (1ms)
----      - still yields to the event loop between batches to allow UI redraws
----      - notifies the user of completion once the queue is fully drained
----
----      Phase 3 exists because phase 2's throttling, while useful during active
----      search to preserve responsiveness, would feel sluggish once the search
----      is complete. Users expect the final results to appear promptly.
+--- See the phases enum and individual phase functions for implementation
+--- details.
 ---
 ---@module 'brook.exec'
 

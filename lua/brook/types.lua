@@ -1,5 +1,6 @@
---- Shared type definitions for the rg plugin.
----@module 'brook'
+--- Data structures and reference values used throughout brook.nvim.
+---
+---@module 'brook.types'
 
 ---@class brook.UserConfig
 ---@field keymap? string Keymap for triggering searches (default: '<leader>g')

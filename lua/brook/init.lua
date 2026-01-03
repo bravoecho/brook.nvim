@@ -1,3 +1,12 @@
+--- brook.nvim: fast and minimalist ripgrep wrapper for Neovim.
+---
+---   * passes arguments to ripgrep with minimal transformation
+---   * integrates results into Neovim's native quickfix list
+---   * sets the search register for n/N navigation
+---
+--- Setup and configuration.
+---
+---@module 'brook'
 local M = {}
 
 local rg = require('brook.rg')
