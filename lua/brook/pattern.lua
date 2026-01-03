@@ -18,39 +18,20 @@ local types = require 'brook.types'
 
 --- Translates a ripgrep pattern to Vim regex syntax.
 ---
---- Best-effort translation to support results highlighting and navigation.
 --- Targets very magic mode (\v) for closer semantic alignment with ripgrep's
 --- Rust regex syntax.
 ---
---- Supported syntactic features:
----
+--- Supported:
 ---   - literal characters and basic metacharacters
----   - Vim-special characters requiring escaping
----   - character classes
----   - character class shorthands
----   - word boundaries
+---   - character classes and shorthands (\d, \w, etc.)
+---   - word boundaries (\b)
 ---   - quantifiers (greedy and non-greedy)
 ---   - numbered groups (capturing and non-capturing)
----   - backreferences in patterns
----
---- Pattern translation, and therefore search result highlighting, is not
---- supported for several advanced Rust regex features. This is either because
---- have no vimgrep correspondent, or because are too complex to implement and
---- unlikely to be used in code searches. They will cause the translator to
---- return `nil`. For example:
----
----   - lookarounds: `(?=...)` `(?!...)` `(?<=...)` `(?<!...)`
----   - named groups: `(?P<n>...)` `(?<n>...)`
----   - non-word boundary: `\B`
----   - anchors: `\A` `\z` (use `^` `$` instead)
----   - unicode categories: `\p{...}` `\P{...}`
----   - conditional patterns: `(?(condition)yes|no)`
----   - atomic groups: `(?>...)`
----   - possessive quantifiers: `*+` `++` `?+`
+---   - backreferences
 ---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.PatternOpts Options affecting pattern translation
----@return string|nil vim_pattern The translated Vim regex pattern, nil when pattern is unsupported.
+---@return string|nil vim_pattern The translated Vim regex pattern, nil when unsupported.
 function M.rg_to_vim(pattern, opts)
   opts = opts or {}
 
@@ -97,13 +78,13 @@ function M.rg_to_vim(pattern, opts)
         -- Word boundary: \b -> (<|>) in very magic
         table.insert(result, '(<|>)')
       elseif next_char == 'B' then
-        -- Non-word boundary: unsupported
+        -- Non-word boundary: no Vim equivalent
         return nil
       elseif next_char == 'A' or next_char == 'z' then
-        -- String anchors: unsupported
+        -- String anchors: Vim's \%^ and \%$ are buffer-based, not string-based
         return nil
       elseif next_char == 'p' or next_char == 'P' then
-        -- Unicode categories: unsupported
+        -- Unicode categories: no Vim equivalent
         return nil
       else
         -- All other escapes pass through (very magic escaping matches ripgrep)
@@ -181,7 +162,7 @@ function M.rg_to_vim(pattern, opts)
     elseif (char == '*' or char == '+' or char == '?')
         and next_char == '+'
         and not in_char_class then
-      -- Possessive quantifiers: unsupported by Neovim
+      -- Possessive quantifiers: no Vim equivalent
       return nil
     elseif char == '(' and next_char == '?' and not in_char_class then
       local third_char = pattern:sub(i + 2, i + 2)
@@ -190,9 +171,9 @@ function M.rg_to_vim(pattern, opts)
         table.insert(result, '%(')
         i = i + 3 -- skip (?:
       else
-        -- Lookarounds, atomic groups, named groups: unsupported either because
-        -- the don't have a Neovim correspondent, or because they are complex
-        -- and niche.
+        -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!) but translation
+        -- is complex and these are rarely used in code search.
+        -- Atomic groups, named groups: no Vim equivalent.
         return nil
       end
     elseif char == '/' then
