@@ -37,7 +37,7 @@ local types = require('brook.types')
 local M = {}
 
 --------------------------------------------------------------------------------
---- Module-level state ---------------------------------------------------------
+--- Module-level State ---------------------------------------------------------
 --------------------------------------------------------------------------------
 
 ---@type number|nil Vim job id returned by vim.fn.jobstart()
@@ -90,7 +90,7 @@ local qf_operation = {
 }
 
 --------------------------------------------------------------------------------
---- Type definitions -----------------------------------------------------------
+--- Typedefs -------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 --- Context object for ripgrep execution (parameters for _exec).
@@ -115,7 +115,7 @@ local qf_operation = {
 ---@field exit_code number|nil
 
 --------------------------------------------------------------------------------
---- Entry point ----------------------------------------------------------------
+--- Entry Point ----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 --- Runs ripgrep with the given argument array.
@@ -260,11 +260,13 @@ function M._user_cancel_function(job_id, session)
   end
 end
 
---- Producer: stdout handler
----
---- This callback should stay "dumb": parse complete lines, enqueue entries,
---- and then trigger the appropriate consumer. It intentionally does not
---- encode UI logic (resizing, redraws, etc.).
+--------------------------------------------------------------------------------
+--- Producer -------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- The stdout handler callback:
+---   * parses and enqueues results
+---   * triggers the consumer
 ---
 ---@param data string[] stdout segments yielded by the on_stdout callaback. See :h channel-lines
 ---@param ctx brook.SearchContext
@@ -329,6 +331,91 @@ function M._on_stdout(data, ctx, session, parse_line)
   end
 
   M._request_flush(ctx, session)
+end
+
+--- Parses a vimgrep-format result line into a quickfix entry.
+---
+--- Format: "file:line:col:text" (default, --vimgrep)
+--- Example: "some/path/to/file.txt:137:42:the red fox jumped"
+---
+---@param result string A line in vimgrep format
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
+function M._parse_vimgrep(result)
+  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+  -- Instead, we locate the :line:col: pattern and extract components by position.
+  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
+  if not start_pos then
+    return nil
+  end
+
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
+
+  return {
+    filename = filename,
+    lnum = tonumber(lnum),
+    col = tonumber(col),
+    text = text,
+  }
+end
+
+--- Parses a line-number-format result line into a quickfix entry.
+---
+--- Format: "file:line:text" (unique-lines mode, --line-number)
+--- Example: "some/path/to/file.txt:137:the red fox jumped"
+---
+---@param result string A line in line-number format
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
+function M._parse_line_number(result)
+  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+  -- Instead, we locate the :line: pattern and extract components by position.
+  local start_pos, end_pos, lnum = result:find(':(%d+):')
+  if not start_pos then
+    return nil
+  end
+
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
+
+  return {
+    filename = filename,
+    lnum = tonumber(lnum),
+    col = 1, -- Default to column 1 when no column info available
+    text = text,
+  }
+end
+
+-- stderr is buffered (see jobstart options below), so this callback
+-- receives all stderr output in a single call when the job exits.
+--
+---@param data string[]
+---@param session brook.ExecSession
+function M._on_stderr(data, session)
+  if not data or #data == 0 then
+    return
+  end
+  if data[#data] == '' then
+    table.remove(data)
+  end
+  session.stderr_lines = data
+end
+
+--- on_exit is a final trigger for consumers: it ensures anything still in
+--- the stdout buffer/queue becomes visible even if rg stops suddenly.
+---
+---@param exit_code number
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._on_exit(exit_code, ctx, session)
+  -- Capture exit state for notify_completion (called at end of phase 3).
+  session.exit_code = exit_code
+  if session.current_phase == phases.phase_1 then
+    -- Handle edge case where ripgrep exited before the quickfix window was
+    -- fully populated. Flush synchronously to ensure results are visible.
+    M._flush_phase1(ctx, session)
+  end
+
+  M._start_phase3(ctx, session)
 end
 
 --- Performs Neovim-side side effects:
@@ -622,91 +709,6 @@ function M._notify_completion(ctx, session)
 
   table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
   vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
-end
-
--- stderr is buffered (see jobstart options below), so this callback
--- receives all stderr output in a single call when the job exits.
---
----@param data string[]
----@param session brook.ExecSession
-function M._on_stderr(data, session)
-  if not data or #data == 0 then
-    return
-  end
-  if data[#data] == '' then
-    table.remove(data)
-  end
-  session.stderr_lines = data
-end
-
---- on_exit is a final trigger for consumers: it ensures anything still in
---- the stdout buffer/queue becomes visible even if rg stops suddenly.
----
----@param exit_code number
----@param ctx brook.SearchContext
----@param session brook.ExecSession
-function M._on_exit(exit_code, ctx, session)
-  -- Capture exit state for notify_completion (called at end of phase 3).
-  session.exit_code = exit_code
-  if session.current_phase == phases.phase_1 then
-    -- Handle edge case where ripgrep exited before the quickfix window was
-    -- fully populated. Flush synchronously to ensure results are visible.
-    M._flush_phase1(ctx, session)
-  end
-
-  M._start_phase3(ctx, session)
-end
-
---- Parses a vimgrep-format result line into a quickfix entry.
----
---- Format: "file:line:col:text" (default, --vimgrep)
---- Example: "some/path/to/file.txt:137:42:the red fox jumped"
----
----@param result string A line in vimgrep format
----@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_vimgrep(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line:col: pattern and extract components by position.
-  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
-
-  return {
-    filename = filename,
-    lnum = tonumber(lnum),
-    col = tonumber(col),
-    text = text,
-  }
-end
-
---- Parses a line-number-format result line into a quickfix entry.
----
---- Format: "file:line:text" (unique-lines mode, --line-number)
---- Example: "some/path/to/file.txt:137:the red fox jumped"
----
----@param result string A line in line-number format
----@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_line_number(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line: pattern and extract components by position.
-  local start_pos, end_pos, lnum = result:find(':(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
-
-  return {
-    filename = filename,
-    lnum = tonumber(lnum),
-    col = 1, -- Default to column 1 when no column info available
-    text = text,
-  }
 end
 
 --- Sets Vim's search register to the given ripgrep pattern.
