@@ -12,7 +12,22 @@ local valid_output_formats = {
 
 --- @param cfg? brook.UserConfig User-provided configuration
 function M.setup(cfg)
-  cfg = vim.tbl_deep_extend('force', types.defaults, cfg or {})
+  ---@type brook.UserConfig
+  local defaults = {
+    keymap = '<leader>g',
+    stop_keymap = '<leader>G',
+    max_results = 1000,
+    max_batch_size = 100,
+    flush_throttle_ms = 10,
+    qf_open = true,
+    qf_auto_resize = true,
+    qf_win_height = 10,
+    output_format = types.output_format.one_line_per_match,
+    set_search_register = true,
+  }
+
+  ---@type brook.UserConfig
+  cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
 
   -- Validate max_results
   if type(cfg.max_results) ~= 'number'
@@ -50,6 +65,8 @@ function M.setup(cfg)
     qf_win_height = cfg.qf_win_height,
     output_format = cfg.output_format,
     set_search_register = cfg.set_search_register,
+    phase3_batch_size = cfg.max_batch_size * 10,
+    phase3_throttle_ms = 1,
   }
 
   local desc = {

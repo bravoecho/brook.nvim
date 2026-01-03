@@ -673,13 +673,7 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._flush_phase3(ctx, session)
-  -- Batch size for phase 3. Larger than phase 2 because ripgrep has finished
-  -- and we want to drain quickly. Each batch still yields to the event loop,
-  -- so larger batches just mean fewer round-trips.
-  local phase3_batch_size = ctx.cfg.max_batch_size * 10
-  local phase3_drain_interval_ms = 1
-
-  M._update_quickfix(session.queue.pull(phase3_batch_size), ctx, session)
+  M._update_quickfix(session.queue.pull(ctx.cfg.phase3_batch_size), ctx, session)
 
   if session.queue.is_empty() then
     session.current_phase = phases.done
@@ -689,7 +683,7 @@ function M._flush_phase3(ctx, session)
 
   phase3_timer = vim.defer_fn(function()
     M._flush_phase3(ctx, session)
-  end, phase3_drain_interval_ms)
+  end, ctx.cfg.phase3_throttle_ms)
 end
 
 --- Starts phase 3: cancels phase 2 and begins fast drain.

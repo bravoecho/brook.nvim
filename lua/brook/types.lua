@@ -19,9 +19,11 @@
 ---@field flush_throttle_ms integer A short time, in milliseconds, to give Neovim the opportunity to redraw between batches (default: 10)
 ---@field qf_open boolean Whether the quickfix list should be opened when results arrive (default: true)
 ---@field qf_auto_resize boolean Whether the quickfix window should grow as results come in (default: true)
----@field qf_win_height integer Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
+---@field qf_win_height number Maximum height the quickfix window should grow to (when auto_resize is enabled) or fixed height (when auto_resize is not enabled) (default: 10)
 ---@field output_format brook.OutputFormat Output format: 'one-line-per-match' or 'unique-lines'
 ---@field set_search_register boolean Whether to set Vim's search register (/) with the pattern, enabling n/N navigation and hlsearch (default: true)
+---@field phase3_batch_size number Larger batches after ripgrep has finished (default: 10x max_batch_size)
+---@field phase3_throttle_ms number Less throttling after ripgrep has finished (default: 1)
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.PatternOpts
@@ -41,20 +43,6 @@ M.search_case = {
 M.output_format = {
   one_line_per_match = 'one-line-per-match',
   unique_lines = 'unique-lines',
-}
-
----@type brook.UserConfig
-M.defaults = {
-  keymap = '<leader>g',
-  stop_keymap = '<leader>G',
-  max_results = 1000,
-  max_batch_size = 100,
-  flush_throttle_ms = 10,
-  qf_open = true,
-  qf_auto_resize = true,
-  qf_win_height = 10,
-  output_format = M.output_format.one_line_per_match,
-  set_search_register = true,
 }
 
 M.max_max_results = 10000
