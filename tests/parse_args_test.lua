@@ -674,6 +674,17 @@ test('real-world: line-number mode', function()
   deep_eq(parse_args({ '-n', '-w', 'TODO' }, raw), result('TODO', { word = true, output_format = 'unique-lines' }))
 end)
 
+test('real-world: quoted options and flags', function()
+  -- FIXME: parsing quoted options and flags
+  -- deep_eq(
+  --   parse_args(
+  --     { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' },
+  --     raw
+  --   ),
+  --   result('more data', { output_format = 'one-line-per-match' })
+  -- )
+end)
+
 --------------------------------------------------------------------------------
 --- Combined flags -------------------------------------------------------------
 --------------------------------------------------------------------------------

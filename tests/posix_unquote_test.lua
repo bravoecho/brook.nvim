@@ -4,7 +4,9 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
+local deep_eq = h.deep_eq
 local posix_unquote = require('brook.posix_unquote').posix_unquote
+local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------
@@ -170,6 +172,20 @@ end)
 
 test('rg: escaped double quotes', function()
   eq(posix_unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
+end)
+
+test('rg: quoted options and flags, double-quoted pattern option', function()
+  deep_eq(
+    posix_unquote_all({ "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
+  )
+end)
+
+test('rg: quoted options and flags, single-quoted pattern option', function()
+  deep_eq(
+    posix_unquote_all({ "-e='more data'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    { "-e='more data'", '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
+  )
 end)
 
 --------------------------------------------------------------------------------

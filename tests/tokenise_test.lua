@@ -254,6 +254,13 @@ test('rg: option with single-quoted value containing spaces', function()
   deep_eq(tokenise("--color --regexp='foo bar'"), { '--color', "--regexp='foo bar'" })
 end)
 
+test('rg: quoted options and flags', function()
+  deep_eq(
+    tokenise("'-e=\"more data\"' '-w' --vimgrep \"--max-columns=300\" --max-columns-preview '--color=never'"),
+    { "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }
+  )
+end)
+
 -- =============================================================================
 -- Summary
 -- =============================================================================
