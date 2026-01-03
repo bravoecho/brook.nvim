@@ -30,6 +30,16 @@
 ---
 ---@module 'brook.exec'
 
+local pattern = require('brook.pattern')
+local fifo = require('brook.lib.fifo')
+local types = require('brook.types')
+
+local M = {}
+
+--------------------------------------------------------------------------------
+--- Module-level state ---------------------------------------------------------
+--------------------------------------------------------------------------------
+
 ---@type number|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
@@ -37,57 +47,39 @@ local active_rg_job_id = nil
 ---@type uv.uv_timer_t|nil
 local phase2_timer = nil
 
---- Used to guard the schedule chaining use case (flush_throttle_ms == 0)
+--- Used to guard the schedule-chaining use case (flush_throttle_ms == 0)
 local phase2_scheduled = false
 
 --- Timer for phase 3 (post-exit drain).
 ---@type uv.uv_timer_t|nil
 local phase3_timer = nil
 
+---@type brook.ExecSession
+local current_session = nil
 
-local pattern = require('brook.pattern')
-local fifo = require('brook.lib.fifo')
-local types = require('brook.types')
+--------------------------------------------------------------------------------
+--- Enums ----------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
-local M = {}
-
---- Context object for ripgrep execution (parameters for _exec).
----
----@class brook.SearchContext
----@field args string[] Shell-unquoted command tokens to be passed to `rg`
----@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
----@field cfg brook.ExecConfig Control how search is performed and results displayed
-
---- Phases
----
---- Three-phase consumer strategy to avoid redraw starvation without forcing
---- redraws:
----
----   * Phase 1 (first paint): flush just enough items to fill the target
----     quickfix window height. Phase 1 never self-schedules (no timers,
----     recursion or defer_fn): it runs only when invoked by the producer, and
----     then returns, allowing the main loop to become idle and redraw. See
----     also flush_phase1.
----
----   * Phase 2 (ripgrep running): flushes remaining queued items in bounded
----     batches (max_batch_size) using cooperative scheduling.
----     Each batch schedules at most one subsequent batch, ensuring the main
----     loop gets chances to redraw between updates.
----
----   * Phase 3 (post-exit drain): when ripgrep finishes, any entries still
----     in the queue need to be flushed. Phase 2's throttling, useful to
----     preserve responsiveness, would feel sluggish once the search is
----     complete. So phase 3 uses a much shorter interval (1ms) and larger
----     batches (10x max_batch_size), to drain quickly while still yielding
----     to the event loop for UI redraws.
----
---- Only phases 2 and 3 may schedule flushing.
+--- Three-phase consumer strategy to avoid redraw starvation.
 ---
 ---@enum brook.ExecPhase
 local phases = {
+  --- First paint: flush just enough to fill the visible quickfix window.
+  --- Runs synchronously when invoked by the producer, then returns to let
+  --- the main loop redraw. Never self-schedules.
   phase_1 = 'phase-1',
+
+  --- Streaming: flush queued items in bounded batches while ripgrep runs.
+  --- Each batch schedules at most one successor, yielding to the main loop
+  --- between updates.
   phase_2 = 'phase-2',
+
+  --- Post-exit drain: ripgrep has finished but items remain queued. Uses
+  --- shorter intervals and larger batches than phase 2 to drain quickly
+  --- while still yielding for redraws.
   phase_3 = 'phase-3',
+
   done = 'done',
 }
 
@@ -96,6 +88,17 @@ local qf_operation = {
   replace = 'r',
   append = 'a',
 }
+
+--------------------------------------------------------------------------------
+--- Type definitions -----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Context object for ripgrep execution (parameters for _exec).
+---
+---@class brook.SearchContext
+---@field args string[] Shell-unquoted command tokens to be passed to `rg`
+---@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
+---@field cfg brook.ExecConfig Control how search is performed and results displayed
 
 ---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
@@ -110,9 +113,6 @@ local qf_operation = {
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
 ---@field exit_code number|nil
-
----@type brook.ExecSession
-local current_session = nil
 
 ---@param job_id number|nil ID of the job to cancel
 ---@param session brook.ExecSession Session to invalidate
