@@ -690,6 +690,9 @@ end
 --- Translates the ripgrep pattern to Vim regex syntax, sets the search register,
 --- adds the pattern to search history, and enables hlsearch.
 ---
+---
+--- Notifies the user of any pattern translation issues.
+---
 ---@param rg_pattern string|nil The ripgrep search pattern
 ---@param pattern_opts brook.PatternOpts Options affecting pattern translation
 function M._set_search_register(rg_pattern, pattern_opts)
@@ -697,14 +700,18 @@ function M._set_search_register(rg_pattern, pattern_opts)
     return
   end
 
-  local vim_pattern = pattern.rg_to_vim(rg_pattern, pattern_opts)
+  local result = pattern.rg_to_vim(rg_pattern, pattern_opts)
 
-  if vim_pattern == '' then
+  if result.warning then
+    vim.notify('rg: pattern translation: ' .. result.warning, vim.log.levels.WARN)
+  end
+
+  if not result.pattern or result.pattern == '' then
     return
   end
 
-  vim.fn.setreg('/', vim_pattern)
-  vim.fn.histadd('/', vim_pattern)
+  vim.fn.setreg('/', result.pattern)
+  vim.fn.histadd('/', result.pattern)
   vim.opt.hlsearch = true
 end
 

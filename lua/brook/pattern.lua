@@ -22,6 +22,12 @@ local M = {}
 
 local types = require 'brook.types'
 
+--- Result of pattern translation.
+---
+---@class brook.PatternResult
+---@field pattern string|nil The translated Vim regex (nil when unsupported)
+---@field warning string|nil Warning message for adjustments or failures
+
 --- Translates a ripgrep pattern to Vim regex syntax.
 ---
 --- Targets very magic mode (\v) for closer semantic alignment with ripgrep's
@@ -36,7 +42,8 @@ local types = require 'brook.types'
 ---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.PatternOpts Options affecting pattern translation
----@return string|nil vim_pattern The translated Vim regex pattern, nil when unsupported.
+---
+---@return brook.PatternResult result The translation result with pattern and optional warning
 function M.rg_to_vim(pattern, opts)
   opts = opts or {}
 
@@ -59,12 +66,13 @@ function M.rg_to_vim(pattern, opts)
       prefix = '\\c' .. prefix
     end
 
-    return prefix .. pattern
+    return { pattern = prefix .. pattern, warning = nil }
   end
 
   -- Case 2. Normal search pattern: translate rg to vim
   -----------------------------------------------------
   local result = {}
+  local warnings = {}
   local len = #pattern
   local in_char_class = false
   local i = 1
@@ -87,7 +95,8 @@ function M.rg_to_vim(pattern, opts)
         -- be approximated as a negated boundary check using Vim assertions, but
         -- this would be beyond the scope of the plugin for a rarely used regex
         -- feature.
-        return nil
+        table.insert(warnings, '\\B not supported')
+        return { pattern = nil, warning = M._format_warnings(warnings) }
       elseif next_char == 'A' then
         -- \A (start of string in ripgrep) is equivalent to ^ under our constraints:
         --   * no multiline patterns
@@ -96,15 +105,18 @@ function M.rg_to_vim(pattern, opts)
         -- Using Vim's \%^ would introduce buffer-level semantics and subtle
         -- differences (e.g. EOF newline handling), so we deliberately map \A -> ^.
         table.insert(result, '^')
+        table.insert(warnings, '\\A treated as ^')
       elseif next_char == 'z' then
         -- \z (end of string in ripgrep) is equivalent to $ under our constraints.
         -- Mapping to Vim's \%$ would be incorrect: \%$ matches the absolute end of
         -- the buffer, which fails when a file ends with a newline (the common case).
         -- To preserve ripgrep semantics, we map \z -> $.
         table.insert(result, '$')
+        table.insert(warnings, '\\z treated as $')
       elseif next_char == 'p' or next_char == 'P' then
         -- Unicode property classes: no reliable, portable 1:1 mapping from ripgrep to vimgrep.
-        return nil
+        table.insert(warnings, 'unicode properties not supported')
+        return { pattern = nil, warning = M._format_warnings(warnings) }
       else
         -- All other escapes pass through (very magic escaping matches ripgrep)
         table.insert(result, '\\')
@@ -182,7 +194,8 @@ function M.rg_to_vim(pattern, opts)
         and next_char == '+'
         and not in_char_class then
       -- Possessive quantifiers: no Vim equivalent
-      return nil
+      table.insert(warnings, 'possessive quantifiers not supported')
+      return { pattern = nil, warning = M._format_warnings(warnings) }
     elseif char == '(' and next_char == '?' and not in_char_class then
       local third_char = pattern:sub(i + 2, i + 2)
       if third_char == ':' then
@@ -197,23 +210,28 @@ function M.rg_to_vim(pattern, opts)
         local name_start = i + 4
         local name_end = pattern:find('>', name_start, true)
         if not name_end or name_end == name_start then
-          return nil
+          table.insert(warnings, 'invalid group name')
+          return { pattern = nil, warning = M._format_warnings(warnings) }
         end
+        table.insert(warnings, 'named groups become numbered')
         i = name_end + 1 -- continue after '>'
       elseif third_char == '<' then
         local fourth_char = pattern:sub(i + 3, i + 3)
         -- (?<=...) and (?<!...) are lookbehinds, not named captures.
         -- Not supported, see below: Lookarounds.
         if fourth_char == '=' or fourth_char == '!' then
-          return nil
+          table.insert(warnings, 'lookarounds not supported')
+          return { pattern = nil, warning = M._format_warnings(warnings) }
         end
         -- Named capture group (PCRE style): (?<name>...) -> (...)
         table.insert(result, '(')
         local name_start = i + 3
         local name_end = pattern:find('>', name_start, true)
         if not name_end or name_end == name_start then
-          return nil
+          table.insert(warnings, 'invalid group name')
+          return { pattern = nil, warning = M._format_warnings(warnings) }
         end
+        table.insert(warnings, 'named groups become numbered')
         i = name_end + 1 -- continue after '>'
       else
         -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!), however since
@@ -221,7 +239,8 @@ function M.rg_to_vim(pattern, opts)
         -- PCRE2, we don't support them.
         --
         -- Atomic groups: no Vim equivalent.
-        return nil
+        table.insert(warnings, 'lookarounds and atomic groups not supported')
+        return { pattern = nil, warning = M._format_warnings(warnings) }
       end
     elseif char == '/' then
       -- Escape search delimiter
@@ -257,7 +276,21 @@ function M.rg_to_vim(pattern, opts)
     vimgrep_pattern = '\\c' .. vimgrep_pattern
   end
 
-  return vimgrep_pattern
+  return { pattern = vimgrep_pattern, warning = M._format_warnings(warnings) }
+end
+
+--- Formats accumulated warnings into a single message.
+---
+---@param warnings string[] List of warning messages
+---@return string|nil warning Formatted warning or nil if empty
+function M._format_warnings(warnings)
+  if #warnings == 0 then
+    return nil
+  elseif #warnings == 1 then
+    return warnings[1]
+  else
+    return warnings[1] .. string.format(' (+%d more)', #warnings - 1)
+  end
 end
 
 return M
