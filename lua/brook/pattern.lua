@@ -80,9 +80,20 @@ function M.rg_to_vim(pattern, opts)
       elseif next_char == 'B' then
         -- Non-word boundary: no Vim equivalent
         return nil
-      elseif next_char == 'A' or next_char == 'z' then
-        -- String anchors: Vim's \%^ and \%$ are buffer-based, not string-based
-        return nil
+      elseif next_char == 'A' then
+        -- \A (start of string in ripgrep) is equivalent to ^ under our constraints:
+        --   * no multiline patterns
+        --   * no PCRE2 (default rg engine only)
+        --   * line-oriented matching
+        -- Using Vim's \%^ would introduce buffer-level semantics and subtle
+        -- differences (e.g. EOF newline handling), so we deliberately map \A -> ^.
+        table.insert(result, '^')
+      elseif next_char == 'z' then
+        -- \z (end of string in ripgrep) is equivalent to $ under our constraints.
+        -- Mapping to Vim's \%$ would be incorrect: \%$ matches the absolute end of
+        -- the buffer, which fails when a file ends with a newline (the common case).
+        -- To preserve ripgrep semantics, we map \z -> $.
+        table.insert(result, '$')
       elseif next_char == 'p' or next_char == 'P' then
         -- Unicode categories: no Vim equivalent
         return nil

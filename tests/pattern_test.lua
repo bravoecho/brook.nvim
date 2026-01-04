@@ -327,7 +327,7 @@ test('case: insensitive adds \\c prefix', function()
 end)
 
 test('case: unset adds no prefix', function()
-  eq(rg_to_vim('hello', { case = 'unset' }), '\\vhello')
+  eq(rg_to_vim('hello', { case = nil }), '\\vhello')
 end)
 
 test('case: nil adds no prefix', function()
@@ -660,6 +660,22 @@ test('group: named PCRE style unsupported', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Anchors: \A and \z ----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+test([[anchors: \A maps to ^ (line start under our constraints)]], function()
+  eq(rg_to_vim([[\Afoo]]), [[\v^foo]])
+end)
+
+test([[anchors: \z maps to $ (line end under our constraints)]], function()
+  eq(rg_to_vim([[foo\z]]), [[\vfoo$]])
+end)
+
+test([[anchors: \A...\z maps to ^...$]], function()
+  eq(rg_to_vim([[\Afoo\z]]), [[\v^foo$]])
+end)
+
+--------------------------------------------------------------------------------
 --- Backreferences -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -741,15 +757,6 @@ end)
 
 test('unsupported: negated unicode category', function()
   eq(rg_to_vim('\\P{L}', {}), nil)
-end)
-
--- String anchors
-test('unsupported: string start anchor', function()
-  eq(rg_to_vim('\\A', {}), nil)
-end)
-
-test('unsupported: string end anchor', function()
-  eq(rg_to_vim('\\z', {}), nil)
 end)
 
 --------------------------------------------------------------------------------
