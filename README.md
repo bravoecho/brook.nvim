@@ -62,6 +62,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap = '<leader>g',
     stop_keymap = '<leader>G',
     max_results = 1000, -- 1-10,000
+    max_preview_chars = 200, -- 100-500
 
     -- Performance tuning
     max_batch_size = 100,    -- results per quickfix update

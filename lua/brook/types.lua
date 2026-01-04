@@ -2,6 +2,8 @@
 ---
 ---@module 'brook.types'
 
+--------------------------------------------------------------------------------
+
 ---@class brook.UserConfig
 ---
 --- Keymap for triggering searches (default: '<leader>g')
@@ -28,7 +30,7 @@
 ---
 --- Maximum height the quickfix window should grow to (when auto_resize is
 --- enabled) or fixed height (when auto_resize is not enabled) (default: 10)
----@field qf_win_height? integer
+---@field qf_win_height? number
 ---
 --- Output format: 'one-line-per-match' (default) or 'unique-lines'
 ---@field output_format? brook.OutputFormat
@@ -36,6 +38,12 @@
 --- Whether to set Vim's search register (/) with the pattern, enabling n/N
 --- navigation and hlsearch (default: true)
 ---@field set_search_register? boolean
+---
+--- Maximum number of characters to use for a result preview
+--- (default: 200, range: 100-500)
+---@field max_preview_chars? number
+
+--------------------------------------------------------------------------------
 
 ---@class brook.ExecConfig
 ---
@@ -71,6 +79,12 @@
 ---
 --- Less throttling after ripgrep has finished (default: 1)
 ---@field phase3_throttle_ms number
+---
+--- Maximum number of characters to use for a result preview, to prevent
+--- excessive memory use (default: 200, range: 100-500)
+---@field max_preview_chars number
+
+--------------------------------------------------------------------------------
 
 --- Options controlling ripgrep search behaviour and pattern translation.
 ---@class brook.PatternOpts
@@ -84,7 +98,11 @@
 --- Whether to treat the pattern as case sensitive, case insensitive, or unspecified
 ---@field case? brook.SearchCase
 
+--------------------------------------------------------------------------------
+
 local M = {}
+
+--------------------------------------------------------------------------------
 
 ---@enum brook.SearchCase
 M.search_case = {
@@ -92,13 +110,22 @@ M.search_case = {
   insensitive = 'case-insensitive',
 }
 
+--------------------------------------------------------------------------------
+
 ---@enum brook.OutputFormat
 M.output_format = {
   one_line_per_match = 'one-line-per-match',
   unique_lines = 'unique-lines',
 }
 
-M.max_max_results = 10000
+--------------------------------------------------------------------------------
+
+M.validations = {
+  max_results = { min = 1, max = 10000 },
+  max_preview_chars = { min = 100, max = 500 },
+}
+
+--------------------------------------------------------------------------------
 
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.ParsedArgs

@@ -204,16 +204,11 @@ end
 ---@param ctx brook.SearchContext Search context with all execution parameters
 ---@return string[] cmd Command table for jobstart()
 function M._build_rg_cmd(ctx)
-  -- NOTE: Limit previews to 300 characters, to avoid memory explosion on
-  -- abnormally long lines. Matching will still include the whole line, only
-  -- the preview is truncated.
-  local max_preview_chars = '300'
-
   local cmd = {
     'rg',
     '--no-multiline',
     '--engine', 'default',
-    '--max-columns', max_preview_chars,
+    '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
     '--color', 'never',
   }
@@ -733,7 +728,7 @@ function M._notify_completion(ctx, session)
 
   if session.stopped_at_limit then
     local msg = 'rg: stopped at limit (' .. ctx.cfg.max_results .. ')'
-    if ctx.cfg.max_results < types.max_max_results then
+    if ctx.cfg.max_results < types.validations.max_results.max then
       msg = msg .. ' (configure in setup)'
     end
     if #session.stderr_lines > 0 then

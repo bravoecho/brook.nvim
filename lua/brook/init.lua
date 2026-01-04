@@ -33,18 +33,20 @@ function M.setup(cfg)
     qf_win_height = 10,
     output_format = types.output_format.one_line_per_match,
     set_search_register = true,
+    max_preview_chars = 200,
   }
 
   ---@type brook.UserConfig
   cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
 
   -- Validate max_results
+  local valid_max_results = types.validations.max_results
   if type(cfg.max_results) ~= 'number'
-      or cfg.max_results > types.max_max_results
-      or cfg.max_results < 1
+      or cfg.max_results > valid_max_results.max
+      or cfg.max_results < valid_max_results.min
   then
     vim.notify(
-      'brook.nvim: max_results must be a number between 1 and ' .. types.max_max_results,
+      string.format('brook.nvim: max_results range %d-%d', valid_max_results.min, valid_max_results.max),
       vim.log.levels.ERROR
     )
     return
@@ -64,6 +66,18 @@ function M.setup(cfg)
     return
   end
 
+  -- Validate max_preview_chars
+  local valid_preview_chars = types.validations.max_preview_chars
+  if type(cfg.max_preview_chars) ~= 'number'
+      or cfg.max_preview_chars < valid_preview_chars.min
+      or cfg.max_preview_chars > valid_preview_chars.max
+  then
+    vim.notify(
+      string.format('brook.nvim: max_preview_chars range: %d-%d', valid_preview_chars.min, valid_preview_chars.max),
+      vim.log.levels.ERROR
+    )
+  end
+
   ---@type brook.ExecConfig
   local exec_cfg = {
     max_results = cfg.max_results,
@@ -76,6 +90,7 @@ function M.setup(cfg)
     set_search_register = cfg.set_search_register,
     phase3_batch_size = cfg.max_batch_size * 10,
     phase3_throttle_ms = 1,
+    max_preview_chars = cfg.max_preview_chars,
   }
 
   local desc = {
