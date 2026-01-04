@@ -21,6 +21,7 @@ local function result(pattern, overrides)
     case = nil,
     output_format = nil,
     multiline = false,
+    pcre2 = false,
     raw = raw,
   }
   if overrides then
@@ -575,6 +576,70 @@ test('multiline: false by default', function()
 end)
 
 --------------------------------------------------------------------------------
+--- PCRE2 ----------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+test('pcre2: -P sets pcre2 true', function()
+  deep_eq(parse_args({ '-P', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --pcre2 sets pcre2 true', function()
+  deep_eq(parse_args({ '--pcre2', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --no-pcre2 sets pcre2 false', function()
+  deep_eq(parse_args({ '--no-pcre2', 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+test('pcre2: --no-pcre2 overrides -P', function()
+  deep_eq(parse_args({ '-P', '--no-pcre2', 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+test('pcre2: -P overrides --no-pcre2', function()
+  deep_eq(parse_args({ '--no-pcre2', '-P', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --engine=pcre2 sets pcre2 true', function()
+  deep_eq(parse_args({ '--engine=pcre2', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --engine pcre2 sets pcre2 true', function()
+  deep_eq(parse_args({ '--engine', 'pcre2', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --engine=auto sets pcre2 true', function()
+  deep_eq(parse_args({ '--engine=auto', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --engine auto sets pcre2 true', function()
+  deep_eq(parse_args({ '--engine', 'auto', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: --engine=default sets pcre2 false', function()
+  deep_eq(parse_args({ '--engine=default', 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+test('pcre2: --engine default sets pcre2 false', function()
+  deep_eq(parse_args({ '--engine', 'default', 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+test('pcre2: --engine=default overrides -P', function()
+  deep_eq(parse_args({ '-P', '--engine=default', 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+test('pcre2: --engine=pcre2 overrides --no-pcre2', function()
+  deep_eq(parse_args({ '--no-pcre2', '--engine=pcre2', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: stacked -P with other flags', function()
+  deep_eq(parse_args({ '-HP', 'pattern' }, raw), result('pattern', { pcre2 = true }))
+end)
+
+test('pcre2: false by default', function()
+  deep_eq(parse_args({ 'pattern' }, raw), result('pattern', { pcre2 = false }))
+end)
+
+--------------------------------------------------------------------------------
 --- Patterns with embedded quotes (post-unquoting) -----------------------------
 --------------------------------------------------------------------------------
 
@@ -662,7 +727,7 @@ test('real-world: context lines with pattern', function()
 end)
 
 test('real-world: pcre2 regex', function()
-  deep_eq(parse_args({ '-P', '(?<=func )\\w+' }, raw), result('(?<=func )\\w+'))
+  deep_eq(parse_args({ '-P', '(?<=func )\\w+' }, raw), result('(?<=func )\\w+', { pcre2 = true }))
 end)
 
 test('real-world: vimgrep mode explicit', function()

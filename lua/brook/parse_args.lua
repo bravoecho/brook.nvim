@@ -45,6 +45,7 @@ function M.parse_args(tokens, raw)
     case = nil,
     output_format = nil,
     multiline = false,
+    pcre2 = false,
     raw = raw,
   }
 
@@ -108,6 +109,20 @@ function M.parse_args(tokens, raw)
     elseif token == '--no-multiline' then
       result.multiline = false
       i = i + 1
+    elseif token == '-P' or token == '--pcre2' then
+      result.pcre2 = true
+      i = i + 1
+    elseif token == '--no-pcre2' then
+      result.pcre2 = false
+      i = i + 1
+    elseif token == '--engine' then
+      local engine = tokens[i + 1]
+      if engine == 'pcre2' or engine == 'auto' then
+        result.pcre2 = true
+      elseif engine == 'default' then
+        result.pcre2 = false
+      end
+      i = i + 2
     else
       i = i + 1
     end

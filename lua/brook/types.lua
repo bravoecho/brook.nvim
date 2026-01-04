@@ -121,6 +121,9 @@ M.max_max_results = 10000
 --- Whether the pattern should match over multiple lines
 ---@field multiline boolean
 ---
+--- Whether PCRE2 regex engine is enabled (-P, --pcre2, --engine=pcre2, --engine=auto)
+---@field pcre2 boolean
+---
 --- Original user command, forwarded so it can be echoed back
 ---@field raw string
 
