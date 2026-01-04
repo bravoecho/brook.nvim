@@ -4,12 +4,18 @@
 ---
 --- It does not cover:
 ---
+---   * ripgrep features that require PCRE2, because we disallow PCRE2
 ---   * ripgrep features not supported by vimgrep
 ---   * vimgrep syntax with no ripgrep equivalent
 ---   * lookarounds (high complexity, limited utility in code search)
 ---
 --- When translation is not possible, the search still works; only highlighting and
 --- n/N navigation are unavailable.
+---
+--- Some constructs (e.g. backreferences) requiring PCRE2 are ignored and passed
+--- through to avoid wasting effort in this module: they will be rejected
+--- earlier in the pipeline because we only allow the default ripgrep regex
+--- engine.
 ---
 ---@module 'brook.pattern'
 local M = {}
@@ -27,7 +33,6 @@ local types = require 'brook.types'
 ---   - word boundaries (\b)
 ---   - quantifiers (greedy and non-greedy)
 ---   - numbered groups (capturing and non-capturing)
----   - backreferences
 ---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.PatternOpts Options affecting pattern translation
