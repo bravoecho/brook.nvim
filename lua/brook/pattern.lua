@@ -95,7 +95,7 @@ function M.rg_to_vim(pattern, opts)
         -- To preserve ripgrep semantics, we map \z -> $.
         table.insert(result, '$')
       elseif next_char == 'p' or next_char == 'P' then
-        -- Unicode categories: no Vim equivalent
+        -- Unicode property classes: no reliable, portable 1:1 mapping from ripgrep to vimgrep.
         return nil
       else
         -- All other escapes pass through (very magic escaping matches ripgrep)
