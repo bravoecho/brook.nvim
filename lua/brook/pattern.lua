@@ -78,7 +78,10 @@ function M.rg_to_vim(pattern, opts)
         -- Word boundary: \b -> (<|>) in very magic
         table.insert(result, '(<|>)')
       elseif next_char == 'B' then
-        -- Non-word boundary: no Vim equivalent
+        -- Non-word boundary: vimgrep syntax has no direct equivalent; it could
+        -- be approximated as a negated boundary check using Vim assertions, but
+        -- this would be beyond the scope of the plugin for a rarely used regex
+        -- feature.
         return nil
       elseif next_char == 'A' then
         -- \A (start of string in ripgrep) is equivalent to ^ under our constraints:
