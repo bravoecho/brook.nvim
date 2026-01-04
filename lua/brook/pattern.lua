@@ -171,8 +171,9 @@ function M.rg_to_vim(pattern, opts)
         table.insert(result, '%(')
         i = i + 3 -- skip (?:
       else
-        -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!) but we don't
-        -- support PCRE2.
+        -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!), however since
+        -- ripgrep's default engine doesn’t support lookarounds and we disallow
+        -- PCRE2, they are unsupported.
         --
         -- Atomic groups, named groups: no Vim equivalent.
         return nil
