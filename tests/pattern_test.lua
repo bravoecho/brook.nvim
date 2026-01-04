@@ -650,13 +650,80 @@ test('group: non-capturing with non-greedy', function()
   eq(rg_to_vim('(?:ab)+?', {}), '\\v%(ab){-1,}')
 end)
 
--- Named groups (unsupported)
-test('group: named Python style unsupported', function()
-  eq(rg_to_vim('(?P<name>foo)', {}), nil)
+--------------------------------------------------------------------------------
+--- Named groups: translated to numbered groups --------------------------------
+--------------------------------------------------------------------------------
+
+test('group: named Python style: unsupported by Neovim, translated to numbered groups', function()
+  eq(rg_to_vim('(?P<name>foo)', {}), '\\v(foo)')
 end)
 
-test('group: named PCRE style unsupported', function()
-  eq(rg_to_vim('(?<name>foo)', {}), nil)
+test('group: named PCRE style: unsupported by Neovim, translated to numbered groups', function()
+  eq(rg_to_vim('(?<name>foo)', {}), '\\v(foo)')
+end)
+
+test('group: named capture preserves inner pattern', function()
+  eq(rg_to_vim('(?P<id>ab|cd)+', {}), '\\v(ab|cd)+')
+end)
+
+-- Works when nested / combined with normal groups.
+test('group: named capture nested inside capture', function()
+  eq(rg_to_vim('a((?P<n>bc)d)e', {}), '\\va((bc)d)e')
+end)
+
+-- Name can include underscores/digits (we don’t validate charset; we just skip to '>').
+test('group: named capture with underscore and digits', function()
+  eq(rg_to_vim('(?P<user_01>foo)', {}), '\\v(foo)')
+end)
+
+-- Quantifiers / alternation should still apply to the resulting group.
+test('group: named capture with quantifier', function()
+  eq(rg_to_vim('(?P<id>ab|cd)+', {}), '\\v(ab|cd)+')
+end)
+
+-- Double check named groups are not detected in char classes by mistake.
+test('group: named marker inside char class is literal', function()
+  eq(rg_to_vim('[(?P<name>]', {}), '\\v[(?P<name>]')
+end)
+
+--------------------------------------------------------------------------------
+--- Named capture rejection cases ----------------------------------------------
+--------------------------------------------------------------------------------
+
+-- Reject empty names.
+test('group: reject empty Python name', function()
+  eq(rg_to_vim('(?P<>foo)', {}), nil)
+end)
+
+test('group: reject empty PCRE name', function()
+  eq(rg_to_vim('(?<>foo)', {}), nil)
+end)
+
+-- Reject missing closing ">" (we can’t safely skip forward).
+test('group: reject unterminated Python name', function()
+  eq(rg_to_vim('(?P<namefoo)', {}), nil)
+end)
+
+test('group: reject unterminated PCRE name', function()
+  eq(rg_to_vim('(?<namefoo)', {}), nil)
+end)
+
+-- Confirm we still bail on lookbehinds (avoid confusing them with named groups).
+test('group: lookbehind still unsupported (?<=...)', function()
+  eq(rg_to_vim('(?<=foo)bar', {}), nil)
+end)
+
+test('group: negative lookbehind still unsupported (?<!...)', function()
+  eq(rg_to_vim('(?<!foo)bar', {}), nil)
+end)
+
+-- Confirm other (?X...) forms still bail (atomic group etc).
+test('group: atomic group still unsupported (?>...)', function()
+  eq(rg_to_vim('(?>foo)bar', {}), nil)
+end)
+
+test('group: named capture alongside non-capturing group', function()
+  eq(rg_to_vim('(?P<a>foo)(?:bar)', {}), '\\v(foo)%(bar)')
 end)
 
 --------------------------------------------------------------------------------

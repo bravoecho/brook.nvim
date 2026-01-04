@@ -184,12 +184,38 @@ function M.rg_to_vim(pattern, opts)
         -- Non-capturing group: (?:...) -> %(...)
         table.insert(result, '%(')
         i = i + 3 -- skip (?:
+      elseif third_char == 'P' and pattern:sub(i + 3, i + 3) == '<' then
+        -- Named capture group (Python style): (?P<name>...) -> (...)
+        -- Vim doesn't support named captures, but we can translate it to a
+        -- numbered capture group.
+        table.insert(result, '(')
+        local name_start = i + 4
+        local name_end = pattern:find('>', name_start, true)
+        if not name_end or name_end == name_start then
+          return nil
+        end
+        i = name_end + 1 -- continue after '>'
+      elseif third_char == '<' then
+        local fourth_char = pattern:sub(i + 3, i + 3)
+        -- (?<=...) and (?<!...) are lookbehinds, not named captures.
+        -- Not supported, see below: Lookarounds.
+        if fourth_char == '=' or fourth_char == '!' then
+          return nil
+        end
+        -- Named capture group (PCRE style): (?<name>...) -> (...)
+        table.insert(result, '(')
+        local name_start = i + 3
+        local name_end = pattern:find('>', name_start, true)
+        if not name_end or name_end == name_start then
+          return nil
+        end
+        i = name_end + 1 -- continue after '>'
       else
         -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!), however since
         -- ripgrep's default engine doesn’t support lookarounds and we disallow
-        -- PCRE2, they are unsupported.
+        -- PCRE2, we don't support them.
         --
-        -- Atomic groups, named groups: no Vim equivalent.
+        -- Atomic groups: no Vim equivalent.
         return nil
       end
     elseif char == '/' then
