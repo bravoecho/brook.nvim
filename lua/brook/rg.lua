@@ -121,7 +121,14 @@ function M.raw(cmd_args, cfg)
     return nil
   end
 
-  -- 5. Run the search
+  -- 5. Enforce default regexp engine (no PCRE2 support)
+  ------------------------------------------------------
+  if parsed_args.pcre2 then
+    vim.notify('rg: PCRE2 not supported', vim.log.levels.ERROR)
+    return nil
+  end
+
+  -- 6. Run the search
   --------------------
 
   -- Give precedence to output format specified in the command, if present.

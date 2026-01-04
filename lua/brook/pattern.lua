@@ -171,8 +171,9 @@ function M.rg_to_vim(pattern, opts)
         table.insert(result, '%(')
         i = i + 3 -- skip (?:
       else
-        -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!) but translation
-        -- is complex and these are rarely used in code search.
+        -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!) but we don't
+        -- support PCRE2.
+        --
         -- Atomic groups, named groups: no Vim equivalent.
         return nil
       end

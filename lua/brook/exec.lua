@@ -212,6 +212,7 @@ function M._build_rg_cmd(ctx)
   local cmd = {
     'rg',
     '--no-multiline',
+    '--engine', 'default',
     '--max-columns', max_preview_chars,
     '--max-columns-preview',
     '--color', 'never',

@@ -133,6 +133,9 @@ Brook is designed for a "Search-Navigate-Edit" loop:
 * **No multiline search**: Brook aborts with a warning if you use `-U` or search
   a multiline selection. The quickfix format is inherently line-based.
 
+* **No PCRE2**: only ripgrep's default regexp engine is supported. Commands
+  setting it to PCRE2 will be rejected with an error.
+
 * **Multiple patterns**: With multiple `-e` flags, only the first pattern is
   used for highlighting and `n`/`N` navigation. The ripgrep search itself works
   correctly with all patterns.
