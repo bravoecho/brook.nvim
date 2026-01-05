@@ -752,19 +752,19 @@ test([[anchors: \A...\z maps to ^...$ with warning (first only)]], function()
 end)
 
 --------------------------------------------------------------------------------
---- Backreferences -------------------------------------------------------------
+--- Backreferences (unsupported - require PCRE2) -------------------------------
 --------------------------------------------------------------------------------
 
-test('backref: simple repeat', function()
-  eq(rg_to_vim('(\\w+) \\1', {}), result('\\v(\\w+) \\1'))
+test('backref: simple repeat returns nil (requires PCRE2)', function()
+  eq(rg_to_vim('(\\w+) \\1', {}), result(nil, { warning = 'backreferences require PCRE2' }))
 end)
 
-test('backref: palindrome-ish', function()
-  eq(rg_to_vim('(.).*\\1', {}), result('\\v(.).*\\1'))
+test('backref: palindrome-ish returns nil (requires PCRE2)', function()
+  eq(rg_to_vim('(.).*\\1', {}), result(nil, { warning = 'backreferences require PCRE2' }))
 end)
 
-test('backref: multiple refs', function()
-  eq(rg_to_vim('(a)(b)\\2\\1', {}), result('\\v(a)(b)\\2\\1'))
+test('backref: multiple refs returns nil (requires PCRE2)', function()
+  eq(rg_to_vim('(a)(b)\\2\\1', {}), result(nil, { warning = 'backreferences require PCRE2' }))
 end)
 
 --------------------------------------------------------------------------------

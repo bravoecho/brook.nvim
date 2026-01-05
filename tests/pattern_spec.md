@@ -51,9 +51,8 @@ additional warnings, e.g. `"named groups become numbered (+1 more)"`.
 6. Quantifiers (greedy and non-greedy)
 7. Groups (capturing and non-capturing)
 8. Named groups (translated to numbered with warning)
-9. Backreferences in patterns
-10. Case sensitivity modifiers
-11. Anchors `\A` and `\z` (translated with warning)
+9. Case sensitivity modifiers
+10. Anchors `\A` and `\z` (translated with warning)
 
 ### Features out of scope
 
@@ -64,6 +63,7 @@ These features will cause the translator to return `nil`:
 3. Unicode categories: `\p{...}` `\P{...}`
 4. Atomic groups: `(?>...)`
 5. Possessive quantifiers: `*+` `++` `?+`
+6. Backreferences: `\1` through `\9` (require PCRE2, which the plugin disallows)
 
 ## Translation rules
 
@@ -365,11 +365,12 @@ numbered capture groups and emits a warning:
 
 ### 11. Backreferences (unsupported)
 
-Numbered backreferences work the same in both engines:
+Backreferences (`\1` through `\9`) require PCRE2 in ripgrep, which the plugin
+actively rejects. The translator returns `nil` when backreferences are detected:
 
-- `(\w+) \1` => `\v(\w+) \1` (repeat word)
-- `(.).*\1` => `\v(.).*\1` (palindrome-ish)
-- `(a)(b)\2\1` => `\v(a)(b)\2\1` (multiple refs)
+- `(\w+) \1` => `nil` with warning `"backreferences require PCRE2"`
+- `(.).*\1` => `nil` with warning `"backreferences require PCRE2"`
+- `(a)(b)\2\1` => `nil` with warning `"backreferences require PCRE2"`
 
 ### 12. Forward slash (search Delimiter)
 

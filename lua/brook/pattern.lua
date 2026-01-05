@@ -4,18 +4,14 @@
 ---
 --- It does not cover:
 ---
----   * ripgrep features that require PCRE2, because we disallow PCRE2
+---   * ripgrep features that require PCRE2 (e.g. backreferences), because we
+---     disallow PCRE2
 ---   * ripgrep features not supported by vimgrep
 ---   * vimgrep syntax with no ripgrep equivalent
 ---   * lookarounds (high complexity, limited utility in code search)
 ---
 --- When translation is not possible, the search still works; only highlighting and
 --- n/N navigation are unavailable.
----
---- Some constructs (e.g. backreferences) requiring PCRE2 are ignored and passed
---- through to avoid wasting effort in this module: they will be rejected
---- earlier in the pipeline because we only allow the default ripgrep regex
---- engine.
 ---
 ---@module 'brook.pattern'
 local M = {}
@@ -116,6 +112,10 @@ function M.rg_to_vim(pattern, opts)
       elseif next_char == 'p' or next_char == 'P' then
         -- Unicode property classes: no reliable, portable 1:1 mapping from ripgrep to vimgrep.
         table.insert(warnings, 'unicode properties not supported')
+        return { pattern = nil, warning = M._format_warnings(warnings) }
+      elseif next_char:match('[1-9]') then
+        -- Backreferences require PCRE2 in ripgrep, which we disallow.
+        table.insert(warnings, 'backreferences require PCRE2')
         return { pattern = nil, warning = M._format_warnings(warnings) }
       else
         -- All other escapes pass through (very magic escaping matches ripgrep)
