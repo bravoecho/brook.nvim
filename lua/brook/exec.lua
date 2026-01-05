@@ -57,9 +57,6 @@ local phase2_scheduled = false
 ---@type uv.uv_timer_t|nil
 local phase3_timer = nil
 
----@type brook.ExecSession
-local current_session = nil
-
 --------------------------------------------------------------------------------
 --- Enums ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -146,7 +143,7 @@ function M._exec(ctx)
   -- Initialise session
   ---------------------
   ---@type brook.ExecSession
-  current_session = {
+  local session = {
     is_first_batch = true,
     qf_operation = qf_operation.replace,
     total_results = 0,
@@ -175,18 +172,18 @@ function M._exec(ctx)
     stdin = 'null',
 
     on_stdout = vim.schedule_wrap(function(_, data, _)
-      M._on_stdout(data, ctx, current_session, parse_line)
+      M._on_stdout(data, ctx, session, parse_line)
     end),
 
     -- Buffer stderr to receive all error output in a single callback.
     stderr_buffered = true,
 
     on_stderr = function(_, data, _)
-      M._on_stderr(data, current_session)
+      M._on_stderr(data, session)
     end,
 
     on_exit = vim.schedule_wrap(function(_, exit_code, _)
-      M._on_exit(exit_code, ctx, current_session)
+      M._on_exit(exit_code, ctx, session)
     end),
   })
 
@@ -198,7 +195,7 @@ function M._exec(ctx)
 
   -- Set up cancellation
   ----------------------
-  return M._user_cancel_function(active_rg_job_id, current_session)
+  return M._user_cancel_function(active_rg_job_id, session)
 end
 
 ---@param ctx brook.SearchContext Search context with all execution parameters
