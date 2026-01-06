@@ -6,11 +6,17 @@
 
 ---@class brook.UserConfig
 ---
---- Keymap for triggering searches (default: '<leader>g')
----@field keymap? string
+--- Normal-mode keymap for triggering current word search (default: '<leader>g')
+---@field keymap_cword? string
 ---
---- Keymap for stopping searches (default: '<leader>G')
----@field stop_keymap? string
+--- Visual-mode keymap for triggering current selection search (default: '<leader>g')
+---@field keymap_visual? string
+---
+--- Normal-mode keymap for stopping searches (default: '<leader>G')
+---@field keymap_stop? string
+---
+--- Normal-mode keymap for opening the prompt (default: '<leader>/')
+---@field keymap_prompt? string
 ---
 --- Maximum results before stopping (default: 1000, range: 1-10,000)
 ---@field max_results? integer

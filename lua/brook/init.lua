@@ -21,10 +21,16 @@ local valid_output_formats = {
 
 --- @param cfg? brook.UserConfig User-provided configuration
 function M.setup(cfg)
+  ------------------------------------------------------------------------------
+  --- Defaults -----------------------------------------------------------------
+  ------------------------------------------------------------------------------
+
   ---@type brook.UserConfig
   local defaults = {
-    keymap = '<leader>g',
-    stop_keymap = '<leader>G',
+    keymap_cword = '<leader>g',
+    keymap_visual = '<leader>g',
+    keymap_prompt = '<leader>/',
+    keymap_stop = '<leader>G',
     max_results = 1000,
     max_batch_size = 100,
     flush_throttle_ms = 10,
@@ -39,20 +45,30 @@ function M.setup(cfg)
   ---@type brook.UserConfig
   cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
 
+  ------------------------------------------------------------------------------
+  --- Validations --------------------------------------------------------------
+  ------------------------------------------------------------------------------
+
   -- Validate max_results
+  -----------------------
   local valid_max_results = types.validations.max_results
   if type(cfg.max_results) ~= 'number'
       or cfg.max_results > valid_max_results.max
       or cfg.max_results < valid_max_results.min
   then
     vim.notify(
-      string.format('brook.nvim: max_results range %d-%d', valid_max_results.min, valid_max_results.max),
+      string.format(
+        'brook.nvim: max_results range %d-%d',
+        valid_max_results.min,
+        valid_max_results.max
+      ),
       vim.log.levels.ERROR
     )
     return
   end
 
   -- Validate output_format
+  -------------------------
   if cfg.output_format ~= nil and not valid_output_formats[cfg.output_format] then
     vim.notify(
       string.format(
@@ -67,16 +83,26 @@ function M.setup(cfg)
   end
 
   -- Validate max_preview_chars
+  -----------------------------
   local valid_preview_chars = types.validations.max_preview_chars
   if type(cfg.max_preview_chars) ~= 'number'
       or cfg.max_preview_chars < valid_preview_chars.min
       or cfg.max_preview_chars > valid_preview_chars.max
   then
     vim.notify(
-      string.format('brook.nvim: max_preview_chars range: %d-%d', valid_preview_chars.min, valid_preview_chars.max),
+      string.format(
+        'brook.nvim: max_preview_chars range: %d-%d',
+        valid_preview_chars.min,
+        valid_preview_chars.max
+      ),
       vim.log.levels.ERROR
     )
+    return
   end
+
+  ------------------------------------------------------------------------------
+  --- Command configuration ----------------------------------------------------
+  ------------------------------------------------------------------------------
 
   ---@type brook.ExecConfig
   local exec_cfg = {
@@ -93,18 +119,17 @@ function M.setup(cfg)
     max_preview_chars = cfg.max_preview_chars,
   }
 
-  local desc = {
-    search = 'Search with ripgrep',
-    selection = 'Search selection with ripgrep',
-    stop = 'Stop ripgrep search',
-  }
-
   ---@type function|nil Function to be used to cancel any current job
   local cancel_fn = nil
 
   ------------------------------------------------------------------------------
   --- Commands -----------------------------------------------------------------
   ------------------------------------------------------------------------------
+
+  local command_desc = {
+    search = 'Search with ripgrep',
+    stop = 'Stop ripgrep search',
+  }
 
   -- Search command
   -----------------
@@ -116,7 +141,7 @@ function M.setup(cfg)
     if args == '' then
       local word = vim.fn.expand('<cword>')
       if word == '' then
-        vim.notify('rg: no word under the cursor', vim.log.levels.WARN)
+        vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
         return
       end
 
@@ -127,7 +152,7 @@ function M.setup(cfg)
     -- General case
     ---------------
     cancel_fn = rg.raw(cmd_opts.args, exec_cfg)
-  end, { nargs = '*', desc = desc.search, complete = 'file' })
+  end, { nargs = '*', desc = command_desc.search, complete = 'file' })
 
   -- Stop command
   ---------------
@@ -136,43 +161,61 @@ function M.setup(cfg)
       cancel_fn()
       cancel_fn = nil
     end
-  end, { desc = desc.stop })
+  end, { desc = command_desc.stop })
 
   ------------------------------------------------------------------------------
   --- Keymaps ------------------------------------------------------------------
   ------------------------------------------------------------------------------
 
-  -- Open command
+  local keymap_desc = {
+    cword = 'Search for current word with ripgrep',
+    visual = 'Search for visual selection with ripgrep',
+    prompt = 'Open ripgrep prompt',
+    stop = 'Stop ripgrep search',
+  }
+
+  -- Current word
   ---------------
-  vim.keymap.set({ 'n' }, cfg.keymap, ':Rg ', { desc = desc.search })
-
-  -- Visual selection (single line)
-  ---------------------------------
-  vim.keymap.set({ 'x' }, cfg.keymap, function()
-    local text = util.get_visual_selection()
-
-    if text:find('\n') then
-      vim.notify('rg: multi-line selection not supported', vim.log.levels.WARN)
+  vim.keymap.set({ 'n' }, cfg.keymap_cword, function()
+    local word = vim.fn.expand('<cword>')
+    if word == '' then
+      vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
       return
     end
 
-    -- TODO: check if this can happen in practice
+    cancel_fn = rg.word(word, exec_cfg)
+  end, { desc = keymap_desc.cword })
+
+  -- Visual selection
+  -------------------
+  vim.keymap.set({ 'x' }, cfg.keymap_cword, function()
+    local text = util.get_visual_selection()
+
+    if text:find('\n') then
+      vim.notify('rg: multi-line selection not supported', vim.log.levels.ERROR)
+      return
+    end
+
     if text == '' then
-      vim.notify('rg: empty selection', vim.log.levels.WARN)
+      vim.notify('rg: empty selection', vim.log.levels.ERROR)
       return
     end
 
     cancel_fn = rg.selection(text, exec_cfg)
-  end, { desc = desc.selection })
+  end, { desc = keymap_desc.visual })
+
+  -- Open prompt
+  --------------
+  vim.keymap.set({ 'n' }, cfg.keymap_prompt, ':Rg ', { desc = keymap_desc.prompt })
 
   -- Stop command
   ---------------
-  vim.keymap.set({ 'n' }, cfg.stop_keymap, function()
+  vim.keymap.set({ 'n' }, cfg.keymap_stop, function()
     if cancel_fn then
       cancel_fn()
       cancel_fn = nil
     end
-  end, { desc = desc.stop })
+  end, { desc = keymap_desc.stop })
 end
 
 return M

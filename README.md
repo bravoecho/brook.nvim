@@ -52,15 +52,21 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   -- Lazy loading
   cmd = { 'Rg', 'RgStop' },
   keys = {
-    { '<leader>g', mode = 'n', desc = 'Search with ripgrep' },
-    { '<leader>g', mode = 'x', desc = 'Search selection with ripgrep' },
+    { '<leader>g', mode = 'n', desc = 'Search for current word with ripgrep' },
+    { '<leader>g', mode = 'x', desc = 'Search for visual selection with ripgrep' },
+    { '<leader>/', mode = 'n', desc = 'Open ripgrep prompt' },
     { '<leader>G', mode = 'n', desc = 'Stop ripgrep search' },
   },
 
-  -- Defaults
+  -- Defaults (you only need to specify the fields you want to customise)
   opts = {
-    keymap = '<leader>g',
-    stop_keymap = '<leader>G',
+    -- Keymaps
+    keymap_cword = '<leader>g',
+    keymap_visual = '<leader>g',
+    keymap_prompt = '<leader>/',
+    keymap_stop = '<leader>G',
+
+    -- Result limits
     max_results = 1000, -- 1-10,000
     max_preview_chars = 200, -- 100-500
 
@@ -107,8 +113,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 Brook is designed for a "Search-Navigate-Edit" loop:
 
 1. **Search**:
-   - `<leader>g<CR>` – word under cursor
+   - `<leader>g` in normal mode – word under cursor
    - `<leader>g` in visual mode – selection
+   - `<leader>/` in normal mode – open prompt for manual search
+   - `<leader>G` in normal mode – stop current search if any
    - `:Rg your_query` – manual search
    - `:Rg --hidden "function handle_click"` – with ripgrep flags
 
