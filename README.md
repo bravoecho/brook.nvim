@@ -60,7 +60,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
   -- Defaults (you only need to specify the fields you want to customise)
   opts = {
-    -- Keymaps
+    -- Keymaps (set to false to disable)
     keymap_cword = '<leader>g',
     keymap_visual = '<leader>g',
     keymap_prompt = '<leader>/',

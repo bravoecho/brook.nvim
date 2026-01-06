@@ -176,46 +176,54 @@ function M.setup(cfg)
 
   -- Current word
   ---------------
-  vim.keymap.set({ 'n' }, cfg.keymap_cword, function()
-    local word = vim.fn.expand('<cword>')
-    if word == '' then
-      vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
-      return
-    end
+  if cfg.keymap_cword then
+    vim.keymap.set({ 'n' }, cfg.keymap_cword, function()
+      local word = vim.fn.expand('<cword>')
+      if word == '' then
+        vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
+        return
+      end
 
-    cancel_fn = rg.word(word, exec_cfg)
-  end, { desc = keymap_desc.cword })
+      cancel_fn = rg.word(word, exec_cfg)
+    end, { desc = keymap_desc.cword })
+  end
 
   -- Visual selection
   -------------------
-  vim.keymap.set({ 'x' }, cfg.keymap_cword, function()
-    local text = util.get_visual_selection()
+  if cfg.keymap_visual then
+    vim.keymap.set({ 'x' }, cfg.keymap_cword, function()
+      local text = util.get_visual_selection()
 
-    if text:find('\n') then
-      vim.notify('rg: multi-line selection not supported', vim.log.levels.ERROR)
-      return
-    end
+      if text:find('\n') then
+        vim.notify('rg: multi-line selection not supported', vim.log.levels.ERROR)
+        return
+      end
 
-    if text == '' then
-      vim.notify('rg: empty selection', vim.log.levels.ERROR)
-      return
-    end
+      if text == '' then
+        vim.notify('rg: empty selection', vim.log.levels.ERROR)
+        return
+      end
 
-    cancel_fn = rg.selection(text, exec_cfg)
-  end, { desc = keymap_desc.visual })
+      cancel_fn = rg.selection(text, exec_cfg)
+    end, { desc = keymap_desc.visual })
+  end
 
   -- Open prompt
   --------------
-  vim.keymap.set({ 'n' }, cfg.keymap_prompt, ':Rg ', { desc = keymap_desc.prompt })
+  if cfg.keymap_prompt then
+    vim.keymap.set({ 'n' }, cfg.keymap_prompt, ':Rg ', { desc = keymap_desc.prompt })
+  end
 
   -- Stop command
   ---------------
-  vim.keymap.set({ 'n' }, cfg.keymap_stop, function()
-    if cancel_fn then
-      cancel_fn()
-      cancel_fn = nil
-    end
-  end, { desc = keymap_desc.stop })
+  if cfg.keymap_stop then
+    vim.keymap.set({ 'n' }, cfg.keymap_stop, function()
+      if cancel_fn then
+        cancel_fn()
+        cancel_fn = nil
+      end
+    end, { desc = keymap_desc.stop })
+  end
 end
 
 return M
