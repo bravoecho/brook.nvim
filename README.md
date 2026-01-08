@@ -110,7 +110,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Workflow
 
-Brook is designed for a "Search-Navigate-Edit" loop:
+Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list.
+
+> [!TIP]
+> [Learn more about the quickfix list](./QUICKFIX.md)
 
 1. **Search**:
    - `<leader>g` in normal mode – word under cursor
