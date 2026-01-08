@@ -136,6 +136,7 @@ Brook is designed for a "Search-Navigate-Edit" loop:
 * **Stop early**: `<leader>G` or `:RgStop` – results so far remain in quickfix
 * **Unique lines**: Set `output_format = 'unique-lines'` or use `-n` flag
 * **Search path**: Press `<Tab>` in the command to autocomplete relative paths
+* **Customise ripgrep**: Add default options to `~/.ripgreprc`
 
 ### Limitations
 
