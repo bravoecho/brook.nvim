@@ -288,23 +288,23 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b at start', function()
-  eq(rg_to_vim('\\bword', {}), result('\\v(<|>)word'))
+  eq(rg_to_vim('\\bword', {}), result('\\v%(<|>)word'))
 end)
 
 test('boundary: \\b at end', function()
-  eq(rg_to_vim('word\\b', {}), result('\\vword(<|>)'))
+  eq(rg_to_vim('word\\b', {}), result('\\vword%(<|>)'))
 end)
 
 test('boundary: \\b at both ends', function()
-  eq(rg_to_vim('\\bword\\b', {}), result('\\v(<|>)word(<|>)'))
+  eq(rg_to_vim('\\bword\\b', {}), result('\\v%(<|>)word%(<|>)'))
 end)
 
 test('boundary: \\b in middle', function()
-  eq(rg_to_vim('foo\\bbar', {}), result('\\vfoo(<|>)bar'))
+  eq(rg_to_vim('foo\\bbar', {}), result('\\vfoo%(<|>)bar'))
 end)
 
 test('boundary: \\b with shorthand', function()
-  eq(rg_to_vim('\\b\\w+\\b', {}), result('\\v(<|>)\\w+(<|>)'))
+  eq(rg_to_vim('\\b\\w+\\b', {}), result('\\v%(<|>)\\w+%(<|>)'))
 end)
 
 test('boundary: -w flag wraps with word boundaries', function()
@@ -856,7 +856,7 @@ test('complex: alternation with groups', function()
 end)
 
 test('complex: word with quantifier range', function()
-  eq(rg_to_vim('\\b\\w{3,5}\\b', {}), result('\\v(<|>)\\w{3,5}(<|>)'))
+  eq(rg_to_vim('\\b\\w{3,5}\\b', {}), result('\\v%(<|>)\\w{3,5}%(<|>)'))
 end)
 
 test('complex: non-greedy HTML tag', function()

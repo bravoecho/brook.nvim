@@ -223,22 +223,24 @@ These are compatible between engines and pass through:
 
 ### 7. Word boundaries
 
-- `\b` => `(<|>)` (word boundary, either side)
+- `\b` => `%(<|>)` (word boundary, either side, non-capturing)
 - `\B` => **unsupported**, return `nil` with warning `"\B not supported"`; it
   could be approximated as a negated boundary check using Vim assertions, but
   this would be beyond the scope of the plugin for a rarely used regex feature.
 
 Ripgrep's `\b` matches at any word boundary. Vim has separate `\<` (start) and
 `\>` (end). Since we cannot determine from the pattern alone which side is
-intended, we use `(<|>)` as a conservative translation that matches either.
+intended, we use `%(<|>)` as a conservative translation that matches either.
+The non-capturing group `%()` ensures that `\b` does not pollute the capture
+group numbering, preserving the intended group indices for replacements.
 
 **Test Cases:**
 
-- `\bword\b` => `\v(<|>)word(<|>)` (word boundaries)
-- `\btest` => `\v(<|>)test` (start boundary)
-- `test\b` => `\vtest(<|>)` (end boundary)
-- `foo\bbar` => `\vfoo(<|>)bar` (mid-pattern boundary)
-- `\b\w+\b` => `\v(<|>)\w+(<|>)` (with shorthand)
+- `\bword\b` => `\v%(<|>)word%(<|>)` (word boundaries)
+- `\btest` => `\v%(<|>)test` (start boundary)
+- `test\b` => `\vtest%(<|>)` (end boundary)
+- `foo\bbar` => `\vfoo%(<|>)bar` (mid-pattern boundary)
+- `\b\w+\b` => `\v%(<|>)\w+%(<|>)` (with shorthand)
 - `\B` => `nil` with warning (unsupported)
 - `foo\Bbar` => `nil` with warning (unsupported)
 

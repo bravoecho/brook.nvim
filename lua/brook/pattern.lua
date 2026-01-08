@@ -84,8 +84,8 @@ function M.rg_to_vim(pattern, opts)
         table.insert(result, '\\')
         table.insert(result, next_char)
       elseif next_char == 'b' then
-        -- Word boundary: \b -> (<|>) in very magic
-        table.insert(result, '(<|>)')
+        -- Word boundary: \b -> %(<|>) in very magic (non-capturing)
+        table.insert(result, '%(<|>)')
       elseif next_char == 'B' then
         -- Non-word boundary: vimgrep syntax has no direct equivalent; it could
         -- be approximated as a negated boundary check using Vim assertions, but
