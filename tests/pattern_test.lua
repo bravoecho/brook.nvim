@@ -410,6 +410,46 @@ test('boundary: \\B in pattern unsupported (returns nil with warning)', function
 end)
 
 --------------------------------------------------------------------------------
+--- Word boundaries with character classes -------------------------------------
+--------------------------------------------------------------------------------
+
+-- test('boundary: \\b before [a-z] => <', function()
+--   eq(rg_to_vim('\\b[a-z]+', {}), result('\\v<[a-z]+'))
+-- end)
+
+-- test('boundary: [a-z] before \\b => >', function()
+--   eq(rg_to_vim('[a-z]+\\b', {}), result('\\v[a-z]+>'))
+-- end)
+
+-- test('boundary: negated class treated as unknown => fallback', function()
+--   eq(rg_to_vim('[^a]\\bfoo', {}), result('\\v[^a]%(<|>)foo'))
+-- end)
+
+-- test('boundary: \\b before [0-9] => <', function()
+--   eq(rg_to_vim('\\b[0-9]+', {}), result('\\v<[0-9]+'))
+-- end)
+
+-- test('boundary: [A-Z] before \\b => >', function()
+--   eq(rg_to_vim('[A-Z]+\\b', {}), result('\\v[A-Z]+>'))
+-- end)
+
+-- test('boundary: mixed word/non-word class => fallback', function()
+--   eq(rg_to_vim('[a-z!]+\\b', {}), result('\\v[a-z!]+%(<|>)'))
+-- end)
+
+-- test('boundary: class with \\w => word', function()
+--   eq(rg_to_vim('[\\w]+\\b', {}), result('\\v[\\w]+>'))
+-- end)
+
+-- test('boundary: class with \\s => non-word', function()
+--   eq(rg_to_vim('[\\s]+\\bfoo', {}), result('\\v[\\s]+<foo'))
+-- end)
+
+-- test('boundary: class with \\S => unknown', function()
+--   eq(rg_to_vim('[\\S]+\\bfoo', {}), result('\\v[\\S]+%(<|>)foo'))
+-- end)
+
+--------------------------------------------------------------------------------
 --- Word boundaries with \\S and \\D (unknown atoms) ---------------------------
 --------------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ run_test() {
 }
 
 run_test fifo
+run_test classify_char_class_wordness
 run_test pattern
 run_test parse_args
 run_test posix_unquote

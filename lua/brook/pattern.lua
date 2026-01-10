@@ -51,8 +51,8 @@ local non_word_atoms_after = {
   ['$'] = true, -- end-of-line anchor
 }
 
----@enum
-local wordness = {
+---@enum wordness
+M._wordness = {
   word = 'word',
   non_word = 'non-word',
   unknown = 'unknown',
@@ -111,7 +111,7 @@ function M.rg_to_vim(pattern, opts)
   local warnings = {}
   local len = #pattern
   local in_char_class = false
-  local wordness_before = wordness.non_word
+  local wordness_before = M._wordness.non_word
   local was_quantifier = false -- needed later for wordness detection
   local i = 1
 
@@ -130,28 +130,41 @@ function M.rg_to_vim(pattern, opts)
         table.insert(result, '\\')
         table.insert(result, next_char)
       elseif next_char == 'b' then
+        -- Translate ripgrep word boundary to vimgrep word boundary.
+        --
+        -- The end goal is to do our best to avoid confusing the user with that
+        -- construct, `%(<|>)` in the notification line. That is a technically
+        -- mostly-valid translation of `\b`, but it sure looks alien at first
+        -- glance.
+        --
+        -- This is one place where ripgrep and vimgrep diverge the most.
+        -- ripgrep has no notion of start or end of word for boundaries, so we
+        -- need to infer "wordness" from the context. Even then, only an
+        -- approximate translation is possible because ripgrep's word boundaries
+        -- are unicode-aware, whereas in Vim it depends on the value of
+        -- `iskeyword`. Even ignoring those incompatibilities, this is already
+        -- a considerable undertaking for what is arguably a cosmetic concern.
+        -- Determining wordness of character even required branching into a
+        -- completely separately function.
         local char_after = pattern:sub(i + 2, i + 2)
         local atom_after = pattern:sub(i + 2, i + 3)
 
-        local wordness_after = wordness.unknown
+        local wordness_after = M._wordness.unknown
         if char_after == '.' then
-          wordness_after = wordness.unknown
+          wordness_after = M._wordness.unknown
         elseif unknown_atoms[atom_after] then
-          wordness_after = wordness.unknown
+          wordness_after = M._wordness.unknown
         elseif word_atoms[atom_after] or char_after:match('[%w]') then
-          wordness_after = wordness.word
+          wordness_after = M._wordness.word
         elseif non_word_atoms[atom_after] or non_word_atoms_after[atom_after]
             or char_after:match('[^%w]') or char_after == '' then
-          wordness_after = wordness.non_word
+          wordness_after = M._wordness.non_word
         end
 
-        -- print(string.format('char_after: %s, atom_after: %s', char, next_char, atom, char_after, atom_after))
-        -- print(string.format('wordness_before: %s, wordness_after: %s', wordness_before, wordness_after))
-
-        if wordness_before == wordness.non_word and wordness_after == wordness.word then
+        if wordness_before == M._wordness.non_word and wordness_after == M._wordness.word then
           -- NON-WORD \b WORD => start of word
           table.insert(result, '<')
-        elseif wordness_before == wordness.word and wordness_after == wordness.non_word then
+        elseif wordness_before == M._wordness.word and wordness_after == M._wordness.non_word then
           -- WORD \b NON-WORD => end of word
           table.insert(result, '>')
         else
@@ -334,18 +347,18 @@ function M.rg_to_vim(pattern, opts)
     -- determine wordness of current atom to be used for boundary heuristic in
     -- the next iteration
     if char == '.' then
-      wordness_before = wordness.unknown
+      wordness_before = M._wordness.unknown
     elseif unknown_atoms[atom] then
-      wordness_before = wordness.unknown
-    elseif wordness_before == wordness.word
+      wordness_before = M._wordness.unknown
+    elseif wordness_before == M._wordness.word
         and (char == '*' or char == '+' or char == '?' or was_quantifier) then
-      wordness_before = wordness.word
+      wordness_before = M._wordness.word
     elseif word_atoms[atom] or char:match('[%w]') then
-      wordness_before = wordness.word
+      wordness_before = M._wordness.word
     elseif non_word_atoms[atom] or non_word_atoms_before[atom] or char:match('[^%w]') then
-      wordness_before = wordness.non_word
+      wordness_before = M._wordness.non_word
     else
-      wordness_before = wordness.unknown
+      wordness_before = M._wordness.unknown
     end
   end
 
@@ -366,6 +379,122 @@ function M.rg_to_vim(pattern, opts)
   end
 
   return { pattern = vimgrep_pattern, warning = M._format_warnings(warnings) }
+end
+
+--- Determine whether the given ripgrep pattern starts with character class,
+--- and if the character class represents a word character, a non-word character,
+--- or if it cannot be determined.
+---
+--- It works by exclusion, removing different types of atoms, and checking what
+--- is left, until its wordness can be with some approximation inferred.
+---
+---@param pattern string
+---@return wordness?
+function M._classify_char_class_wordness(pattern)
+  if not pattern:match('^%[') then
+    return nil
+  end
+
+  local content = M._extract_leading_char_class(pattern)
+  if not content then
+    return M._wordness.unknown
+  end
+
+  if content:sub(1, 1) == '^' then
+    return M._wordness.unknown
+  end
+
+  local remaining = content
+  local had_word = false
+  local had_non_word = false
+  local had_ambiguous = false
+
+  -- Check for non-word atoms: \s, \W
+  local after_non_word_1 = remaining:gsub('\\[sW]', '')
+  if after_non_word_1 ~= remaining then had_non_word = true end
+  remaining = after_non_word_1
+
+  -- Check for word-char ranges
+  local after_word_ranges = remaining:gsub('%u%-%u', ''):gsub('%l%-%l', ''):gsub('%d%-%d', ''):gsub('_%-_', '')
+  if after_word_ranges ~= remaining then had_word = true end
+  remaining = after_word_ranges
+
+  -- Check for ambiguous items
+  local after_ambiguous = remaining:gsub('\\[SD]', '')
+  if after_ambiguous ~= remaining then had_ambiguous = true end
+  remaining = after_ambiguous
+
+  -- Check for escaped word chars (\a, \_, \0, etc.) and \w \d
+  local after_escaped_word = remaining:gsub('\\[%w_]', ''):gsub('\\[wd]', '')
+  if after_escaped_word ~= remaining then had_word = true end
+  remaining = after_escaped_word
+
+  -- Check for literal word chars
+  local after_word = remaining:gsub('[%w_]', '')
+  if after_word ~= remaining then had_word = true end
+  remaining = after_word
+
+  -- Check for other non-word atoms
+  local after_non_word_2 = remaining:gsub('\\.', ''):gsub('%-', ''):gsub('^%]', ''):gsub('[^%w_]', '')
+  if after_non_word_2 ~= remaining then had_non_word = true end
+  remaining = after_non_word_2
+
+  -- Check for ranges that span punctuation
+  local after_ambiguous_ranges = remaining:gsub('%u%-%l', '')
+  if after_ambiguous_ranges ~= remaining then had_ambiguous = true end
+  remaining = after_ambiguous_ranges
+
+  if had_ambiguous or remaining ~= '' then
+    return M._wordness.unknown
+  elseif had_word and had_non_word then
+    return M._wordness.unknown
+  elseif had_word then
+    return M._wordness.word
+  elseif had_non_word then
+    return M._wordness.non_word
+  else
+    return M._wordness.unknown
+  end
+end
+
+--- Extract the content of a leading character class from a regex pattern.
+--- Returns the content between the brackets (excluding the brackets themselves),
+--- or nil if the pattern doesn't start with a valid character class.
+---
+--- Handles edge cases:
+--- - ] as first char (or after ^) is literal, not a closer
+--- - \] is an escaped bracket, not a closer
+--- - \\] is an escaped backslash followed by a closer
+---
+---@param s string
+---@return string?
+function M._extract_leading_char_class(s)
+  if s:sub(1, 1) ~= '[' then
+    return nil
+  end
+
+  -- Regex char-class rule: a ']' can be literal if it appears first
+  -- (or first after '^' for negated classes). So skip it as a closer.
+  local from = 2
+  if s:sub(2, 2) == ']' then
+    from = 3
+  elseif s:sub(2, 2) == '^' and s:sub(3, 3) == ']' then
+    from = 4
+  end
+
+  while true do
+    local a, b, slashes = s:find('(\\*)]', from)
+    if not a then
+      return nil
+    end
+
+    if #slashes % 2 == 0 then
+      local close = a + #slashes
+      return s:sub(2, close - 1)
+    end
+
+    from = b + 1
+  end
 end
 
 --- Formats accumulated warnings into a single message.
