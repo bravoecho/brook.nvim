@@ -18,6 +18,46 @@ local M = {}
 
 local types = require 'brook.types'
 
+local word_atoms = {
+  ['\\w'] = true,
+  ['\\d'] = true,
+}
+
+local non_word_atoms = {
+  ['\\s'] = true,
+  ['\\t'] = true,
+  ['\\n'] = true,
+  ['\\r'] = true,
+  ['\\W'] = true,
+}
+
+-- Atoms that could match either word or non-word characters.
+-- \S matches any non-whitespace: could be 'a' (word) or '!' (non-word)
+-- \D matches any non-digit: could be 'a' (word) or '!' (non-word)
+local unknown_atoms = {
+  ['\\S'] = true,
+  ['\\D'] = true,
+}
+
+local non_word_atoms_before = {
+  ['|'] = true, -- alternation
+  ['('] = true, -- group start
+  ['^'] = true, -- start-of-line anchor
+}
+
+local non_word_atoms_after = {
+  ['|'] = true, -- alternation
+  [')'] = true, -- group end
+  ['$'] = true, -- end-of-line anchor
+}
+
+---@enum
+local wordness = {
+  word = 'word',
+  non_word = 'non-word',
+  unknown = 'unknown',
+}
+
 --- Result of pattern translation.
 ---
 ---@class brook.PatternResult
@@ -71,21 +111,53 @@ function M.rg_to_vim(pattern, opts)
   local warnings = {}
   local len = #pattern
   local in_char_class = false
+  local wordness_before = wordness.non_word
+  local was_quantifier = false -- needed later for wordness detection
   local i = 1
 
   while i <= len do
+    was_quantifier = false -- reset each iteration
+
     local char = pattern:sub(i, i)
     local next_char = pattern:sub(i + 1, i + 1)
+    local atom = pattern:sub(i, i + 1)
 
     if char == '\\' and next_char ~= '' then
       -- Escaped character: handle as a unit
+
       if in_char_class then
         -- Inside character class: pass through unchanged
         table.insert(result, '\\')
         table.insert(result, next_char)
       elseif next_char == 'b' then
-        -- Word boundary: \b -> %(<|>) in very magic (non-capturing)
-        table.insert(result, '%(<|>)')
+        local char_after = pattern:sub(i + 2, i + 2)
+        local atom_after = pattern:sub(i + 2, i + 3)
+
+        local wordness_after = wordness.unknown
+        if char_after == '.' then
+          wordness_after = wordness.unknown
+        elseif unknown_atoms[atom_after] then
+          wordness_after = wordness.unknown
+        elseif word_atoms[atom_after] or char_after:match('[%w]') then
+          wordness_after = wordness.word
+        elseif non_word_atoms[atom_after] or non_word_atoms_after[atom_after]
+            or char_after:match('[^%w]') or char_after == '' then
+          wordness_after = wordness.non_word
+        end
+
+        -- print(string.format('char_after: %s, atom_after: %s', char, next_char, atom, char_after, atom_after))
+        -- print(string.format('wordness_before: %s, wordness_after: %s', wordness_before, wordness_after))
+
+        if wordness_before == wordness.non_word and wordness_after == wordness.word then
+          -- NON-WORD \b WORD => start of word
+          table.insert(result, '<')
+        elseif wordness_before == wordness.word and wordness_after == wordness.non_word then
+          -- WORD \b NON-WORD => end of word
+          table.insert(result, '>')
+        else
+          -- Generic word boundary: \b -> %(<|>) in very magic (non-capturing)
+          table.insert(result, '%(<|>)')
+        end
       elseif next_char == 'B' then
         -- Non-word boundary: vimgrep syntax has no direct equivalent; it could
         -- be approximated as a negated boundary check using Vim assertions, but
@@ -162,6 +234,7 @@ function M.rg_to_vim(pattern, opts)
 
         -- if this was the closing of a brace identifer, handle it
         if qch == '}' then
+          was_quantifier = true
           if next_qch == '?' then
             -- this is a non-greedy brace quantifier: insert the '-' character
             -- after the opening brace: {4,7} => {-4,7} and consume the '?' in
@@ -248,8 +321,7 @@ function M.rg_to_vim(pattern, opts)
       i = i + 1
     elseif not in_char_class
         and (char == '=' or char == '~' or char == '@' or char == '&') then
-      -- Characters literal in ripgrep, but special in very magic mode, need
-      -- escaping.
+      -- Literal in ripgrep, but special in very magic mode, need escaping.
       table.insert(result, '\\')
       table.insert(result, char)
       i = i + 1
@@ -257,6 +329,23 @@ function M.rg_to_vim(pattern, opts)
       -- Everything else passes through unchanged
       table.insert(result, char)
       i = i + 1
+    end
+
+    -- determine wordness of current atom to be used for boundary heuristic in
+    -- the next iteration
+    if char == '.' then
+      wordness_before = wordness.unknown
+    elseif unknown_atoms[atom] then
+      wordness_before = wordness.unknown
+    elseif wordness_before == wordness.word
+        and (char == '*' or char == '+' or char == '?' or was_quantifier) then
+      wordness_before = wordness.word
+    elseif word_atoms[atom] or char:match('[%w]') then
+      wordness_before = wordness.word
+    elseif non_word_atoms[atom] or non_word_atoms_before[atom] or char:match('[^%w]') then
+      wordness_before = wordness.non_word
+    else
+      wordness_before = wordness.unknown
     end
   end
 

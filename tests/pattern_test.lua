@@ -288,23 +288,109 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b at start', function()
-  eq(rg_to_vim('\\bword', {}), result('\\v%(<|>)word'))
+  eq(rg_to_vim('\\bword', {}), result('\\v<word'))
 end)
 
 test('boundary: \\b at end', function()
-  eq(rg_to_vim('word\\b', {}), result('\\vword%(<|>)'))
+  eq(rg_to_vim('word\\b', {}), result('\\vword>'))
 end)
 
 test('boundary: \\b at both ends', function()
-  eq(rg_to_vim('\\bword\\b', {}), result('\\v%(<|>)word%(<|>)'))
+  eq(rg_to_vim('\\bword\\b', {}), result('\\v<word>'))
 end)
 
-test('boundary: \\b in middle', function()
+test('boundary: \\b in middle (ambiguous)', function()
   eq(rg_to_vim('foo\\bbar', {}), result('\\vfoo%(<|>)bar'))
 end)
 
 test('boundary: \\b with shorthand', function()
-  eq(rg_to_vim('\\b\\w+\\b', {}), result('\\v%(<|>)\\w+%(<|>)'))
+  eq(rg_to_vim('\\b\\w+\\b', {}), result('\\v<\\w+>'))
+end)
+
+test('boundary: \\b after space', function()
+  eq(rg_to_vim('foo \\bbar', {}), result('\\vfoo <bar'))
+end)
+
+test('boundary: \\b before space', function()
+  eq(rg_to_vim('foo\\b bar', {}), result('\\vfoo> bar'))
+end)
+
+test('boundary: \\b after alternation', function()
+  eq(rg_to_vim('(foo|\\bbar)', {}), result('\\v(foo|<bar)'))
+end)
+
+test('boundary: \\b before alternation', function()
+  eq(rg_to_vim('(foo\\b|bar)', {}), result('\\v(foo>|bar)'))
+end)
+
+test('boundary: \\b after group start', function()
+  eq(rg_to_vim('(\\bfoo)', {}), result('\\v(<foo)'))
+end)
+
+test('boundary: \\b before group end', function()
+  eq(rg_to_vim('(foo\\b)', {}), result('\\v(foo>)'))
+end)
+
+test('boundary: \\b after \\W', function()
+  eq(rg_to_vim('\\W\\bfoo', {}), result('\\v\\W<foo'))
+end)
+
+test('boundary: \\b before \\W', function()
+  eq(rg_to_vim('foo\\b\\W', {}), result('\\vfoo>\\W'))
+end)
+
+test('boundary: \\b after \\s', function()
+  eq(rg_to_vim('\\s\\bfoo', {}), result('\\v\\s<foo'))
+end)
+
+test('boundary: \\b before \\s', function()
+  eq(rg_to_vim('foo\\b\\s', {}), result('\\vfoo>\\s'))
+end)
+
+test('boundary: \\b after ^', function()
+  eq(rg_to_vim('^\\bfoo', {}), result('\\v^<foo'))
+end)
+
+test('boundary: \\b before $', function()
+  eq(rg_to_vim('foo\\b$', {}), result('\\vfoo>$'))
+end)
+
+test('boundary: \\b after . (ambiguous)', function()
+  eq(rg_to_vim('.\\bfoo', {}), result('\\v.%(<|>)foo'))
+end)
+
+test('boundary: \\b before . (ambiguous)', function()
+  eq(rg_to_vim('foo\\b.', {}), result('\\vfoo%(<|>).'))
+end)
+
+test('boundary: \\b in alternation branches', function()
+  eq(rg_to_vim('\\bfoo\\b|\\bbar\\b', {}), result('\\v<foo>|<bar>'))
+end)
+
+test('boundary: \\b after quantified word char', function()
+  eq(rg_to_vim('\\w+\\b', {}), result('\\v\\w+>'))
+end)
+
+test('boundary: \\b after quantified non-word char', function()
+  -- space+ is still non-word context, so \b before word char should be <
+  eq(rg_to_vim(' +\\bfoo', {}), result('\\v +<foo'))
+end)
+
+test('boundary: \\b after quantified word char then word char', function()
+  -- x+ is word context, \b before another word char is ambiguous
+  eq(rg_to_vim('x+\\by', {}), result('\\vx+%(<|>)y'))
+end)
+
+test('boundary: \\b after star-quantified non-word', function()
+  eq(rg_to_vim(' *\\bfoo', {}), result('\\v *<foo'))
+end)
+
+test('boundary: \\b after question-quantified non-word', function()
+  eq(rg_to_vim(' ?\\bfoo', {}), result('\\v ?<foo'))
+end)
+
+test('boundary: \\b after brace-quantified non-word', function()
+  eq(rg_to_vim(' {2,3}\\bfoo', {}), result('\\v {2,3}<foo'))
 end)
 
 test('boundary: -w flag wraps with word boundaries', function()
@@ -321,6 +407,26 @@ end)
 
 test('boundary: \\B in pattern unsupported (returns nil with warning)', function()
   eq(rg_to_vim('foo\\Bbar', {}), result(nil, { warning = '\\B not supported' }))
+end)
+
+--------------------------------------------------------------------------------
+--- Word boundaries with \\S and \\D (unknown atoms) ---------------------------
+--------------------------------------------------------------------------------
+
+test('boundary: left side \\S (unknown) => fallback', function()
+  eq(rg_to_vim('\\S\\bfoo', {}), result('\\v\\S%(<|>)foo'))
+end)
+
+test('boundary: right side \\S (unknown) => fallback', function()
+  eq(rg_to_vim('foo\\b\\S', {}), result('\\vfoo%(<|>)\\S'))
+end)
+
+test('boundary: \\D is unknown => fallback', function()
+  eq(rg_to_vim('\\D\\bfoo', {}), result('\\v\\D%(<|>)foo'))
+end)
+
+test('boundary: \\b before \\D => fallback', function()
+  eq(rg_to_vim('foo\\b\\D', {}), result('\\vfoo%(<|>)\\D'))
 end)
 
 --------------------------------------------------------------------------------
@@ -856,7 +962,7 @@ test('complex: alternation with groups', function()
 end)
 
 test('complex: word with quantifier range', function()
-  eq(rg_to_vim('\\b\\w{3,5}\\b', {}), result('\\v%(<|>)\\w{3,5}%(<|>)'))
+  eq(rg_to_vim('\\b\\w{3,5}\\b', {}), result('\\v<\\w{3,5}>'))
 end)
 
 test('complex: non-greedy HTML tag', function()
