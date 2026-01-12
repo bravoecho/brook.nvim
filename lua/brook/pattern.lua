@@ -113,7 +113,7 @@ function M.rg_to_vim(pattern, opts)
   local in_char_class = false
   local wordness_before = M._wordness.non_word
   local char_class_wordness = nil -- wordness of most recently seen char class
-  local was_quantifier = false -- needed later for wordness detection
+  local was_quantifier = false    -- needed later for wordness detection
   local i = 1
 
   while i <= len do
@@ -420,49 +420,68 @@ function M._classify_char_class_wordness(pattern)
     return M._wordness.unknown
   end
 
+  -- A negated class potentially matches both word and non-word characters, so
+  -- its wordness cannot be determined.
   if content:sub(1, 1) == '^' then
     return M._wordness.unknown
   end
 
   local remaining = content
+  local next_remaining = content
   local had_word = false
   local had_non_word = false
   local had_ambiguous = false
 
   -- Check for non-word atoms: \s, \W
-  local after_non_word_1 = remaining:gsub('\\[sW]', '')
-  if after_non_word_1 ~= remaining then had_non_word = true end
-  remaining = after_non_word_1
+  next_remaining = remaining
+      :gsub('\\[sW]', '')
+  if next_remaining ~= remaining then had_non_word = true end
+  remaining = next_remaining
 
-  -- Check for word-char ranges
-  local after_word_ranges = remaining:gsub('%u%-%u', ''):gsub('%l%-%l', ''):gsub('%d%-%d', ''):gsub('_%-_', '')
-  if after_word_ranges ~= remaining then had_word = true end
-  remaining = after_word_ranges
+  -- Check for word-char ranges (only the ones with same character cases,
+  -- otherwise they would span punctuation)
+  next_remaining = remaining
+      :gsub('%u%-%u', '')
+      :gsub('%l%-%l', '')
+      :gsub('%d%-%d', '')
+      :gsub('_%-_', '')
+  if next_remaining ~= remaining then had_word = true end
+  remaining = next_remaining
 
-  -- Check for ambiguous items
-  local after_ambiguous = remaining:gsub('\\[SD]', '')
-  if after_ambiguous ~= remaining then had_ambiguous = true end
-  remaining = after_ambiguous
+  -- Check for ambiguous negated atoms
+  next_remaining = remaining
+      :gsub('\\[SD]', '')
+  if next_remaining ~= remaining then had_ambiguous = true end
+  remaining = next_remaining
 
-  -- Check for escaped word chars (\a, \_, \0, etc.) and \w \d
-  local after_escaped_word = remaining:gsub('\\[%w_]', ''):gsub('\\[wd]', '')
-  if after_escaped_word ~= remaining then had_word = true end
-  remaining = after_escaped_word
+  -- Check for escaped word chars (\a, \_, \0, etc.) and for word-wise atoms (\w, \d)
+  next_remaining = remaining
+      :gsub('\\[%w_]', '')
+      :gsub('\\[wd]', '')
+  if next_remaining ~= remaining then had_word = true end
+  remaining = next_remaining
 
-  -- Check for literal word chars
-  local after_word = remaining:gsub('[%w_]', '')
-  if after_word ~= remaining then had_word = true end
-  remaining = after_word
+  -- Check for literal word chars (note: Lua matches ASCII only, so we
+  -- implicitely do not support unicode-aware word boundaries that ripgrep does.
+  next_remaining = remaining
+      :gsub('[%w_]', '')
+  if next_remaining ~= remaining then had_word = true end
+  remaining = next_remaining
 
   -- Check for other non-word atoms
-  local after_non_word_2 = remaining:gsub('\\.', ''):gsub('%-', ''):gsub('^%]', ''):gsub('[^%w_]', '')
-  if after_non_word_2 ~= remaining then had_non_word = true end
-  remaining = after_non_word_2
+  next_remaining = remaining
+      :gsub('\\.', '')
+      :gsub('%-', '')
+      :gsub('^%]', '')
+      :gsub('[^%w_]', '')
+  if next_remaining ~= remaining then had_non_word = true end
+  remaining = next_remaining
 
   -- Check for ranges that span punctuation
-  local after_ambiguous_ranges = remaining:gsub('%u%-%l', '')
-  if after_ambiguous_ranges ~= remaining then had_ambiguous = true end
-  remaining = after_ambiguous_ranges
+  next_remaining = remaining
+      :gsub('%u%-%l', '')
+  if next_remaining ~= remaining then had_ambiguous = true end
+  remaining = next_remaining
 
   if had_ambiguous or remaining ~= '' then
     return M._wordness.unknown
@@ -485,6 +504,10 @@ end
 --- - ] as first char (or after ^) is literal, not a closer
 --- - \] is an escaped bracket, not a closer
 --- - \\] is an escaped backslash followed by a closer
+---
+--- Extracting a ripgrep char class content cannot be done with Lua pattern
+--- matching alone: due to how Lua string escapes work we would not be able to
+--- reliably identify the closing `]` in all cases.
 ---
 ---@param s string
 ---@return string?
