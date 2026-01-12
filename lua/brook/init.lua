@@ -31,6 +31,7 @@ function M.setup(cfg)
     keymap_visual = '<leader>g',
     keymap_prompt = '<leader>/',
     keymap_stop = '<leader>G',
+    keymap_repeat = '<leader>r',
     max_results = 1000,
     max_batch_size = 100,
     flush_throttle_ms = 10,
@@ -129,6 +130,7 @@ function M.setup(cfg)
   local command_desc = {
     search = 'Search with ripgrep',
     stop = 'Stop ripgrep search',
+    repeat_last = 'Repeat last ripgrep search',
   }
 
   -- Search command
@@ -163,6 +165,12 @@ function M.setup(cfg)
     end
   end, { desc = command_desc.stop })
 
+  -- Repeat command
+  -----------------
+  vim.api.nvim_create_user_command('RgRepeat', function()
+    cancel_fn = rg.repeat_last()
+  end, { desc = command_desc.repeat_last })
+
   ------------------------------------------------------------------------------
   --- Keymaps ------------------------------------------------------------------
   ------------------------------------------------------------------------------
@@ -172,6 +180,7 @@ function M.setup(cfg)
     visual = 'Search for visual selection with ripgrep',
     prompt = 'Open ripgrep prompt',
     stop = 'Stop ripgrep search',
+    repeat_last = 'Repeat last ripgrep search',
   }
 
   -- Current word
@@ -214,8 +223,8 @@ function M.setup(cfg)
     vim.keymap.set({ 'n' }, cfg.keymap_prompt, ':Rg ', { desc = keymap_desc.prompt })
   end
 
-  -- Stop command
-  ---------------
+  -- Stop current search
+  ----------------------
   if cfg.keymap_stop then
     vim.keymap.set({ 'n' }, cfg.keymap_stop, function()
       if cancel_fn then
@@ -223,6 +232,14 @@ function M.setup(cfg)
         cancel_fn = nil
       end
     end, { desc = keymap_desc.stop })
+  end
+
+  -- Repeat last search
+  ---------------------
+  if cfg.keymap_repeat then
+    vim.keymap.set({ 'n' }, cfg.keymap_repeat, function()
+      cancel_fn = rg.repeat_last()
+    end, { desc = keymap_desc.repeat_last })
   end
 end
 

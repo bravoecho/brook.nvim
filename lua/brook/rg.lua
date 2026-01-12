@@ -8,7 +8,8 @@
 ---
 ---@module 'brook.rg'
 
-local exec = require('brook.exec')._exec
+local exec_module = require('brook.exec')
+local exec = exec_module._exec
 local tokenise = require('brook.tokenise').tokenise
 local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
 local parse_args = require('brook.parse_args').parse_args
@@ -140,8 +141,19 @@ function M.raw(cmd_args, cfg)
     args = rg_args,
     parsed_args = parsed_args,
     cfg = cfg,
-    title = 'rg ' .. cmd_args,
   })
+end
+
+--- Repeats the last performed search.
+---
+---@return function|nil cancel_fn Function to use to cancel the current job
+function M.repeat_last()
+  local last_ctx = exec_module.last_search_context()
+  if not last_ctx then
+    vim.notify('rg: no previous search to repeat', vim.log.levels.WARN)
+    return nil
+  end
+  return exec(last_ctx)
 end
 
 return M

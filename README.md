@@ -50,12 +50,17 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   },
 
   -- Lazy loading
-  cmd = { 'Rg', 'RgStop' },
+  cmd = {
+    'Rg',
+    'RgStop',
+    'RgRepeat',
+  },
   keys = {
     { '<leader>g', mode = 'n', desc = 'Search for current word with ripgrep' },
     { '<leader>g', mode = 'x', desc = 'Search for visual selection with ripgrep' },
     { '<leader>/', mode = 'n', desc = 'Open ripgrep prompt' },
     { '<leader>G', mode = 'n', desc = 'Stop ripgrep search' },
+    { '<leader>r', mode = 'n', desc = 'Repeat last ripgrep search' },
   },
 
   -- Defaults (you only need to specify the fields you want to customise)
@@ -65,6 +70,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap_visual = '<leader>g',
     keymap_prompt = '<leader>/',
     keymap_stop = '<leader>G',
+    keymap_repeat = '<leader>r',
 
     -- Result limits
     max_results = 1000, -- 1-10,000
@@ -120,8 +126,11 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
    - `<leader>g` in visual mode – selection
    - `<leader>/` in normal mode – open prompt for manual search
    - `<leader>G` in normal mode – stop current search if any
+   - `<leader>r` in normal mode – repeat the last search
    - `:Rg your_query` – manual search
    - `:Rg --hidden "function handle_click"` – with ripgrep flags
+   - `:RgStop` – stop current search if any
+   - `:RgRepeat` – repeat last search
 
 2. **Explore**: Browse with `:cnext`/`:cprev` (map these to `]q`/`[q`).
 
@@ -133,7 +142,7 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 
 ### Tips
 
-* **Filter by type**: `:Rg -t lua config` or `:Rg -T js bug`
+* **Filter by file type**: `:Rg -t lua config` or `:Rg -T js bug`
 * **Literal search**: `:Rg -F "($[0].item)"` for special characters
 * **Case control**: `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
 * **Stop early**: `<leader>G` or `:RgStop` – results so far remain in quickfix

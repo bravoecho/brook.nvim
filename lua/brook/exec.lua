@@ -57,6 +57,15 @@ local phase2_scheduled = false
 ---@type uv.uv_timer_t|nil
 local phase3_timer = nil
 
+--- Store the last context to support "repeat last search"
+---@type brook.SearchContext|nil
+local last_search_context = nil
+
+---@return brook.SearchContext|nil
+function M.last_search_context()
+  return last_search_context
+end
+
 --------------------------------------------------------------------------------
 --- Enums ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -130,6 +139,10 @@ local qf_operation = {
 ---@param ctx brook.SearchContext Search context with all execution parameters
 ---@return function|nil cancel_fn
 function M._exec(ctx)
+  -- Store context for repeat
+  ---------------------------
+  last_search_context = ctx
+
   -- Cleanup previous search
   --------------------------
   M._cancel_phase2_scheduling()
@@ -162,6 +175,7 @@ function M._exec(ctx)
       and M._parse_line_number
       or M._parse_vimgrep
 
+  -- TODO: move up to the `rg` module.
   vim.notify('rg ' .. ctx.parsed_args.raw, vim.log.levels.INFO)
 
   -- Run ripgrep
