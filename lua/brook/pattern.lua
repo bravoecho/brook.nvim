@@ -112,6 +112,7 @@ function M.rg_to_vim(pattern, opts)
   local len = #pattern
   local in_char_class = false
   local wordness_before = M._wordness.non_word
+  local char_class_wordness = nil -- wordness of most recently seen char class
   local was_quantifier = false -- needed later for wordness detection
   local i = 1
 
@@ -152,6 +153,9 @@ function M.rg_to_vim(pattern, opts)
         local wordness_after = M._wordness.unknown
         if char_after == '.' then
           wordness_after = M._wordness.unknown
+        elseif char_after == '[' then
+          -- Character class follows: determine its wordness
+          wordness_after = M._classify_char_class_wordness(pattern:sub(i + 2)) or M._wordness.unknown
         elseif unknown_atoms[atom_after] then
           wordness_after = M._wordness.unknown
         elseif word_atoms[atom_after] or char_after:match('[%w]') then
@@ -161,10 +165,13 @@ function M.rg_to_vim(pattern, opts)
           wordness_after = M._wordness.non_word
         end
 
-        if wordness_before == M._wordness.non_word and wordness_after == M._wordness.word then
+        -- Use char_class_wordness if we just exited a character class
+        local effective_wordness_before = char_class_wordness or wordness_before
+
+        if effective_wordness_before == M._wordness.non_word and wordness_after == M._wordness.word then
           -- NON-WORD \b WORD => start of word
           table.insert(result, '<')
-        elseif wordness_before == M._wordness.word and wordness_after == M._wordness.non_word then
+        elseif effective_wordness_before == M._wordness.word and wordness_after == M._wordness.non_word then
           -- WORD \b NON-WORD => end of word
           table.insert(result, '>')
         else
@@ -214,7 +221,8 @@ function M.rg_to_vim(pattern, opts)
       table.insert(result, char)
       i = i + 1
     elseif char == '[' and not in_char_class then
-      -- Start of character class
+      -- Start of character class: classify its wordness for boundary heuristics
+      char_class_wordness = M._classify_char_class_wordness(pattern:sub(i)) or M._wordness.unknown
       in_char_class = true
       table.insert(result, '[')
       i = i + 1
@@ -345,20 +353,32 @@ function M.rg_to_vim(pattern, opts)
     end
 
     -- determine wordness of current atom to be used for boundary heuristic in
-    -- the next iteration
-    if char == '.' then
+    -- the next iteration. Skip while inside character classes.
+    if in_char_class then
+      -- Inside character class: wordness will be determined when we exit
+      -- Do nothing here
+    elseif char == ']' and char_class_wordness then
+      -- Just exited a character class: use its pre-computed wordness
+      wordness_before = char_class_wordness
+      -- Don't reset char_class_wordness here; it's needed if \b follows immediately
+    elseif char == '*' or char == '+' or char == '?' or was_quantifier then
+      -- Quantifiers: preserve the preceding wordness (don't change wordness_before)
+      -- Also preserve char_class_wordness for when \b follows
+    elseif char == '.' then
       wordness_before = M._wordness.unknown
+      char_class_wordness = nil
     elseif unknown_atoms[atom] then
       wordness_before = M._wordness.unknown
-    elseif wordness_before == M._wordness.word
-        and (char == '*' or char == '+' or char == '?' or was_quantifier) then
-      wordness_before = M._wordness.word
+      char_class_wordness = nil
     elseif word_atoms[atom] or char:match('[%w]') then
       wordness_before = M._wordness.word
+      char_class_wordness = nil
     elseif non_word_atoms[atom] or non_word_atoms_before[atom] or char:match('[^%w]') then
       wordness_before = M._wordness.non_word
+      char_class_wordness = nil
     else
       wordness_before = M._wordness.unknown
+      char_class_wordness = nil
     end
   end
 
