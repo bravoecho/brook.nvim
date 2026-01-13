@@ -111,9 +111,10 @@ function M.rg_to_vim(pattern, opts)
   local warnings = {}
   local len = #pattern
   local in_char_class = false
+  ---@type wordness|nil
   local wordness_before = M._wordness.non_word
-  local char_class_wordness = nil -- wordness of most recently seen char class
-  local was_quantifier = false    -- needed later for wordness detection
+  local pending_class_wordness = nil -- wordness to assign when exiting current class
+  local was_quantifier = false       -- needed later for wordness detection
   local i = 1
 
   while i <= len do
@@ -165,13 +166,10 @@ function M.rg_to_vim(pattern, opts)
           wordness_after = M._wordness.non_word
         end
 
-        -- Use char_class_wordness if we just exited a character class
-        local effective_wordness_before = char_class_wordness or wordness_before
-
-        if effective_wordness_before == M._wordness.non_word and wordness_after == M._wordness.word then
+        if wordness_before == M._wordness.non_word and wordness_after == M._wordness.word then
           -- NON-WORD \b WORD => start of word
           table.insert(result, '<')
-        elseif effective_wordness_before == M._wordness.word and wordness_after == M._wordness.non_word then
+        elseif wordness_before == M._wordness.word and wordness_after == M._wordness.non_word then
           -- WORD \b NON-WORD => end of word
           table.insert(result, '>')
         else
@@ -221,8 +219,8 @@ function M.rg_to_vim(pattern, opts)
       table.insert(result, char)
       i = i + 1
     elseif char == '[' and not in_char_class then
-      -- Start of character class: classify its wordness for boundary heuristics
-      char_class_wordness = M._classify_char_class_wordness(pattern:sub(i)) or M._wordness.unknown
+      -- Start of character class: pre-compute wordness for when we exit
+      pending_class_wordness = M._classify_char_class_wordness(pattern:sub(i)) or M._wordness.unknown
       in_char_class = true
       table.insert(result, '[')
       i = i + 1
@@ -237,10 +235,14 @@ function M.rg_to_vim(pattern, opts)
         i = i + 1
       end
     elseif char == ']' and in_char_class then
-      -- End of character class
+      -- End of character class: apply the pre-computed wordness and skip
+      -- end-of-loop wordness tracking (which would incorrectly classify ']')
       in_char_class = false
+      wordness_before = pending_class_wordness
+      pending_class_wordness = nil
       table.insert(result, ']')
       i = i + 1
+      goto continue
     elseif char == '{' and not in_char_class then
       -- Non-greedy brace quantifier: {n}? {n,}? {n,m}? -> {-n} {-n,} {-n,m}
       -- Handle it as an independent subsequence, so we can account for ? at
@@ -329,7 +331,7 @@ function M.rg_to_vim(pattern, opts)
         i = name_end + 1 -- continue after '>'
       else
         -- Lookarounds: Vim has equivalents (\@=, \@!, \@<=, \@<!), however since
-        -- ripgrep's default engine doesn’t support lookarounds and we disallow
+        -- ripgrep's default engine doesn't support lookarounds and we disallow
         -- PCRE2, we don't support them.
         --
         -- Atomic groups: no Vim equivalent.
@@ -352,34 +354,26 @@ function M.rg_to_vim(pattern, opts)
       i = i + 1
     end
 
-    -- determine wordness of current atom to be used for boundary heuristic in
-    -- the next iteration. Skip while inside character classes.
+    -- Determine wordness of current atom for boundary heuristics in subsequent
+    -- iterations. Skip while inside character classes (wordness is assigned
+    -- when we exit the class).
     if in_char_class then
-      -- Inside character class: wordness will be determined when we exit
-      -- Do nothing here
-    elseif char == ']' and char_class_wordness then
-      -- Just exited a character class: use its pre-computed wordness
-      wordness_before = char_class_wordness
-      -- Don't reset char_class_wordness here; it's needed if \b follows immediately
+      -- Do nothing: wordness will be set when we see ']'
     elseif char == '*' or char == '+' or char == '?' or was_quantifier then
       -- Quantifiers: preserve the preceding wordness (don't change wordness_before)
-      -- Also preserve char_class_wordness for when \b follows
     elseif char == '.' then
       wordness_before = M._wordness.unknown
-      char_class_wordness = nil
     elseif unknown_atoms[atom] then
       wordness_before = M._wordness.unknown
-      char_class_wordness = nil
     elseif word_atoms[atom] or char:match('[%w]') then
       wordness_before = M._wordness.word
-      char_class_wordness = nil
     elseif non_word_atoms[atom] or non_word_atoms_before[atom] or char:match('[^%w]') then
       wordness_before = M._wordness.non_word
-      char_class_wordness = nil
     else
       wordness_before = M._wordness.unknown
-      char_class_wordness = nil
     end
+
+    ::continue::
   end
 
   local vimgrep_pattern = table.concat(result)
