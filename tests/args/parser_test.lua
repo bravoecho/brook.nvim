@@ -1,10 +1,10 @@
 -- Run with:
---   nvim --headless -c "luafile tests/parse_args_test.lua" -c "q"
+--   nvim --headless -c "luafile tests/args/parser_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
-local parse_args = require('brook.parse_args').parse_args
+local parse_args = require('brook.args.parser').parse_args
 
 -- NOTE: `parse_args` receives already-unquoted tokens. Shell unquoting
 -- behaviour is tested separately in posix_unquote_test.lua.

@@ -6,7 +6,7 @@
 ---   * interprets a minimal subset of ripgrep arguments, only for the purpose
 ---     of better integration with Neovim's features (quickfix, search register)
 ---
----@module 'brook.parse_args'
+---@module 'brook.args.parser'
 local M = {}
 
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
