@@ -10,7 +10,7 @@
 
 local exec_module = require('brook.exec')
 local exec = exec_module._exec
-local tokenise = require('brook.tokeniser').tokenise
+local tokenise = require('brook.args.tokeniser').tokenise
 local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
 local parse_args = require('brook.parse_args').parse_args
 
