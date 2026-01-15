@@ -1,4 +1,4 @@
--- This file: lua/brook/pattern/init.lua
+-- lua/brook/pattern/init.lua
 
 --- Pattern translation pipeline: ripgrep regex => Vim "very magic" regex.
 ---

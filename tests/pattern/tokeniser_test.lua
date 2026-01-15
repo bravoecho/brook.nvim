@@ -1,4 +1,4 @@
--- This file: tests/pattern/tokenise_test.lua
+-- tests/pattern/tokeniser_test.lua
 
 -- Run with:
 --   nvim --headless -c "luafile tests/pattern/tokeniser_test.lua" -c "q"
@@ -11,7 +11,7 @@ local types = require('brook.pattern.types')
 -- Import will fail until tokeniser.lua is implemented
 local ok, tokeniser = pcall(require, 'brook.pattern.tokeniser')
 if not ok then
-  print('SKIP: brook.pattern.tokenise not yet implemented')
+  print('SKIP: brook.pattern.tokeniser not yet implemented')
   print('0/0 tests passed')
   vim.cmd('cquit 0')
   return
@@ -477,6 +477,12 @@ test('escape: unicode property in pattern', function()
   })
 end)
 
+test('escape: unclosed unicode property', function()
+  deep_eq(tokenise('\\p{Letter'), {
+    tok(T.escape, '\\p{Letter', 1),
+  })
+end)
+
 --------------------------------------------------------------------------------
 --- Quantifiers: greedy --------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -601,6 +607,8 @@ test('quantifier: question possessive ?+', function()
   })
 end)
 
+-- TODO: brace possessive?
+
 --------------------------------------------------------------------------------
 --- Quantifiers: edge cases ----------------------------------------------------
 --------------------------------------------------------------------------------
@@ -628,8 +636,9 @@ test('quantifier: + at start is literal', function()
 end)
 
 test('quantifier: consecutive quantifiers (first quantifies, rest literal)', function()
-  -- a*+ should be star then possessive marker, already tested
-  -- a** is star then literal star (nothing to quantify)
+  -- a** is star then literal star (nothing to quantify): even though it's not a
+  -- valid regex, it's out of the tokeniser scope to determine validity, that
+  -- is for the parser to decide.
   deep_eq(tokenise('a**'), {
     tok(T.literal, 'a', 1),
     tok(T.quantifier, '*', 2, { greedy = true }),
@@ -854,6 +863,16 @@ test('group: named without closing > (best effort)', function()
     tok(T.group_open, '(?P<namea)', 1, { kind = GK.named_python, name = 'namea)' }),
     -- Note: the tokeniser will consume until it finds > or end of string
     -- Exact behaviour may vary; test documents expected handling
+  })
+end)
+
+test('group: unknown (? sequence', function()
+  -- Treats ( as capturing, ? as literal
+  deep_eq(tokenise('(?x)'), {
+    tok(T.group_open, '(', 1, { kind = GK.capturing }),
+    tok(T.literal, '?', 2),
+    tok(T.literal, 'x', 3),
+    tok(T.group_close, ')', 4),
   })
 end)
 
@@ -1232,6 +1251,41 @@ test('class: multiple classes in pattern', function()
     tok(T.char_class_open, '[', 4, { negated = false }),
     tok(CC.cc_literal, 'b', 5),
     tok(T.char_class_close, ']', 6),
+  })
+end)
+
+test('class: ] as first char followed by range', function()
+  deep_eq(tokenise('[]-a]'), {
+    tok(T.char_class_open, '[', 1, { negated = false }),
+    tok(CC.cc_range, ']-a', 2, { from = ']', to = 'a' }),
+    tok(T.char_class_close, ']', 5),
+  })
+end)
+
+test('quantifier: invalid brace content is literal', function()
+  deep_eq(tokenise('a{abc}'), {
+    tok(T.literal, 'a', 1),
+    tok(T.literal, '{', 2),
+    tok(T.literal, 'a', 3),
+    tok(T.literal, 'b', 4),
+    tok(T.literal, 'c', 5),
+    tok(T.literal, '}', 6),
+  })
+end)
+
+test('quantifier: unclosed brace is literal', function()
+  deep_eq(tokenise('a{3'), {
+    tok(T.literal, 'a', 1),
+    tok(T.literal, '{', 2),
+    tok(T.literal, '3', 3),
+  })
+end)
+
+test('quantifier: empty brace is literal', function()
+  deep_eq(tokenise('a{}'), {
+    tok(T.literal, 'a', 1),
+    tok(T.literal, '{', 2),
+    tok(T.literal, '}', 3),
   })
 end)
 

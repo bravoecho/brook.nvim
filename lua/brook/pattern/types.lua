@@ -1,4 +1,4 @@
--- This file: lua/brook/pattern/types.lua
+-- lua/brook/pattern/types.lua
 
 --- Type definitions for the pattern translation pipeline.
 ---
