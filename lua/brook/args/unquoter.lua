@@ -2,7 +2,7 @@
 ---
 --- Decouples from the user's shell and from Neovim's unquoting.
 ---
----@module 'brook.posix_unquote'
+---@module 'brook.args.unquoter'
 
 local M = {}
 

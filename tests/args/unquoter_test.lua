@@ -1,12 +1,13 @@
 -- Run with:
---   nvim --headless -c "luafile tests/posix_unquote_test.lua" -c "q"
+--   nvim --headless -c "luafile tests/args/unquoter_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
 local deep_eq = h.deep_eq
-local posix_unquote = require('brook.posix_unquote').posix_unquote
-local posix_unquote_all = require('brook.posix_unquote').posix_unquote_all
+local unquoter = require('brook.args.unquoter')
+local posix_unquote = unquoter.posix_unquote
+local posix_unquote_all = unquoter.posix_unquote_all
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------

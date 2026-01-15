@@ -7,7 +7,7 @@ local deep_eq = h.deep_eq
 local parse_args = require('brook.args.parser').parse_args
 
 -- NOTE: `parse_args` receives already-unquoted tokens. Shell unquoting
--- behaviour is tested separately in posix_unquote_test.lua.
+-- behaviour is tested separately in unquoter_test.lua.
 
 --- Original user command, we only need to check that it's forwarded correctly.
 local raw = '<original command>'
