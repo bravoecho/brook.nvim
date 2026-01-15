@@ -119,7 +119,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list.
 
 > [!TIP]
-> [Learn more about the quickfix list](./QUICKFIX.md)
+> [Learn more about the quickfix list](/doc/quickfix_primer.md)
 
 1. **Search**:
    - `<leader>g` in normal mode – word under cursor
@@ -208,7 +208,7 @@ exploration across many files:
 * **Pattern Extraction**: Parses the CLI to separate flags from search patterns.
 * **Regex Translation**: Converts patterns to Vim's "very magic" mode;
   translates case flags (`-s`/`-i`) to `\C`/`\c`. See [pattern translation
-  spec](./tests/pattern_spec.md).
+  spec](/doc/pattern_spec.md).
 * **Streaming**: Results flow to quickfix as ripgrep emits them.
 * **Three-Phase Batching**: (1) Fill visible window fast, (2) throttled batches
   during search, (3) rapid drain after exit.

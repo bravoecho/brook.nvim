@@ -333,7 +333,7 @@ Create `lua/brook/pattern/init.lua`:
 - Remove `_classify_char_class_wordness` and `_extract_leading_char_class`
   (functionality subsumed by tokeniser and parser)
 - Remove any dead code
-- Update `pattern_spec.md` if needed
+- Update `./pattern_spec.md` if needed
 
 **Deliverable:** Clean codebase
 **Validation:** All tests pass
