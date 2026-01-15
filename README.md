@@ -148,6 +148,9 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 * **Stop early**: `<leader>G` or `:RgStop` – results so far remain in quickfix
 * **Unique lines**: Set `output_format = 'unique-lines'` or use `-n` flag
 * **Search path**: Press `<Tab>` in the command to autocomplete relative paths
+* **Report each file only once**: `:Rg mypattern -n -m1`
+* **Open all files with matches**: `:cfdo edit`
+* **Search only the current file**: `:Rg mypattern %`
 * **Customise ripgrep**: Add default options to `~/.ripgreprc`
 
 ### Limitations
