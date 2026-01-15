@@ -3,7 +3,7 @@
 ---
 --- See also the companion module posix_unquote.lua
 ---
----@module 'brook.tokenise'
+---@module 'brook.tokeniser'
 local M = {}
 
 local SINGLE_QUOTE = "'"

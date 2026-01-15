@@ -18,4 +18,4 @@ run_test classify_char_class_wordness
 run_test pattern
 run_test parse_args
 run_test posix_unquote
-run_test tokenise
+run_test tokeniser

@@ -1,10 +1,10 @@
 -- Run with:
---   nvim --headless -c "luafile tests/tokenise_test.lua" -c "q"
+--   nvim --headless -c "luafile tests/tokeniser_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
-local tokenise = require('brook.tokenise').tokenise
+local tokenise = require('brook.tokeniser').tokenise
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------
