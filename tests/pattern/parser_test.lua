@@ -48,14 +48,14 @@ local function tok(token_type, value, pos, extra)
   return t
 end
 
---- Helper to assert parsing succeeds and returns expected tokens.
----@param input table Input tokens
----@param expected_tokens table Expected output tokens (with annotations)
-local function assert_parses(input, expected_tokens)
-  local result = parse(input)
-  eq(result.error, nil, 'Expected no error')
-  deep_eq(result.tokens, expected_tokens)
-end
+-- --- Helper to assert parsing succeeds and returns expected tokens.
+-- ---@param input table Input tokens
+-- ---@param expected_tokens table Expected output tokens (with annotations)
+-- local function assert_parses(input, expected_tokens)
+--   local result = parse(input)
+--   eq(result.error, nil, 'Expected no error')
+--   deep_eq(result.tokens, expected_tokens)
+-- end
 
 --- Helper to assert parsing fails with expected error.
 ---@param input table Input tokens
@@ -66,15 +66,15 @@ local function assert_fails(input, expected_error)
   eq(result.error, expected_error)
 end
 
---- Helper to assert parsing succeeds with expected warning.
----@param input table Input tokens
----@param expected_warning string Expected warning message (first warning)
-local function assert_warns(input, expected_warning)
-  local result = parse(input)
-  assert(result.tokens ~= nil, 'Expected tokens on success with warning')
-  assert(#result.warnings > 0, 'Expected at least one warning')
-  eq(result.warnings[1], expected_warning)
-end
+-- --- Helper to assert parsing succeeds with expected warning.
+-- ---@param input table Input tokens
+-- ---@param expected_warning string Expected warning message (first warning)
+-- local function assert_warns(input, expected_warning)
+--   local result = parse(input)
+--   assert(result.tokens ~= nil, 'Expected tokens on success with warning')
+--   assert(#result.warnings > 0, 'Expected at least one warning')
+--   eq(result.warnings[1], expected_warning)
+-- end
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------
@@ -1179,7 +1179,7 @@ test('complex: \\b\\w+\\b', function()
     tok(T.escape, '\\b', 6),
   })
   eq(result.tokens[1].next_wordness, W.word)
-  eq(result.tokens[4].prev_wordness, W.word)  -- quantifier inherits from \w
+  eq(result.tokens[4].prev_wordness, W.word) -- quantifier inherits from \w
 end)
 
 test('complex: [a-z]+@[a-z]+', function()
@@ -1195,8 +1195,8 @@ test('complex: [a-z]+@[a-z]+', function()
     tok(T.quantifier, '+', 13, { greedy = true }),
   })
   eq(result.tokens[1].wordness, W.word)
-  eq(result.tokens[4].wordness, W.word)  -- quantifier inherits from class
-  eq(result.tokens[5].wordness, W.non_word)  -- @
+  eq(result.tokens[4].wordness, W.word)     -- quantifier inherits from class
+  eq(result.tokens[5].wordness, W.non_word) -- @
   eq(result.tokens[6].wordness, W.word)
 end)
 
@@ -1213,9 +1213,9 @@ test('complex: (foo|bar)', function()
     tok(T.group_close, ')', 9),
   })
   eq(result.error, nil)
-  eq(result.tokens[1].wordness, W.non_word)  -- (
-  eq(result.tokens[5].wordness, W.non_word)  -- |
-  eq(result.tokens[9].wordness, W.non_word)  -- )
+  eq(result.tokens[1].wordness, W.non_word) -- (
+  eq(result.tokens[5].wordness, W.non_word) -- |
+  eq(result.tokens[9].wordness, W.non_word) -- )
 end)
 
 test('complex: <.*?>', function()
@@ -1227,7 +1227,7 @@ test('complex: <.*?>', function()
   })
   eq(result.tokens[1].wordness, W.non_word)
   eq(result.tokens[2].wordness, W.unknown)
-  eq(result.tokens[3].wordness, W.unknown)  -- inherits from .
+  eq(result.tokens[3].wordness, W.unknown) -- inherits from .
   eq(result.tokens[4].wordness, W.non_word)
 end)
 
