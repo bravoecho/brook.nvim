@@ -13,7 +13,7 @@ run_test() {
     -c "q"
 }
 
-run_test fifo
+run_test 'lib/fifo'
 run_test classify_char_class_wordness
 run_test pattern_legacy
 run_test 'args/parser'
