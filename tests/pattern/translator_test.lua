@@ -5,7 +5,7 @@
 
 local h = require('tests.harness')
 local test = h.test
-local eq = h.eq
+local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
 -- Import will fail until translator.lua is implemented
@@ -47,32 +47,15 @@ local function tok(token_type, value, pos, extra)
   return t
 end
 
---- Helper to assert translation produces expected pattern.
----@param tokens table Parsed tokens
----@param expected_pattern string Expected Vim pattern
----@param opts? table Translation options
-local function assert_translates(tokens, expected_pattern, opts)
-  local result = translate(tokens, opts or {})
-  eq(result.pattern, expected_pattern)
-end
-
---- Helper to assert translation produces expected pattern and warning.
----@param tokens table Parsed tokens
----@param expected_pattern string Expected Vim pattern
----@param expected_warning string Expected warning
----@param opts? table Translation options
-local function assert_translates_with_warning(tokens, expected_pattern, expected_warning, opts)
-  local result = translate(tokens, opts or {})
-  eq(result.pattern, expected_pattern)
-  eq(result.warning, expected_warning)
-end
-
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 test('empty: empty token list', function()
-  assert_translates({}, '\\v')
+  deep_eq(translate({}, {}), {
+    pattern = '\\v',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -81,17 +64,20 @@ end)
 
 test('fixed: simple literal', function()
   -- In fixed mode, tokens are literals; translator handles escaping
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\Vhello', { fixed = true })
+  }, { fixed = true }), {
+    pattern = '\\Vhello',
+    warnings = {},
+  })
 end)
 
 test('fixed: escapes backslashes', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -99,11 +85,14 @@ test('fixed: escapes backslashes', function()
     tok(T.literal, 'b', 6, { wordness = W.word }),
     tok(T.literal, 'a', 7, { wordness = W.word }),
     tok(T.literal, 'r', 8, { wordness = W.word }),
-  }, '\\Vfoo\\\\bar', { fixed = true })
+  }, { fixed = true }), {
+    pattern = '\\Vfoo\\\\bar',
+    warnings = {},
+  })
 end)
 
 test('fixed: escapes forward slashes', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -111,31 +100,43 @@ test('fixed: escapes forward slashes', function()
     tok(T.literal, 'b', 5, { wordness = W.word }),
     tok(T.literal, 'a', 6, { wordness = W.word }),
     tok(T.literal, 'r', 7, { wordness = W.word }),
-  }, '\\Vfoo\\/bar', { fixed = true })
+  }, { fixed = true }), {
+    pattern = '\\Vfoo\\/bar',
+    warnings = {},
+  })
 end)
 
 test('fixed: with word boundary', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\V\\<hello\\>', { fixed = true, word = true })
+  }, { fixed = true, word = true }), {
+    pattern = '\\V\\<hello\\>',
+    warnings = {},
+  })
 end)
 
 test('fixed: case sensitive', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'i', 2, { wordness = W.word }),
-  }, '\\C\\Vhi', { fixed = true, case = 'case-sensitive' })
+  }, { fixed = true, case = 'case-sensitive' }), {
+    pattern = '\\C\\Vhi',
+    warnings = {},
+  })
 end)
 
 test('fixed: case insensitive', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'i', 2, { wordness = W.word }),
-  }, '\\c\\Vhi', { fixed = true, case = 'case-insensitive' })
+  }, { fixed = true, case = 'case-insensitive' }), {
+    pattern = '\\c\\Vhi',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -143,25 +144,34 @@ end)
 --------------------------------------------------------------------------------
 
 test('literal: single letter', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
-  }, '\\va')
+  }, {}), {
+    pattern = '\\va',
+    warnings = {},
+  })
 end)
 
 test('literal: multiple letters', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.literal, 'b', 2, { wordness = W.word }),
     tok(T.literal, 'c', 3, { wordness = W.word }),
-  }, '\\vabc')
+  }, {}), {
+    pattern = '\\vabc',
+    warnings = {},
+  })
 end)
 
 test('literal: dot passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.literal, '.', 2, { wordness = W.unknown }),
     tok(T.literal, 'b', 3, { wordness = W.word }),
-  }, '\\va.b')
+  }, {}), {
+    pattern = '\\va.b',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -169,7 +179,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('vimspecial: equals sign', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -177,49 +187,67 @@ test('vimspecial: equals sign', function()
     tok(T.literal, 'b', 5, { wordness = W.word }),
     tok(T.literal, 'a', 6, { wordness = W.word }),
     tok(T.literal, 'r', 7, { wordness = W.word }),
-  }, '\\vfoo\\=bar')
+  }, {}), {
+    pattern = '\\vfoo\\=bar',
+    warnings = {},
+  })
 end)
 
 test('vimspecial: tilde', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'x', 1, { wordness = W.word }),
     tok(T.literal, '~', 2, { wordness = W.non_word }),
     tok(T.literal, 'y', 3, { wordness = W.word }),
-  }, '\\vx\\~y')
+  }, {}), {
+    pattern = '\\vx\\~y',
+    warnings = {},
+  })
 end)
 
 test('vimspecial: at sign', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.literal, '@', 2, { wordness = W.non_word }),
     tok(T.literal, 'b', 3, { wordness = W.word }),
-  }, '\\va\\@b')
+  }, {}), {
+    pattern = '\\va\\@b',
+    warnings = {},
+  })
 end)
 
 test('vimspecial: ampersand', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.literal, '&', 2, { wordness = W.non_word }),
     tok(T.literal, 'b', 3, { wordness = W.word }),
-  }, '\\va\\&b')
+  }, {}), {
+    pattern = '\\va\\&b',
+    warnings = {},
+  })
 end)
 
 test('vimspecial: less than', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.literal, '<', 2, { wordness = W.non_word }),
     tok(T.literal, 'b', 3, { wordness = W.word }),
-  }, '\\va\\<b')
+  }, {}), {
+    pattern = '\\va\\<b',
+    warnings = {},
+  })
 end)
 
 test('vimspecial: greater than', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'x', 1, { wordness = W.word }),
     tok(T.literal, ' ', 2, { wordness = W.non_word }),
     tok(T.literal, '>', 3, { wordness = W.non_word }),
     tok(T.literal, ' ', 4, { wordness = W.non_word }),
     tok(T.literal, '0', 5, { wordness = W.word }),
-  }, '\\vx \\> 0')
+  }, {}), {
+    pattern = '\\vx \\> 0',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -227,7 +255,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('slash: simple path', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -235,7 +263,10 @@ test('slash: simple path', function()
     tok(T.literal, 'b', 5, { wordness = W.word }),
     tok(T.literal, 'a', 6, { wordness = W.word }),
     tok(T.literal, 'r', 7, { wordness = W.word }),
-  }, '\\vfoo\\/bar')
+  }, {}), {
+    pattern = '\\vfoo\\/bar',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -243,17 +274,23 @@ end)
 --------------------------------------------------------------------------------
 
 test('anchor: caret at start', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.anchor, '^', 1, { wordness = W.non_word }),
     tok(T.literal, 'a', 2, { wordness = W.word }),
-  }, '\\v^a')
+  }, {}), {
+    pattern = '\\v^a',
+    warnings = {},
+  })
 end)
 
 test('anchor: dollar at end', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.anchor, '$', 2, { wordness = W.non_word }),
-  }, '\\va$')
+  }, {}), {
+    pattern = '\\va$',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -261,57 +298,84 @@ end)
 --------------------------------------------------------------------------------
 
 test('escape: \\w passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\w', 1, { escape_class = EC.shorthand_word, wordness = W.word }),
-  }, '\\v\\w')
+  }, {}), {
+    pattern = '\\v\\w',
+    warnings = {},
+  })
 end)
 
 test('escape: \\d passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\d', 1, { escape_class = EC.shorthand_word, wordness = W.word }),
-  }, '\\v\\d')
+  }, {}), {
+    pattern = '\\v\\d',
+    warnings = {},
+  })
 end)
 
 test('escape: \\s passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\s', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\v\\s')
+  }, {}), {
+    pattern = '\\v\\s',
+    warnings = {},
+  })
 end)
 
 test('escape: \\W passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\W', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\v\\W')
+  }, {}), {
+    pattern = '\\v\\W',
+    warnings = {},
+  })
 end)
 
 test('escape: \\S passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\S', 1, { escape_class = EC.shorthand_unknown, wordness = W.unknown }),
-  }, '\\v\\S')
+  }, {}), {
+    pattern = '\\v\\S',
+    warnings = {},
+  })
 end)
 
 test('escape: \\D passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\D', 1, { escape_class = EC.shorthand_unknown, wordness = W.unknown }),
-  }, '\\v\\D')
+  }, {}), {
+    pattern = '\\v\\D',
+    warnings = {},
+  })
 end)
 
 test('escape: \\t passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\t', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\v\\t')
+  }, {}), {
+    pattern = '\\v\\t',
+    warnings = {},
+  })
 end)
 
 test('escape: \\n passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\n', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\v\\n')
+  }, {}), {
+    pattern = '\\v\\n',
+    warnings = {},
+  })
 end)
 
 test('escape: \\r passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\r', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\v\\r')
+  }, {}), {
+    pattern = '\\v\\r',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -319,21 +383,30 @@ end)
 --------------------------------------------------------------------------------
 
 test('escape: \\( passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\(', 1, { escape_class = EC.escaped_literal, wordness = W.non_word }),
-  }, '\\v\\(')
+  }, {}), {
+    pattern = '\\v\\(',
+    warnings = {},
+  })
 end)
 
 test('escape: \\. passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\.', 1, { escape_class = EC.escaped_literal, wordness = W.non_word }),
-  }, '\\v\\.')
+  }, {}), {
+    pattern = '\\v\\.',
+    warnings = {},
+  })
 end)
 
 test('escape: \\\\ passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\\\', 1, { escape_class = EC.escaped_literal, wordness = W.non_word }),
-  }, '\\v\\\\')
+  }, {}), {
+    pattern = '\\v\\\\',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -341,31 +414,40 @@ end)
 --------------------------------------------------------------------------------
 
 test('escape: \\A becomes ^ with warning', function()
-  assert_translates_with_warning({
+  deep_eq(translate({
     tok(T.escape, '\\A', 1, { escape_class = EC.anchor_start, wordness = W.non_word }),
     tok(T.literal, 'f', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\v^foo', '\\A treated as ^')
+  }, {}), {
+    pattern = '\\v^foo',
+    warnings = { '\\A treated as ^' },
+  })
 end)
 
 test('escape: \\z becomes $ with warning', function()
-  assert_translates_with_warning({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.escape, '\\z', 4, { escape_class = EC.anchor_end, wordness = W.non_word }),
-  }, '\\vfoo$', '\\z treated as $')
+  }, {}), {
+    pattern = '\\vfoo$',
+    warnings = { '\\z treated as $' },
+  })
 end)
 
-test('escape: \\A and \\z together shows count', function()
-  assert_translates_with_warning({
+test('escape: \\A and \\z together', function()
+  deep_eq(translate({
     tok(T.escape, '\\A', 1, { escape_class = EC.anchor_start, wordness = W.non_word }),
     tok(T.literal, 'f', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
     tok(T.escape, '\\z', 6, { escape_class = EC.anchor_end, wordness = W.non_word }),
-  }, '\\v^foo$', '\\A treated as ^ (+1 more)')
+  }, {}), {
+    pattern = '\\v^foo$',
+    warnings = { '\\A treated as ^', '\\z treated as $' },
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -373,39 +455,48 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b at start (before word) => <', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\b', 1, { escape_class = EC.boundary, prev_wordness = nil, next_wordness = W.word }),
     tok(T.literal, 'w', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.literal, 'r', 5, { wordness = W.word }),
     tok(T.literal, 'd', 6, { wordness = W.word }),
-  }, '\\v<word')
+  }, {}), {
+    pattern = '\\v<word',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b at end (after word) => >', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'w', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'r', 3, { wordness = W.word }),
     tok(T.literal, 'd', 4, { wordness = W.word }),
     tok(T.escape, '\\b', 5, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil }),
-  }, '\\vword>')
+  }, {}), {
+    pattern = '\\vword>',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b at both ends', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\b', 1, { escape_class = EC.boundary, prev_wordness = nil, next_wordness = W.word }),
     tok(T.literal, 'w', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.literal, 'r', 5, { wordness = W.word }),
     tok(T.literal, 'd', 6, { wordness = W.word }),
     tok(T.escape, '\\b', 7, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil }),
-  }, '\\v<word>')
+  }, {}), {
+    pattern = '\\v<word>',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b in middle (word-word) => fallback', function()
   -- Both sides are word chars, so boundary is ambiguous
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -413,11 +504,14 @@ test('boundary: \\b in middle (word-word) => fallback', function()
     tok(T.literal, 'b', 6, { wordness = W.word }),
     tok(T.literal, 'a', 7, { wordness = W.word }),
     tok(T.literal, 'r', 8, { wordness = W.word }),
-  }, '\\vfoo%(<|>)bar')
+  }, {}), {
+    pattern = '\\vfoo%(<|>)bar',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b after space => <', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -426,11 +520,14 @@ test('boundary: \\b after space => <', function()
     tok(T.literal, 'b', 7, { wordness = W.word }),
     tok(T.literal, 'a', 8, { wordness = W.word }),
     tok(T.literal, 'r', 9, { wordness = W.word }),
-  }, '\\vfoo <bar')
+  }, {}), {
+    pattern = '\\vfoo <bar',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before space => >', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -439,7 +536,10 @@ test('boundary: \\b before space => >', function()
     tok(T.literal, 'b', 7, { wordness = W.word }),
     tok(T.literal, 'a', 8, { wordness = W.word }),
     tok(T.literal, 'r', 9, { wordness = W.word }),
-  }, '\\vfoo> bar')
+  }, {}), {
+    pattern = '\\vfoo> bar',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -447,32 +547,41 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b with \\w+', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\b', 1, { escape_class = EC.boundary, prev_wordness = nil, next_wordness = W.word }),
     tok(T.escape, '\\w', 3, { escape_class = EC.shorthand_word, wordness = W.word }),
     tok(T.quantifier, '+', 5, { greedy = true, wordness = W.word }),
     tok(T.escape, '\\b', 6, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil }),
-  }, '\\v<\\w+>')
+  }, {}), {
+    pattern = '\\v<\\w+>',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b after \\W => <', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\W', 1, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
     tok(T.escape, '\\b', 3, { escape_class = EC.boundary, prev_wordness = W.non_word, next_wordness = W.word }),
     tok(T.literal, 'f', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
     tok(T.literal, 'o', 7, { wordness = W.word }),
-  }, '\\v\\W<foo')
+  }, {}), {
+    pattern = '\\v\\W<foo',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before \\W => >', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.escape, '\\b', 4, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.non_word }),
     tok(T.escape, '\\W', 6, { escape_class = EC.shorthand_nonword, wordness = W.non_word }),
-  }, '\\vfoo>\\W')
+  }, {}), {
+    pattern = '\\vfoo>\\W',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -480,33 +589,42 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b after \\S (unknown) => fallback', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\S', 1, { escape_class = EC.shorthand_unknown, wordness = W.unknown }),
     tok(T.escape, '\\b', 3, { escape_class = EC.boundary, prev_wordness = W.unknown, next_wordness = W.word }),
     tok(T.literal, 'f', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
     tok(T.literal, 'o', 7, { wordness = W.word }),
-  }, '\\v\\S%(<|>)foo')
+  }, {}), {
+    pattern = '\\v\\S%(<|>)foo',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before \\S (unknown) => fallback', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.escape, '\\b', 4, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.unknown }),
     tok(T.escape, '\\S', 6, { escape_class = EC.shorthand_unknown, wordness = W.unknown }),
-  }, '\\vfoo%(<|>)\\S')
+  }, {}), {
+    pattern = '\\vfoo%(<|>)\\S',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b after . (unknown) => fallback', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '.', 1, { wordness = W.unknown }),
     tok(T.escape, '\\b', 2, { escape_class = EC.boundary, prev_wordness = W.unknown, next_wordness = W.word }),
     tok(T.literal, 'f', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
-  }, '\\v.%(<|>)foo')
+  }, {}), {
+    pattern = '\\v.%(<|>)foo',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -514,7 +632,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b after alternation', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -525,11 +643,14 @@ test('boundary: \\b after alternation', function()
     tok(T.literal, 'a', 9, { wordness = W.word }),
     tok(T.literal, 'r', 10, { wordness = W.word }),
     tok(T.group_close, ')', 11, { wordness = W.non_word }),
-  }, '\\v(foo|<bar)')
+  }, {}), {
+    pattern = '\\v(foo|<bar)',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before alternation', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -540,29 +661,38 @@ test('boundary: \\b before alternation', function()
     tok(T.literal, 'a', 9, { wordness = W.word }),
     tok(T.literal, 'r', 10, { wordness = W.word }),
     tok(T.group_close, ')', 11, { wordness = W.non_word }),
-  }, '\\v(foo>|bar)')
+  }, {}), {
+    pattern = '\\v(foo>|bar)',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b after group start', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.escape, '\\b', 2, { escape_class = EC.boundary, prev_wordness = W.non_word, next_wordness = W.word }),
     tok(T.literal, 'f', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
     tok(T.group_close, ')', 7, { wordness = W.non_word }),
-  }, '\\v(<foo)')
+  }, {}), {
+    pattern = '\\v(<foo)',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before group end', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.escape, '\\b', 5, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.non_word }),
     tok(T.group_close, ')', 7, { wordness = W.non_word }),
-  }, '\\v(foo>)')
+  }, {}), {
+    pattern = '\\v(foo>)',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -570,23 +700,29 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b after ^', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.anchor, '^', 1, { wordness = W.non_word }),
     tok(T.escape, '\\b', 2, { escape_class = EC.boundary, prev_wordness = W.non_word, next_wordness = W.word }),
     tok(T.literal, 'f', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
-  }, '\\v^<foo')
+  }, {}), {
+    pattern = '\\v^<foo',
+    warnings = {},
+  })
 end)
 
 test('boundary: \\b before $', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.escape, '\\b', 4, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.non_word }),
     tok(T.anchor, '$', 6, { wordness = W.non_word }),
-  }, '\\vfoo>$')
+  }, {}), {
+    pattern = '\\vfoo>$',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -594,27 +730,33 @@ end)
 --------------------------------------------------------------------------------
 
 test('boundary: \\b before word class => <', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\b', 1, { escape_class = EC.boundary, prev_wordness = nil, next_wordness = W.word }),
     tok(T.char_class_open, '[', 3, { negated = false, wordness = W.word }),
     tok(CC.cc_range, 'a-z', 4, { from = 'a', to = 'z' }),
     tok(T.char_class_close, ']', 7, { wordness = W.word }),
     tok(T.quantifier, '+', 8, { greedy = true, wordness = W.word }),
-  }, '\\v<[a-z]+')
+  }, {}), {
+    pattern = '\\v<[a-z]+',
+    warnings = {},
+  })
 end)
 
 test('boundary: word class before \\b => >', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_range, 'a-z', 2, { from = 'a', to = 'z' }),
     tok(T.char_class_close, ']', 5, { wordness = W.word }),
     tok(T.quantifier, '+', 6, { greedy = true, wordness = W.word }),
     tok(T.escape, '\\b', 7, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil }),
-  }, '\\v[a-z]+>')
+  }, {}), {
+    pattern = '\\v[a-z]+>',
+    warnings = {},
+  })
 end)
 
 test('boundary: negated class => fallback (unknown)', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[^', 1, { negated = true, wordness = W.unknown }),
     tok(CC.cc_literal, 'a', 3),
     tok(T.char_class_close, ']', 4, { wordness = W.unknown }),
@@ -622,7 +764,10 @@ test('boundary: negated class => fallback (unknown)', function()
     tok(T.literal, 'f', 7, { wordness = W.word }),
     tok(T.literal, 'o', 8, { wordness = W.word }),
     tok(T.literal, 'o', 9, { wordness = W.word }),
-  }, '\\v[^a]%(<|>)foo')
+  }, {}), {
+    pattern = '\\v[^a]%(<|>)foo',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -630,17 +775,20 @@ end)
 --------------------------------------------------------------------------------
 
 test('word option: wraps pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\v<hello>', { word = true })
+  }, { word = true }), {
+    pattern = '\\v<hello>',
+    warnings = {},
+  })
 end)
 
 test('word option: with regex pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -649,7 +797,10 @@ test('word option: with regex pattern', function()
     tok(T.literal, 'b', 6, { wordness = W.word }),
     tok(T.literal, 'a', 7, { wordness = W.word }),
     tok(T.literal, 'r', 8, { wordness = W.word }),
-  }, '\\v<foo.*bar>', { word = true })
+  }, { word = true }), {
+    pattern = '\\v<foo.*bar>',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -657,33 +808,42 @@ end)
 --------------------------------------------------------------------------------
 
 test('case: sensitive adds \\C prefix', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\C\\vhello', { case = 'case-sensitive' })
+  }, { case = 'case-sensitive' }), {
+    pattern = '\\C\\vhello',
+    warnings = {},
+  })
 end)
 
 test('case: insensitive adds \\c prefix', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\c\\vhello', { case = 'case-insensitive' })
+  }, { case = 'case-insensitive' }), {
+    pattern = '\\c\\vhello',
+    warnings = {},
+  })
 end)
 
 test('case: sensitive with word boundary', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'h', 1, { wordness = W.word }),
     tok(T.literal, 'e', 2, { wordness = W.word }),
     tok(T.literal, 'l', 3, { wordness = W.word }),
     tok(T.literal, 'l', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
-  }, '\\C\\v<hello>', { case = 'case-sensitive', word = true })
+  }, { case = 'case-sensitive', word = true }), {
+    pattern = '\\C\\v<hello>',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -691,45 +851,63 @@ end)
 --------------------------------------------------------------------------------
 
 test('greedy: * passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '*', 2, { greedy = true, wordness = W.word }),
-  }, '\\va*')
+  }, {}), {
+    pattern = '\\va*',
+    warnings = {},
+  })
 end)
 
 test('greedy: + passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '+', 2, { greedy = true, wordness = W.word }),
-  }, '\\va+')
+  }, {}), {
+    pattern = '\\va+',
+    warnings = {},
+  })
 end)
 
 test('greedy: ? passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '?', 2, { greedy = true, wordness = W.word }),
-  }, '\\va?')
+  }, {}), {
+    pattern = '\\va?',
+    warnings = {},
+  })
 end)
 
 test('greedy: {3} passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3}', 2, { greedy = true, wordness = W.word }),
-  }, '\\va{3}')
+  }, {}), {
+    pattern = '\\va{3}',
+    warnings = {},
+  })
 end)
 
 test('greedy: {3,} passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3,}', 2, { greedy = true, wordness = W.word }),
-  }, '\\va{3,}')
+  }, {}), {
+    pattern = '\\va{3,}',
+    warnings = {},
+  })
 end)
 
 test('greedy: {3,5} passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3,5}', 2, { greedy = true, wordness = W.word }),
-  }, '\\va{3,5}')
+  }, {}), {
+    pattern = '\\va{3,5}',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -737,61 +915,85 @@ end)
 --------------------------------------------------------------------------------
 
 test('nongreedy: *? becomes {-}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '*?', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-}')
+  }, {}), {
+    pattern = '\\va{-}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: +? becomes {-1,}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '+?', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-1,}')
+  }, {}), {
+    pattern = '\\va{-1,}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: ?? becomes {-0,1}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '??', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-0,1}')
+  }, {}), {
+    pattern = '\\va{-0,1}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: {3}? becomes {-3}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3}?', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-3}')
+  }, {}), {
+    pattern = '\\va{-3}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: {3,}? becomes {-3,}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3,}?', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-3,}')
+  }, {}), {
+    pattern = '\\va{-3,}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: {3,5}? becomes {-3,5}', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.quantifier, '{3,5}?', 2, { greedy = false, wordness = W.word }),
-  }, '\\va{-3,5}')
+  }, {}), {
+    pattern = '\\va{-3,5}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: .*? common pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '.', 1, { wordness = W.unknown }),
     tok(T.quantifier, '*?', 2, { greedy = false, wordness = W.unknown }),
-  }, '\\v.{-}')
+  }, {}), {
+    pattern = '\\v.{-}',
+    warnings = {},
+  })
 end)
 
 test('nongreedy: HTML tag pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '<', 1, { wordness = W.non_word }),
     tok(T.literal, '.', 2, { wordness = W.unknown }),
     tok(T.quantifier, '*?', 3, { greedy = false, wordness = W.unknown }),
     tok(T.literal, '>', 5, { wordness = W.non_word }),
-  }, '\\v\\<.{-}\\>')
+  }, {}), {
+    pattern = '\\v\\<.{-}\\>',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -799,13 +1001,16 @@ end)
 --------------------------------------------------------------------------------
 
 test('group: capturing passes through', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
     tok(T.group_close, ')', 5, { wordness = W.non_word }),
-  }, '\\v(foo)')
+  }, {}), {
+    pattern = '\\v(foo)',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -813,13 +1018,16 @@ end)
 --------------------------------------------------------------------------------
 
 test('group: non-capturing becomes %()', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(?:', 1, { kind = GK.non_capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 4, { wordness = W.word }),
     tok(T.literal, 'o', 5, { wordness = W.word }),
     tok(T.literal, 'o', 6, { wordness = W.word }),
     tok(T.group_close, ')', 7, { wordness = W.non_word }),
-  }, '\\v%(foo)')
+  }, {}), {
+    pattern = '\\v%(foo)',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -827,27 +1035,33 @@ end)
 --------------------------------------------------------------------------------
 
 test('group: named Python style becomes numbered', function()
-  assert_translates_with_warning({
-    tok(T.group_open, '(?P<name>', 1, { kind = GK.named_python, name = 'name', wordness = W.non_word }),
+  deep_eq(translate({
+    tok(T.group_open, '(?P<n>', 1, { kind = GK.named_python, name = 'name', wordness = W.non_word }),
     tok(T.literal, 'f', 10, { wordness = W.word }),
     tok(T.literal, 'o', 11, { wordness = W.word }),
     tok(T.literal, 'o', 12, { wordness = W.word }),
     tok(T.group_close, ')', 13, { wordness = W.non_word }),
-  }, '\\v(foo)', 'named groups become numbered')
+  }, {}), {
+    pattern = '\\v(foo)',
+    warnings = { 'named groups become numbered' },
+  })
 end)
 
 test('group: named PCRE style becomes numbered', function()
-  assert_translates_with_warning({
-    tok(T.group_open, '(?<name>', 1, { kind = GK.named_pcre, name = 'name', wordness = W.non_word }),
+  deep_eq(translate({
+    tok(T.group_open, '(?<n>', 1, { kind = GK.named_pcre, name = 'name', wordness = W.non_word }),
     tok(T.literal, 'f', 9, { wordness = W.word }),
     tok(T.literal, 'o', 10, { wordness = W.word }),
     tok(T.literal, 'o', 11, { wordness = W.word }),
     tok(T.group_close, ')', 12, { wordness = W.non_word }),
-  }, '\\v(foo)', 'named groups become numbered')
+  }, {}), {
+    pattern = '\\v(foo)',
+    warnings = { 'named groups become numbered' },
+  })
 end)
 
-test('group: multiple named groups show count', function()
-  assert_translates_with_warning({
+test('group: multiple named groups', function()
+  deep_eq(translate({
     tok(T.group_open, '(?P<a>', 1, { kind = GK.named_python, name = 'a', wordness = W.non_word }),
     tok(T.literal, 'f', 7, { wordness = W.word }),
     tok(T.literal, 'o', 8, { wordness = W.word }),
@@ -858,7 +1072,10 @@ test('group: multiple named groups show count', function()
     tok(T.literal, 'a', 18, { wordness = W.word }),
     tok(T.literal, 'r', 19, { wordness = W.word }),
     tok(T.group_close, ')', 20, { wordness = W.non_word }),
-  }, '\\v(foo)(bar)', 'named groups become numbered (+1 more)')
+  }, {}), {
+    pattern = '\\v(foo)(bar)',
+    warnings = { 'named groups become numbered', 'named groups become numbered' },
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -866,7 +1083,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('alternation: simple', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'f', 1, { wordness = W.word }),
     tok(T.literal, 'o', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -874,11 +1091,14 @@ test('alternation: simple', function()
     tok(T.literal, 'b', 5, { wordness = W.word }),
     tok(T.literal, 'a', 6, { wordness = W.word }),
     tok(T.literal, 'r', 7, { wordness = W.word }),
-  }, '\\vfoo|bar')
+  }, {}), {
+    pattern = '\\vfoo|bar',
+    warnings = {},
+  })
 end)
 
 test('alternation: in group', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
@@ -888,7 +1108,10 @@ test('alternation: in group', function()
     tok(T.literal, 'a', 7, { wordness = W.word }),
     tok(T.literal, 'r', 8, { wordness = W.word }),
     tok(T.group_close, ')', 9, { wordness = W.non_word }),
-  }, '\\v(foo|bar)')
+  }, {}), {
+    pattern = '\\v(foo|bar)',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -896,68 +1119,89 @@ end)
 --------------------------------------------------------------------------------
 
 test('class: simple', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_literal, 'a', 2),
     tok(CC.cc_literal, 'b', 3),
     tok(CC.cc_literal, 'c', 4),
     tok(T.char_class_close, ']', 5, { wordness = W.word }),
-  }, '\\v[abc]')
+  }, {}), {
+    pattern = '\\v[abc]',
+    warnings = {},
+  })
 end)
 
 test('class: range', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_range, 'a-z', 2, { from = 'a', to = 'z' }),
     tok(T.char_class_close, ']', 5, { wordness = W.word }),
-  }, '\\v[a-z]')
+  }, {}), {
+    pattern = '\\v[a-z]',
+    warnings = {},
+  })
 end)
 
 test('class: negated', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[^', 1, { negated = true, wordness = W.unknown }),
     tok(CC.cc_literal, 'a', 3),
     tok(CC.cc_literal, 'b', 4),
     tok(CC.cc_literal, 'c', 5),
     tok(T.char_class_close, ']', 6, { wordness = W.unknown }),
-  }, '\\v[^abc]')
+  }, {}), {
+    pattern = '\\v[^abc]',
+    warnings = {},
+  })
 end)
 
 test('class: ] at start literal', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.non_word }),
     tok(CC.cc_literal, ']', 2),
     tok(CC.cc_literal, 'a', 3),
     tok(CC.cc_literal, 'b', 4),
     tok(CC.cc_literal, 'c', 5),
     tok(T.char_class_close, ']', 6, { wordness = W.non_word }),
-  }, '\\v[]abc]')
+  }, {}), {
+    pattern = '\\v[]abc]',
+    warnings = {},
+  })
 end)
 
 test('class: shorthands inside', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_escape, '\\d', 2),
     tok(CC.cc_escape, '\\w', 4),
     tok(T.char_class_close, ']', 6, { wordness = W.word }),
-  }, '\\v[\\d\\w]')
+  }, {}), {
+    pattern = '\\v[\\d\\w]',
+    warnings = {},
+  })
 end)
 
 test('class: vim-special chars inside (no escape)', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.non_word }),
     tok(CC.cc_literal, '~', 2),
     tok(CC.cc_literal, '=', 3),
     tok(T.char_class_close, ']', 4, { wordness = W.non_word }),
-  }, '\\v[~=]')
+  }, {}), {
+    pattern = '\\v[~=]',
+    warnings = {},
+  })
 end)
 
 test('class: forward slash inside needs escaping', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.non_word }),
     tok(CC.cc_literal, '/', 2),
     tok(T.char_class_close, ']', 3, { wordness = W.non_word }),
-  }, '\\v[\\/]')
+  }, {}), {
+    pattern = '\\v[\\/]',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -965,18 +1209,21 @@ end)
 --------------------------------------------------------------------------------
 
 test('complex: function call pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\w', 1, { escape_class = EC.shorthand_word, wordness = W.word }),
     tok(T.quantifier, '+', 3, { greedy = true, wordness = W.word }),
     tok(T.group_open, '(', 4, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, '.', 5, { wordness = W.unknown }),
     tok(T.quantifier, '*', 6, { greedy = true, wordness = W.unknown }),
     tok(T.group_close, ')', 7, { wordness = W.non_word }),
-  }, '\\v\\w+(.*)')
+  }, {}), {
+    pattern = '\\v\\w+(.*)',
+    warnings = {},
+  })
 end)
 
 test('complex: email-like pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_range, 'a-z', 2, { from = 'a', to = 'z' }),
     tok(T.char_class_close, ']', 5, { wordness = W.word }),
@@ -986,11 +1233,14 @@ test('complex: email-like pattern', function()
     tok(CC.cc_range, 'a-z', 9, { from = 'a', to = 'z' }),
     tok(T.char_class_close, ']', 12, { wordness = W.word }),
     tok(T.quantifier, '+', 13, { greedy = true, wordness = W.word }),
-  }, '\\v[a-z]+\\@[a-z]+')
+  }, {}), {
+    pattern = '\\v[a-z]+\\@[a-z]+',
+    warnings = {},
+  })
 end)
 
 test('complex: URL path', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.slash, '/', 1, { wordness = W.non_word }),
     tok(T.literal, 'a', 2, { wordness = W.word }),
     tok(T.literal, 'p', 3, { wordness = W.word }),
@@ -1001,27 +1251,36 @@ test('complex: URL path', function()
     tok(CC.cc_range, '0-9', 8, { from = '0', to = '9' }),
     tok(T.char_class_close, ']', 11, { wordness = W.word }),
     tok(T.quantifier, '+', 12, { greedy = true, wordness = W.word }),
-  }, '\\v\\/api\\/v[0-9]+')
+  }, {}), {
+    pattern = '\\v\\/api\\/v[0-9]+',
+    warnings = {},
+  })
 end)
 
 test('complex: word boundary pattern', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\b', 1, { escape_class = EC.boundary, prev_wordness = nil, next_wordness = W.word }),
     tok(T.escape, '\\w', 3, { escape_class = EC.shorthand_word, wordness = W.word }),
     tok(T.quantifier, '{3,5}', 5, { greedy = true, wordness = W.word }),
     tok(T.escape, '\\b', 10, { escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil }),
-  }, '\\v<\\w{3,5}>')
+  }, {}), {
+    pattern = '\\v<\\w{3,5}>',
+    warnings = {},
+  })
 end)
 
 test('complex: quoted string non-greedy', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '"', 1, { wordness = W.non_word }),
     tok(T.char_class_open, '[^', 2, { negated = true, wordness = W.unknown }),
     tok(CC.cc_literal, '"', 4),
     tok(T.char_class_close, ']', 5, { wordness = W.unknown }),
     tok(T.quantifier, '*?', 6, { greedy = false, wordness = W.unknown }),
     tok(T.literal, '"', 8, { wordness = W.non_word }),
-  }, '\\v"[^"]{-}"')
+  }, {}), {
+    pattern = '\\v"[^"]{-}"',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
@@ -1029,86 +1288,110 @@ end)
 --------------------------------------------------------------------------------
 
 test('edge: single backslash at end', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, 'a', 1, { wordness = W.word }),
     tok(T.escape, '\\', 2, { escape_class = EC.escaped_literal, wordness = W.non_word }),
-  }, '\\va\\')
+  }, {}), {
+    pattern = '\\va\\',
+    warnings = {},
+  })
 end)
 
 test('edge: only metacharacters', function()
   -- When quantifier chars appear without preceding atom, they are literals
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '+', 1, { wordness = W.non_word }),
     tok(T.literal, '?', 2, { wordness = W.non_word }),
     tok(T.alternation, '|', 3, { wordness = W.non_word }),
-  }, '\\v+?|')
+  }, {}), {
+    pattern = '\\v+?|',
+    warnings = {},
+  })
 end)
 
 test('edge: unclosed bracket', function()
   -- Tokeniser passes through; translator handles gracefully
-  assert_translates({
+  deep_eq(translate({
     tok(T.char_class_open, '[', 1, { negated = false, wordness = W.word }),
     tok(CC.cc_literal, 'a', 2),
     tok(CC.cc_literal, 'b', 3),
     tok(CC.cc_literal, 'c', 4),
-  }, '\\v[abc')
+  }, {}), {
+    pattern = '\\v[abc',
+    warnings = {},
+  })
 end)
 
 test('edge: unclosed group', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.group_open, '(', 1, { kind = GK.capturing, wordness = W.non_word }),
     tok(T.literal, 'f', 2, { wordness = W.word }),
     tok(T.literal, 'o', 3, { wordness = W.word }),
     tok(T.literal, 'o', 4, { wordness = W.word }),
-  }, '\\v(foo')
+  }, {}), {
+    pattern = '\\v(foo',
+    warnings = {},
+  })
 end)
 
 test('edge: only special chars', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.literal, '~', 1, { wordness = W.non_word }),
     tok(T.literal, '=', 2, { wordness = W.non_word }),
     tok(T.literal, '@', 3, { wordness = W.non_word }),
     tok(T.literal, '&', 4, { wordness = W.non_word }),
     tok(T.literal, '<', 5, { wordness = W.non_word }),
     tok(T.literal, '>', 6, { wordness = W.non_word }),
-  }, '\\v\\~\\=\\@\\&\\<\\>')
+  }, {}), {
+    pattern = '\\v\\~\\=\\@\\&\\<\\>',
+    warnings = {},
+  })
 end)
 
 test('edge: consecutive escapes', function()
-  assert_translates({
+  deep_eq(translate({
     tok(T.escape, '\\\\', 1, { escape_class = EC.escaped_literal, wordness = W.non_word }),
     tok(T.escape, '\\d', 3, { escape_class = EC.shorthand_word, wordness = W.word }),
-  }, '\\v\\\\\\d')
+  }, {}), {
+    pattern = '\\v\\\\\\d',
+    warnings = {},
+  })
 end)
 
 --------------------------------------------------------------------------------
---- Warning formatting ---------------------------------------------------------
+--- Warnings array -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 test('warnings: single warning', function()
-  local result = translate({
+  deep_eq(translate({
     tok(T.escape, '\\A', 1, { escape_class = EC.anchor_start, wordness = W.non_word }),
-  }, {})
-  eq(result.warning, '\\A treated as ^')
+  }, {}), {
+    pattern = '\\v^',
+    warnings = { '\\A treated as ^' },
+  })
 end)
 
-test('warnings: two warnings shows +1 more', function()
-  local result = translate({
+test('warnings: two warnings', function()
+  deep_eq(translate({
     tok(T.escape, '\\A', 1, { escape_class = EC.anchor_start, wordness = W.non_word }),
     tok(T.escape, '\\z', 3, { escape_class = EC.anchor_end, wordness = W.non_word }),
-  }, {})
-  eq(result.warning, '\\A treated as ^ (+1 more)')
+  }, {}), {
+    pattern = '\\v^$',
+    warnings = { '\\A treated as ^', '\\z treated as $' },
+  })
 end)
 
-test('warnings: three warnings shows +2 more', function()
-  local result = translate({
+test('warnings: three warnings', function()
+  deep_eq(translate({
     tok(T.escape, '\\A', 1, { escape_class = EC.anchor_start, wordness = W.non_word }),
     tok(T.group_open, '(?P<n>', 3, { kind = GK.named_python, name = 'n', wordness = W.non_word }),
     tok(T.literal, 'x', 9, { wordness = W.word }),
     tok(T.group_close, ')', 10, { wordness = W.non_word }),
     tok(T.escape, '\\z', 11, { escape_class = EC.anchor_end, wordness = W.non_word }),
-  }, {})
-  eq(result.warning, '\\A treated as ^ (+2 more)')
+  }, {}), {
+    pattern = '\\v^(x)$',
+    warnings = { '\\A treated as ^', 'named groups become numbered', '\\z treated as $' },
+  })
 end)
 
 --------------------------------------------------------------------------------

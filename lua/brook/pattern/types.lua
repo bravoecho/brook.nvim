@@ -297,4 +297,37 @@ M.unknown_escapes = {
   ['\\D'] = true,
 }
 
+--------------------------------------------------------------------------------
+--- Pattern Options ------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+---@enum brook.pattern.SearchCase
+M.search_case = {
+  sensitive = 'case-sensitive',
+  insensitive = 'case-insensitive',
+}
+
+--- Options controlling pattern translation.
+---
+---@class brook.pattern.TranslateOpts
+---@field word? boolean Match whole words only
+---@field fixed? boolean Treat pattern as literal string
+---@field case? brook.pattern.SearchCase Case sensitivity
+
+--------------------------------------------------------------------------------
+--- Translation Results --------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Internal result from translator: includes full warnings list.
+---
+---@class brook.pattern.TranslatorResult
+---@field pattern string Vim regex pattern
+---@field warnings string[] All warnings (may be empty)
+
+--- Public result matching legacy interface: single formatted warning.
+---
+---@class brook.pattern.TranslateResult
+---@field pattern string Vim regex pattern
+---@field warning? string Warning message (nil if none)
+
 return M
