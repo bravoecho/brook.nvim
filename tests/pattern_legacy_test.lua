@@ -1,10 +1,10 @@
 -- Run with:
---   nvim --headless -c "luafile tests/pattern_test.lua" -c "q"
+--   nvim --headless -c "luafile tests/pattern_legacy_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local eq = h.deep_eq
-local rg_to_vim = require('brook.pattern').rg_to_vim
+local rg_to_vim = require('brook.pattern_legacy').rg_to_vim
 
 ---@param pattern string|nil
 ---@param other? table

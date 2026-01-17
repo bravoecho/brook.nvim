@@ -30,7 +30,7 @@
 ---
 ---@module 'brook.exec'
 
-local pattern = require('brook.pattern')
+local pattern = require('brook.pattern_legacy')
 local fifo = require('brook.lib.fifo')
 local types = require('brook.types')
 

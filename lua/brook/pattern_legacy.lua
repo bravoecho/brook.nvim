@@ -13,7 +13,7 @@
 --- When translation is not possible, the search still works; only highlighting and
 --- n/N navigation are unavailable.
 ---
----@module 'brook.pattern'
+---@module 'brook.pattern_legacy'
 local M = {}
 
 local types = require 'brook.types'

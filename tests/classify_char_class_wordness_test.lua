@@ -5,7 +5,7 @@ local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
 
-local m = require('brook.pattern')
+local m = require('brook.pattern_legacy')
 local classify = m._classify_char_class_wordness
 local WORD = m._wordness.word
 local NON_WORD = m._wordness.non_word
