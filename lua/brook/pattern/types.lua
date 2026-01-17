@@ -198,13 +198,12 @@ M.wordness = {
 --- Parse Result ---------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Result of parsing: either success with tokens or failure with warning.
+--- Result of parsing: either success with tokens or failure with error.
 ---
 ---@class brook.pattern.ParseResult
----@field success boolean Whether parsing succeeded
----@field tokens? brook.pattern.Token[] Annotated tokens (if success)
----@field warnings? string[] Collected warnings (translatable-with-caveats)
----@field error? string Error message (if not success)
+---@field tokens? brook.pattern.Token[] Annotated tokens (nil if error)
+---@field warnings string[] Collected warnings (may be empty)
+---@field error? string Error message (nil if success)
 
 --------------------------------------------------------------------------------
 --- Helper Sets ----------------------------------------------------------------

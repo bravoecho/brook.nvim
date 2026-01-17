@@ -10,6 +10,8 @@ local current_test_info = {
   test_line = nil,
 }
 
+---@param name string
+---@param fn function
 function M.test(name, fn)
   tests_run = tests_run + 1
 

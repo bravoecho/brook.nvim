@@ -13,8 +13,13 @@ local types = require('brook.pattern.types')
 local ok, parser = pcall(require, 'brook.pattern.parser')
 if not ok then
   print('SKIP: brook.pattern.parser not yet implemented')
+  print('Error: ' .. tostring(parser))
   print('0/0 tests passed')
-  vim.cmd('cquit 0')
+  if vim and vim.cmd then
+    vim.cmd('cquit 0')
+  else
+    os.exit(0)
+  end
   return
 end
 
@@ -52,22 +57,23 @@ local function assert_parses(input, expected_tokens)
   deep_eq(result.tokens, expected_tokens)
 end
 
---- Helper to assert parsing fails with expected warning.
+--- Helper to assert parsing fails with expected error.
 ---@param input table Input tokens
----@param expected_warning string Expected warning message
-local function assert_fails(input, expected_warning)
+---@param expected_error string Expected error message
+local function assert_fails(input, expected_error)
   local result = parse(input)
   eq(result.tokens, nil, 'Expected nil tokens on failure')
-  eq(result.warning, expected_warning)
+  eq(result.error, expected_error)
 end
 
---- Helper to assert parsing succeeds with warning.
+--- Helper to assert parsing succeeds with expected warning.
 ---@param input table Input tokens
----@param expected_warning string Expected warning message
+---@param expected_warning string Expected warning message (first warning)
 local function assert_warns(input, expected_warning)
   local result = parse(input)
   assert(result.tokens ~= nil, 'Expected tokens on success with warning')
-  eq(result.warning, expected_warning)
+  assert(#result.warnings > 0, 'Expected at least one warning')
+  eq(result.warnings[1], expected_warning)
 end
 
 --------------------------------------------------------------------------------
@@ -904,7 +910,7 @@ test('group: capturing is supported', function()
     tok(T.group_close, ')', 3),
   })
   eq(result.error, nil)
-  eq(result.warning, nil)
+  eq(#result.warnings, 0)
 end)
 
 test('group: non_capturing is supported', function()
@@ -914,7 +920,7 @@ test('group: non_capturing is supported', function()
     tok(T.group_close, ')', 5),
   })
   eq(result.error, nil)
-  eq(result.warning, nil)
+  eq(#result.warnings, 0)
 end)
 
 --------------------------------------------------------------------------------
@@ -928,7 +934,8 @@ test('group: named_python generates warning', function()
     tok(T.group_close, ')', 11),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, 'named groups become numbered')
+  eq(#result.warnings, 1)
+  eq(result.warnings[1], 'named groups become numbered')
 end)
 
 test('group: named_pcre generates warning', function()
@@ -938,7 +945,8 @@ test('group: named_pcre generates warning', function()
     tok(T.group_close, ')', 10),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, 'named groups become numbered')
+  eq(#result.warnings, 1)
+  eq(result.warnings[1], 'named groups become numbered')
 end)
 
 test('group: named with empty name fails', function()
@@ -959,7 +967,9 @@ test('group: multiple named groups shows count', function()
     tok(T.group_close, ')', 16),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, 'named groups become numbered (+1 more)')
+  eq(#result.warnings, 2)
+  eq(result.warnings[1], 'named groups become numbered')
+  eq(result.warnings[2], 'named groups become numbered')
 end)
 
 --------------------------------------------------------------------------------
@@ -997,7 +1007,8 @@ test('anchor: \\A generates warning', function()
     tok(T.literal, 'a', 3),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, '\\A treated as ^')
+  eq(#result.warnings, 1)
+  eq(result.warnings[1], '\\A treated as ^')
 end)
 
 test('anchor: \\z generates warning', function()
@@ -1006,7 +1017,8 @@ test('anchor: \\z generates warning', function()
     tok(T.escape, '\\z', 2),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, '\\z treated as $')
+  eq(#result.warnings, 1)
+  eq(result.warnings[1], '\\z treated as $')
 end)
 
 test('anchor: \\A and \\z together shows count', function()
@@ -1016,7 +1028,9 @@ test('anchor: \\A and \\z together shows count', function()
     tok(T.escape, '\\z', 4),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, '\\A treated as ^ (+1 more)')
+  eq(#result.warnings, 2)
+  eq(result.warnings[1], '\\A treated as ^')
+  eq(result.warnings[2], '\\z treated as $')
 end)
 
 --------------------------------------------------------------------------------
@@ -1031,7 +1045,9 @@ test('warnings: named group with \\A shows count', function()
     tok(T.group_close, ')', 10),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, '\\A treated as ^ (+1 more)')
+  eq(#result.warnings, 2)
+  eq(result.warnings[1], '\\A treated as ^')
+  eq(result.warnings[2], 'named groups become numbered')
 end)
 
 test('warnings: three named groups shows (+2 more)', function()
@@ -1047,7 +1063,10 @@ test('warnings: three named groups shows (+2 more)', function()
     tok(T.group_close, ')', 24),
   })
   eq(result.tokens ~= nil, true)
-  eq(result.warning, 'named groups become numbered (+2 more)')
+  eq(#result.warnings, 3)
+  eq(result.warnings[1], 'named groups become numbered')
+  eq(result.warnings[2], 'named groups become numbered')
+  eq(result.warnings[3], 'named groups become numbered')
 end)
 
 --------------------------------------------------------------------------------
