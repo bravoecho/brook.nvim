@@ -517,6 +517,264 @@ local function scan_group_open(input, pos)
 end
 
 --------------------------------------------------------------------------------
+--- Character class parsing ----------------------------------------------------
+--------------------------------------------------------------------------------
+
+local CC = types.cc_token_type
+
+--- Scan an escape sequence inside a character class.
+--- Returns token and new position.
+---
+---@param input string
+---@param pos integer Position of the backslash
+---@return brook.pattern.Token token
+---@return integer new_pos
+local function scan_cc_escape(input, pos)
+  local start_pos = pos
+  local c = char_at(input, pos + 1)
+
+  if c == nil then
+    return { type = CC.cc_literal, value = '\\', pos = start_pos }, pos + 1
+  end
+
+  -- character class escapes
+  if class_escapes[c] then
+    return { type = CC.cc_escape_class, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- \b inside character class is literal 'b' (not word boundary)
+  if c == 'b' then
+    return { type = CC.cc_escape_literal, value = '\\b', pos = start_pos }, pos + 2
+  end
+
+  -- hex: \xNN or \x{...}
+  if c == 'x' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        return { type = CC.cc_escape_hex, value = input:sub(start_pos, close), pos = start_pos }, close + 1
+      end
+    elseif is_hex_digit(char_at(input, pos + 2)) and is_hex_digit(char_at(input, pos + 3)) then
+      return { type = CC.cc_escape_hex, value = input:sub(start_pos, pos + 3), pos = start_pos }, pos + 4
+    end
+    return { type = CC.cc_escape_literal, value = '\\x', pos = start_pos }, pos + 2
+  end
+
+  -- unicode: \u{...}, \uNNNN, \U{...}, \UNNNNNNNN
+  if c == 'u' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        return { type = CC.cc_escape_unicode, value = input:sub(start_pos, close), pos = start_pos }, close + 1
+      end
+    else
+      local valid = true
+      for i = 2, 5 do
+        if not is_hex_digit(char_at(input, pos + i)) then
+          valid = false
+          break
+        end
+      end
+      if valid then
+        return { type = CC.cc_escape_unicode, value = input:sub(start_pos, pos + 5), pos = start_pos }, pos + 6
+      end
+    end
+    return { type = CC.cc_escape_literal, value = '\\u', pos = start_pos }, pos + 2
+  end
+
+  if c == 'U' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        return { type = CC.cc_escape_unicode, value = input:sub(start_pos, close), pos = start_pos }, close + 1
+      end
+    else
+      local valid = true
+      for i = 2, 9 do
+        if not is_hex_digit(char_at(input, pos + i)) then
+          valid = false
+          break
+        end
+      end
+      if valid then
+        return { type = CC.cc_escape_unicode, value = input:sub(start_pos, pos + 9), pos = start_pos }, pos + 10
+      end
+    end
+    return { type = CC.cc_escape_literal, value = '\\U', pos = start_pos }, pos + 2
+  end
+
+  -- octal: \o{...} or \NNN
+  if c == 'o' and char_at(input, pos + 2) == '{' then
+    local close = input:find('}', pos + 3, true)
+    if close then
+      return { type = CC.cc_escape_octal, value = input:sub(start_pos, close), pos = start_pos }, close + 1
+    end
+    return { type = CC.cc_escape_literal, value = '\\o', pos = start_pos }, pos + 2
+  end
+
+  if is_octal_digit(c) then
+    local i = pos + 2
+    local count = 1
+    while count < 3 and is_octal_digit(char_at(input, i)) do
+      i = i + 1
+      count = count + 1
+    end
+    return { type = CC.cc_escape_octal, value = input:sub(start_pos, i - 1), pos = start_pos }, i
+  end
+
+  -- unicode properties: \p{...}, \P{...}
+  if c == 'p' or c == 'P' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        return { type = CC.cc_escape_property, value = input:sub(start_pos, close), pos = start_pos, negated = (c == 'P') }, close + 1
+      end
+    end
+    return { type = CC.cc_escape_literal, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- everything else is an escaped literal
+  return { type = CC.cc_escape_literal, value = '\\' .. c, pos = start_pos }, pos + 2
+end
+
+--- Try to scan a POSIX class at pos. Returns token and new pos, or nil.
+---
+---@param input string
+---@param pos integer Position of the first '['
+---@return brook.pattern.Token? token
+---@return integer? new_pos
+local function try_posix_class(input, pos)
+  if char_at(input, pos) ~= '[' or char_at(input, pos + 1) ~= ':' then
+    return nil, nil
+  end
+
+  local negated = char_at(input, pos + 2) == '^'
+  local name_start = negated and pos + 3 or pos + 2
+
+  -- find closing :]
+  local i = name_start
+  while in_bounds(input, i) do
+    local c = char_at(input, i)
+    if c == ':' and char_at(input, i + 1) == ']' then
+      local name = input:sub(name_start, i - 1)
+      if #name > 0 then
+        local value = input:sub(pos, i + 1)
+        return { type = CC.cc_posix, value = value, pos = pos, class_name = name, negated = negated }, i + 2
+      end
+      return nil, nil
+    elseif not ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')) then
+      return nil, nil
+    end
+    i = i + 1
+  end
+  return nil, nil
+end
+
+--- Scan a character class starting at pos (which points to '[').
+--- Returns list of tokens and new position.
+---
+---@param input string
+---@param pos integer
+---@return brook.pattern.Token[] tokens
+---@return integer new_pos
+local function scan_char_class(input, pos)
+  local tokens = {}
+  local start_pos = pos
+  local depth = 1 -- track nesting
+
+  -- opening bracket
+  local negated = char_at(input, pos + 1) == '^'
+  if negated then
+    tokens[#tokens + 1] = { type = T.char_class_open, value = '[^', pos = start_pos, negated = true }
+    pos = pos + 2
+  else
+    tokens[#tokens + 1] = { type = T.char_class_open, value = '[', pos = start_pos, negated = false }
+    pos = pos + 1
+  end
+
+  -- ] immediately after [ or [^ is a literal
+  local first_char = true
+
+  while in_bounds(input, pos) and depth > 0 do
+    local c = char_at(input, pos)
+
+    -- ] as first character is literal
+    if c == ']' and first_char then
+      tokens[#tokens + 1] = { type = CC.cc_literal, value = ']', pos = pos }
+      pos = pos + 1
+      first_char = false
+
+    -- closing bracket
+    elseif c == ']' then
+      depth = depth - 1
+      if depth == 0 then
+        tokens[#tokens + 1] = { type = T.char_class_close, value = ']', pos = pos }
+      else
+        tokens[#tokens + 1] = { type = CC.cc_nested_close, value = ']', pos = pos }
+      end
+      pos = pos + 1
+
+    -- escape sequence
+    elseif c == '\\' then
+      local tok, new_pos = scan_cc_escape(input, pos)
+      tokens[#tokens + 1] = tok
+      pos = new_pos
+      first_char = false
+
+    -- intersection: &&
+    elseif c == '&' and char_at(input, pos + 1) == '&' then
+      tokens[#tokens + 1] = { type = CC.cc_intersection, value = '&&', pos = pos }
+      pos = pos + 2
+      first_char = false
+
+    -- nested class or POSIX
+    elseif c == '[' then
+      -- try POSIX first
+      local posix_tok, posix_end = try_posix_class(input, pos)
+      if posix_tok then
+        tokens[#tokens + 1] = posix_tok
+        pos = posix_end
+        first_char = false
+      else
+        -- nested class
+        depth = depth + 1
+        local nested_negated = char_at(input, pos + 1) == '^'
+        if nested_negated then
+          tokens[#tokens + 1] = { type = CC.cc_nested_open, value = '[^', pos = pos, negated = true }
+          pos = pos + 2
+        else
+          tokens[#tokens + 1] = { type = CC.cc_nested_open, value = '[', pos = pos, negated = false }
+          pos = pos + 1
+        end
+        first_char = true -- reset for nested class
+      end
+
+    -- range: check if this is start of a range (char-char)
+    elseif char_at(input, pos + 1) == '-' and char_at(input, pos + 2) ~= ']' and char_at(input, pos + 2) ~= nil then
+      local from_char = c
+      local to_char = char_at(input, pos + 2)
+      if to_char and to_char ~= '[' and to_char ~= '\\' then
+        tokens[#tokens + 1] = { type = CC.cc_range, value = from_char .. '-' .. to_char, pos = pos, from = from_char, to = to_char }
+        pos = pos + 3
+      else
+        -- not a simple range, treat as literal
+        tokens[#tokens + 1] = { type = CC.cc_literal, value = c, pos = pos }
+        pos = pos + 1
+      end
+      first_char = false
+
+    -- literal
+    else
+      tokens[#tokens + 1] = { type = CC.cc_literal, value = c, pos = pos }
+      pos = pos + 1
+      first_char = false
+    end
+  end
+
+  return tokens, pos
+end
+
+--------------------------------------------------------------------------------
 --- Main tokeniser -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -596,15 +854,13 @@ function M.tokenise(input)
       pos = pos + 1
 
     elseif c == '[' then
-      -- TODO: handle character classes
-      local negated = char_at(input, pos + 1) == '^'
-      if negated then
-        token = { type = T.char_class_open, value = '[^', pos = pos, negated = true }
-        pos = pos + 2
-      else
-        token = { type = T.char_class_open, value = '[', pos = pos, negated = false }
-        pos = pos + 1
+      local cc_tokens, new_pos = scan_char_class(input, pos)
+      for _, t in ipairs(cc_tokens) do
+        tokens[#tokens + 1] = t
       end
+      pos = new_pos
+      -- skip the token append below
+      goto continue
 
     elseif c == '\\' then
       token, pos = scan_escape(input, pos)
@@ -620,6 +876,7 @@ function M.tokenise(input)
     end
 
     tokens[#tokens + 1] = token
+    ::continue::
   end
 
   return tokens
