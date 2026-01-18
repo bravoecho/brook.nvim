@@ -37,14 +37,15 @@ Replace the single-pass translator with a three-phase pipeline.
 
 Input string: ripgrep regex (default engine)
 
-1. Tokenise - Lexical analysis: identify token boundaries. Output: list of tokens
-2. Parse - Semantic analysis: classify, validate, annotate. Output: annotated tokens (or error)
-3. Translate - Code generation: emit Vim regex. Output: { vim_pattern, warning }
+1. Tokenise: lexical analysis, identify token boundaries. Output: list of tokens
+2. Parse: semantic analysis, classify, validate, annotate. Output: annotated tokens (or error)
+3. Translate: code generation, emit Vim regex. Output: { vim_pattern, warning }
 
 ### Phase 1: Tokenise
 
-**Responsibility:** Identify where tokens begin and end. Pure lexical analysis
-with no semantic interpretation.
+**Responsibility:** Identify where tokens begin and end, and categorise each
+token as specifically as the lexical grammar allows. Pure lexical analysis with
+no consideration of surrounding context.
 
 **Input:** Raw ripgrep pattern string
 
@@ -54,25 +55,63 @@ with no semantic interpretation.
 - `value`: the raw string content
 - `pos`: starting position in input (1-indexed, for error reporting)
 - Type-specific fields (e.g., `negated` for character classes, `greedy` for
-  quantifiers)
+  quantifiers, `boundary_kind` for escape boundaries)
+
+**Guiding principles:**
+
+- Aligned with the Rust regex crate's lexical grammar
+- Categorises as specifically as possible based solely on the characters being
+  scanned and the current lexical mode (inside/outside character class)
+- Does not look at preceding tokens to decide a category
+- Does not validate whether sequences make semantic sense
+- Does not error: it reports what it sees, the parser decides validity
 
 **What it does:**
 
-- Recognises escape sequences (including multi-character like `\p{...}`)
-- Extracts complete character classes, handling edge cases:
-  - `]` as first character (or after `^`) is literal
-  - `\]` is escaped, not a closer
-  - `\\]` is escaped backslash followed by closer
-- Identifies quantifiers and their greediness
-- Recognises group openers with their variants
+- Recognises all escape sequence categories:
+  - Boundaries: `\b`, `\B`, `\A`, `\z`, `\<`, `\>`, `\b{start}`, `\b{end}`, etc.
+  - Character classes: `\d`, `\D`, `\w`, `\W`, `\s`, `\S`, `\h`, `\H`, `\v`, `\V`
+  - Literals: `\n`, `\t`, `\r`, `\f`, `\a`, `\e`, `\\`, `\.`, etc.
+  - Hex: `\x7F`, `\x{10FFFF}`
+  - Unicode: `\u007F`, `\u{7F}`, `\U{...}`
+  - Octal: `\0`, `\00`, `\123`
+  - Properties: `\p{...}`, `\P{...}`
+  - Backreferences: `\1` through `\9`
+- Recognises `.` as a distinct token type (not literal)
+- Recognises `^` and `$` as anchors
+- Recognises quantifiers (`*`, `+`, `?`, `{n,m}`) with greediness and possessiveness
+- Extracts complete character classes with their contents tokenised:
+  - Handles `]` as first character (literal)
+  - Recognises ranges (`a-z`)
+  - Recognises POSIX classes (`[:alpha:]`, `[:^digit:]`)
+  - Recognises set operations and nesting (`&&`, `[[...]]`, `[^...]` inside a class)
+  - Applies different token types inside character classes (`cc_` prefix)
+- Identifies group openers with their variants, including flag groups (`(?i)`)
 - Handles the `/` search delimiter
+- Treats a trailing `\\` as an incomplete escape and emits an `escape_literal` token with value `\\`
 
 **What it does NOT do:**
 
-- Classify escapes semantically (`\w` vs `\b` vs `\p`)
+- Determine if a quantifier has something to quantify (that is semantic)
 - Compute wordness
 - Validate supported vs unsupported constructs
-- Emit any output
+- Emit any output or errors
+
+**Character class as lexical submode:**
+
+The tokeniser tracks whether it is inside a character class. This is justified
+because `[...]` creates a lexical submode where different rules apply:
+
+- `.` is literal, not "any character"
+- `*`, `+`, `?` are literal, not quantifiers
+- `^` after `[` means negation, not anchor
+- `-` between characters means range
+- `\b` is literal `b`, not word boundary (in Rust regex)
+- POSIX classes `[:alpha:]` are recognised
+- `&&` is set intersection, and nested classes (`[[...]]`) are recognised
+
+This is analogous to how a C lexer uses different rules inside string literals.
+It is lexical context, not semantic interpretation.
 
 ### Phase 2: Parse
 
@@ -88,10 +127,15 @@ tokens with derived properties.
 
 **What it does:**
 
-- Classifies escape sequences:
+- Validates token sequences:
+  - Quantifier must follow a quantifiable token (literal, escape, group, class)
+  - Consecutive quantifiers are an error (or the second is treated as literal)
+  - Groups must be balanced
+- Classifies escape sequences semantically:
   - Shorthand word: `\w`, `\d`
   - Shorthand non-word: `\s`, `\W`, `\t`, `\n`, `\r`
   - Shorthand unknown: `\S`, `\D`
+  - Other `escape_class` tokens (`\h`, `\H`, `\v`, `\V`) are preserved and currently treated as `unknown` for wordness unless explicitly classified
   - Boundary: `\b`
   - Unsupported: `\B`, `\p{...}`, `\P{...}`, `\1`-`\9`
   - Anchor: `\A`, `\z`
@@ -140,65 +184,100 @@ tokens with derived properties.
 
 ## Token Types
 
-### Top-level tokens
+### Top-level tokens (outside character classes)
 
-| Type               | Example              | Fields             |
-|--------------------|----------------------|--------------------|
-| `literal`          | `f`, `=`, `<`        | `value`            |
-| `escape`           | `\w`, `\b`, `\p{L}`  | `value`            |
-| `quantifier`       | `*`, `+?`, `{2,3}`   | `value`, `greedy`  |
-| `group_open`       | `(`, `(?:`, `(?P<n>` | `value`, `kind`    |
-| `group_close`      | `)`                  | `value`            |
-| `alternation`      | `\|`                 | `value`            |
-| `anchor`           | `^`, `$`             | `value`            |
-| `slash`            | `/`                  | `value`            |
-| `char_class_open`  | `[`, `[^`            | `value`, `negated` |
-| `char_class_close` | `]`                  | `value`            |
+| Type               | Example                   | Fields                                     |
+|--------------------|---------------------------|--------------------------------------------|
+| `literal`          | `a`, `1`, `=`             | `value`                                    |
+| `dot`              | `.`                       | `value`                                    |
+| `anchor`           | `^`, `$`                  | `value`                                    |
+| `alternation`      | `\|`                      | `value`                                    |
+| `quantifier`       | `*`, `+?`, `{2,3}`        | `value`, `greedy`, `possessive`            |
+| `group_open`       | `(`, `(?:`, `(?P<n>`      | `value`, `kind`, `name`, `flags`, `scoped` |
+| `group_close`      | `)`                       | `value`                                    |
+| `char_class_open`  | `[`, `[^`                 | `value`, `negated`                         |
+| `char_class_close` | `]`                       | `value`                                    |
+| `escape_boundary`  | `\b`, `\B`, `\A`, `\z`    | `value`, `boundary_kind`                   |
+| `escape_class`     | `\d`, `\w`, `\s`, `\h`    | `value`                                    |
+| `escape_literal`   | `\n`, `\t`, `\e`, `\\`    | `value`                                    |
+| `escape_hex`       | `\x7F`, `\x{...}`         | `value`                                    |
+| `escape_unicode`   | `\u{...}`, `\U{...}`      | `value`                                    |
+| `escape_octal`     | `\0`, `\123`              | `value`                                    |
+| `escape_property`  | `\p{L}`, `\P{Greek}`      | `value`, `negated`                         |
+| `escape_backref`   | `\1`, `\9`                | `value`                                    |
+| `slash`            | `/`                       | `value`                                    |
+
+### Boundary kinds
+
+The `escape_boundary` token includes a `boundary_kind` field:
+
+- `word`: `\b`
+- `word_neg`: `\B`
+- `start`: `\A`
+- `end`: `\z`
+- `word_start`: `\<`, `\b{start}`
+- `word_end`: `\>`, `\b{end}`
+- `word_start_half`: `\b{start-half}`
+- `word_end_half`: `\b{end-half}`
 
 ### Character class tokens
 
 These tokens appear only between `char_class_open` and `char_class_close`. The
 `cc_` prefix distinguishes them from top-level tokens, making it explicit that
-they follow different lexical rules (most metacharacters are literal, `-` can
-be a range operator, etc.).
+they follow different lexical rules.
 
-| Type         | Example                  | Fields                |
-|--------------|--------------------------|-----------------------|
-| `cc_literal` | `a`, `!`, `]` (at start) | `value`               |
-| `cc_range`   | `a-z`, `0-9`             | `value`, `from`, `to` |
-| `cc_escape`  | `\w`, `\s`, `\]`         | `value`               |
+| Type                  | Example          | Fields                           |
+|-----------------------|------------------|----------------------------------|
+| `cc_literal`          | `a`, `]` (first) | `value`                          |
+| `cc_range`            | `a-z`, `0-9`     | `value`, `from`, `to`            |
+| `cc_escape_class`     | `\d`, `\w`       | `value`                          |
+| `cc_escape_literal`   | `\]`, `\\`, `\b` | `value`                          |
+| `cc_escape_hex`       | `\x7F`           | `value`                          |
+| `cc_escape_unicode`   | `\u{20}`         | `value`                          |
+| `cc_escape_octal`     | `\0`             | `value`                          |
+| `cc_escape_property`  | `\p{L}`          | `value`, `negated`               |
+| `cc_posix`            | `[:alpha:]`      | `value`, `class_name`, `negated` |
+| `cc_intersection`     | `&&`             | `value`                          |
+| `cc_nested_open`      | `[`, `[^`        | `value`, `negated`               |
+| `cc_nested_close`     | `]`              | `value`                          |
 
-### Note: why no `in_char_class` or `in_group` flags?
+### Note: `\b` inside character classes
 
-The tokeniser has context information (whether it's inside a character class or
-group), but we deliberately don't attach this as metadata to tokens:
+In the Rust regex crate (and therefore ripgrep), `\b` inside a character class
+is NOT backspace (unlike PCRE/Perl). It is simply an escaped `b`, matching the
+literal character `b`. The tokeniser emits `cc_escape_literal` for `\b` inside
+`[...]`.
+
+### Note: why no `in_char_class` flag on tokens?
+
+The tokeniser tracks character class context internally, but we don't attach
+this as metadata to tokens:
 
 1. **Redundant with structure.** The "in character class" fact is implicit in
    position between `char_class_open` and `char_class_close`. Adding a flag
    would be denormalised data that could become inconsistent.
 
 2. **Parser tracks nesting anyway.** For group validation and potential future
-   features, the parser maintains nesting state as it walks tokens. The flag
-   wouldn't save meaningful work.
+   features, the parser maintains nesting state as it walks tokens.
 
 3. **Separation of concerns.** "What are the atoms" is lexical (tokeniser).
    "What is the relationship between atoms" is structural (parser).
 
 The `cc_` token type prefix serves the legitimate need: distinguishing tokens
-that came from inside a character class (where lexical rules differ) without
-adding redundant context flags.
+that came from inside a character class (where lexical rules differ).
 
 ### Group kinds
 
 - `capturing`: `(`
 - `non_capturing`: `(?:`
-- `named_python`: `(?P<name>`
-- `named_pcre`: `(?<name>`
+- `named_python`: `(?P<n>`
+- `named_pcre`: `(?<n>`
 - `lookahead_pos`: `(?=`
 - `lookahead_neg`: `(?!`
 - `lookbehind_pos`: `(?<=`
 - `lookbehind_neg`: `(?<!`
 - `atomic`: `(?>`
+- `flags`: `(?i)`, `(?i:...)`
 
 ### Escape classifications (added by parser)
 
@@ -211,23 +290,24 @@ adding redundant context flags.
 - `anchor_end`: `\z`
 - `unicode_prop`: `\p{...}`, `\P{...}` (unsupported)
 - `backref`: `\1`-`\9` (unsupported)
-- `escaped_literal`: `\(`, `\.`, `\\`, etc.
+- `escaped_literal`: everything else
 
 ## Wordness Classification
 
 Wordness is assigned to tokens that can appear adjacent to `\b`:
 
-| Token                        | Wordness                      |
-|------------------------------|-------------------------------|
-| `\w`, `\d`                   | `word`                        |
-| `\s`, `\W`, `\t`, `\n`, `\r` | `non_word`                    |
-| `\S`, `\D`                   | `unknown`                     |
-| `.`                          | `unknown`                     |
-| `^`, `$`, `\|`, `(`, `)`     | `non_word` (structural)       |
-| Literal `[a-zA-Z0-9_]`       | `word`                        |
-| Literal non-word char        | `non_word`                    |
-| Character class              | Computed from contents        |
-| Quantifier                   | Inherits from preceding token |
+| Token                        | Wordness                           |
+|------------------------------|------------------------------------|
+| `\w`, `\d`                   | `word`                             |
+| `\s`, `\W`, `\t`, `\n`, `\r` | `non_word`                         |
+| `\S`, `\D`                   | `unknown`                          |
+| `\h`, `\H`, `\v`, `\V`       | `unknown` (currently unclassified) |
+| `.`                          | `unknown`                          |
+| `^`, `$`, `|`, `(`, `)`      | `non_word` (structural)            |
+| Literal `[a-zA-Z0-9_]`       | `word`                             |
+| Literal non-word char        | `non_word`                         |
+| Character class              | Computed from contents             |
+| Quantifier                   | Inherits from preceding token      |
 
 Character class wordness is computed by examining the tokens between
 `char_class_open` and `char_class_close`:
@@ -236,11 +316,12 @@ Character class wordness is computed by examining the tokens between
 - Contains only word-character tokens:
   - `cc_range` with both endpoints in `[a-zA-Z0-9_]` => `word`
   - `cc_literal` matching `[a-zA-Z0-9_]` => `word`
-  - `cc_escape` of `\w`, `\d` => `word`
+  - `cc_escape_class` of `\w`, `\d` => `word`
 - Contains only non-word tokens:
   - `cc_literal` not matching `[a-zA-Z0-9_]` => `non_word`
-  - `cc_escape` of `\s`, `\W`, `\t`, `\n`, `\r` => `non_word`
-- `cc_escape` of `\S`, `\D` => `unknown` (matches both word and non-word)
+  - `cc_escape_class` of `\s`, `\W` => `non_word`
+  - `cc_escape_literal` of `\t`, `\n`, `\r` => `non_word`
+- `cc_escape_class` of `\S`, `\D` => `unknown`
 - `cc_range` spanning word and non-word (e.g., `A-z`) => `unknown`
 - Mixed word and non-word tokens => `unknown`
 
@@ -249,30 +330,34 @@ character class contents: no re-parsing of the raw string is needed.
 
 ## File Structure
 
-* `lua/brook/`
-  * `pattern.lua`: Existing (preserved during development)
-  * `pattern/`
-    * `init.lua`: New public API (rg_to_vim wrapper)
-    * `tokenize.lua`: Phase 1
-    * `parse.lua`: Phase 2
-    * `translate.lua`: Phase 3
-    * `types.lua`: Token type definitions and enums
-* `tests/`
-  * `pattern_test.lua`: Existing integration tests (preserved and reused)
-  * `pattern/`
-    * `tokenize_test.lua`: Phase 1 unit tests
-    * `parse_test.lua`: Phase 2 unit tests
-    * `translate_test.lua`: Phase 3 unit tests
+```
+lua/brook/
+  pattern.lua             # existing (preserved during development)
+  pattern/
+    init.lua              # new public API
+    tokenise.lua          # phase 1
+    parse.lua             # phase 2
+    translate.lua         # phase 3
+    types.lua             # token type definitions and enums
+
+tests/
+  pattern_test.lua        # existing integration tests (preserved)
+  pattern/
+    tokeniser_test.lua    # phase 1 unit tests
+    parser_test.lua       # phase 2 unit tests
+    translator_test.lua   # phase 3 unit tests
+```
 
 ## Implementation Plan
 
 ### Step 1: Token types
 
 Create `lua/brook/pattern/types.lua` with:
-- Token type enum
+
+- Token type enums (top-level and character class)
 - Group kind enum
 - Escape classification enum
-- Wordness enum (can reuse existing `_wordness`)
+- Wordness enum
 - Type definitions for token structures
 
 **Deliverable:** Type definitions, no behaviour
@@ -280,41 +365,46 @@ Create `lua/brook/pattern/types.lua` with:
 
 ### Step 2: Tokeniser
 
-Create `lua/brook/pattern/tokenize.lua`:
-- Single function `tokenize(pattern: string): Token[]`
-- Handle all lexical edge cases (character class extraction, escape sequences,
-  quantifier greediness, group variants)
-- No semantic classification
+Create `lua/brook/pattern/tokenise.lua`:
+
+- Single function `tokenise(pattern: string): Token[]`
+- Categorise tokens as specifically as possible
+- Handle character class lexical submode
+- No semantic validation
 
 **Deliverable:** Tokeniser function
-**Validation:** `tests/pattern/tokenize_test.lua` passes
+**Validation:** `tests/pattern/tokeniser_test.lua` passes
 
 ### Step 3: Parser
 
 Create `lua/brook/pattern/parse.lua`:
+
 - Single function `parse(tokens: Token[]): ParseResult`
-- Classify escapes
+- Validate token sequences
+- Classify escapes semantically
 - Compute wordness for all tokens
 - Annotate `\b` tokens with context
 - Detect and reject unsupported constructs
 - Collect warnings
 
 **Deliverable:** Parser function
-**Validation:** `tests/pattern/parse_test.lua` passes
+**Validation:** `tests/pattern/parser_test.lua` passes
 
 ### Step 4: Translator
 
 Create `lua/brook/pattern/translate.lua`:
+
 - Single function `translate(parsed: ParsedTokens, opts: PatternOpts): PatternResult`
 - Pure mechanical mapping from annotated tokens to Vim regex
 
 **Deliverable:** Translator function
-**Validation:** `tests/pattern/translate_test.lua` passes
+**Validation:** `tests/pattern/translator_test.lua` passes
 
 ### Step 5: Wire up new pipeline
 
 Create `lua/brook/pattern/init.lua`:
-- New `rg_to_vim` that calls tokenize => parse => translate
+
+- New `rg_to_vim` that calls tokenise => parse => translate
 - Identical signature to existing `pattern.rg_to_vim`
 
 **Deliverable:** New public API
@@ -331,9 +421,8 @@ Create `lua/brook/pattern/init.lua`:
 ### Step 7: Clean up
 
 - Remove `_classify_char_class_wordness` and `_extract_leading_char_class`
-  (functionality subsumed by tokeniser and parser)
 - Remove any dead code
-- Update `./pattern_spec.md` if needed
+- Update documentation if needed
 
 **Deliverable:** Clean codebase
 **Validation:** All tests pass
@@ -352,8 +441,7 @@ This allows:
 
 - Continued use of the plugin during refactoring
 - Safe experimentation without risk of regression
-- Ability to abandon the refactoring if it proves unworkable (unlikely given
-  the clear architecture)
+- Ability to abandon the refactoring if it proves unworkable
 
 ## Testing Strategy
 
@@ -361,8 +449,9 @@ This allows:
 
 Each phase has its own test suite:
 
-- `tokenize_test.lua`: exhaustive coverage of lexical edge cases
-- `parse_test.lua`: semantic classification, wordness computation, error detection
+- `tokeniser_test.lua`: exhaustive coverage of lexical edge cases
+- `parser_test.lua`: semantic classification, wordness computation, error detection
+- `translator_test.lua`: Vim regex generation
 
 ### Integration tests (existing)
 
@@ -378,12 +467,12 @@ coverage.
 
 ## Risks and Mitigations
 
-| Risk                   | Likelihood   | Impact   | Mitigation                                                           |
-|------------------------|--------------|----------|----------------------------------------------------------------------|
-| New bugs in tokeniser  | Medium       | High     | Extensive tokeniser tests; integration tests catch regressions       |
-| Performance regression | Low          | Low      | Pattern translation is already microseconds; multi-pass won't matter |
-| Incomplete coverage    | Low          | Medium   | Map existing test cases to new structure before removing old code    |
-| Scope creep            | Medium       | Medium   | Strict phase responsibilities; don't add features during refactoring |
+| Risk                   | Likelihood | Impact | Mitigation                                                           |
+|------------------------|------------|--------|----------------------------------------------------------------------|
+| New bugs in tokeniser  | Medium     | High   | Extensive tokeniser tests; integration tests catch regressions       |
+| Performance regression | Low        | Low    | Pattern translation is already microseconds; multi-pass is fine      |
+| Incomplete coverage    | Low        | Medium | Map existing test cases to new structure before removing old code    |
+| Scope creep            | Medium     | Medium | Strict phase responsibilities; don't add features during refactoring |
 
 ## Success Criteria
 
@@ -426,3 +515,24 @@ For reference, these are the specific issues the refactoring addresses:
 
 5. **Tests validate output, not intermediate representations:** When a test fails,
    it's unclear whether tokenisation, classification, or generation is wrong
+
+## Appendix: Tokeniser Design Principles
+
+The tokeniser follows these principles, refined through design discussion:
+
+1. **Categorise as specifically as possible.** If the lexical grammar
+   unambiguously identifies something as a quantifier, emit `quantifier`, not
+   `literal`. The parser decides if it's valid in context.
+
+2. **No backward context.** The tokeniser does not look at preceding tokens to
+   decide a category. A `*` at pattern start is still `quantifier`.
+
+3. **Character class is a lexical submode.** Inside `[...]`, different lexical
+   rules apply. This is tracked internally, producing `cc_` prefixed tokens.
+
+4. **Aligned with Rust regex.** Token categories match the Rust regex crate's
+   grammar. For example, `\b` inside `[...]` is `cc_escape_literal` (literal `b`),
+   not backspace.
+
+5. **Never errors.** The tokeniser reports what it sees. Invalid sequences
+   (like `**`) produce valid tokens; the parser decides what to do.
