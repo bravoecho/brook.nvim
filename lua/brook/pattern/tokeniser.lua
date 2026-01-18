@@ -122,6 +122,239 @@ local function try_brace_quantifier(input, pos)
 end
 
 --------------------------------------------------------------------------------
+--- Escape sequence parsing ----------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Check if character is a hex digit.
+---
+---@param c string?
+---@return boolean
+local function is_hex_digit(c)
+  if c == nil then
+    return false
+  end
+  return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')
+end
+
+--- Check if character is an octal digit.
+---
+---@param c string?
+---@return boolean
+local function is_octal_digit(c)
+  return c ~= nil and c >= '0' and c <= '7'
+end
+
+--- Escape characters that map to literal escapes (control chars and special).
+local literal_escapes = {
+  n = true, t = true, r = true, f = true, a = true, e = true, -- control
+  ['\\'] = true, ['.'] = true, ['*'] = true, ['+'] = true, ['?'] = true,
+  ['^'] = true, ['$'] = true, ['|'] = true, ['('] = true, [')'] = true,
+  ['['] = true, [']'] = true, ['{'] = true, ['}'] = true, ['/'] = true,
+}
+
+--- Escape characters that map to character classes.
+local class_escapes = {
+  d = true, D = true, w = true, W = true, s = true, S = true,
+  h = true, H = true, v = true, V = true,
+}
+
+--- Scan an escape sequence starting at pos (which points to the backslash).
+---
+---@param input string
+---@param pos integer
+---@return brook.pattern.Token token
+---@return integer new_pos
+local function scan_escape(input, pos)
+  local start_pos = pos
+  local c = char_at(input, pos + 1)
+
+  -- trailing backslash
+  if c == nil then
+    return { type = T.literal, value = '\\', pos = start_pos }, pos + 1
+  end
+
+  -- word boundary: \b, \B, \b{...}
+  if c == 'b' then
+    -- check for extended form \b{...}
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        local value = input:sub(start_pos, close)
+        local kind_str = input:sub(pos + 3, close - 1)
+        local boundary_kind
+        if kind_str == 'start' then
+          boundary_kind = 'word_start'
+        elseif kind_str == 'end' then
+          boundary_kind = 'word_end'
+        elseif kind_str == 'start-half' then
+          boundary_kind = 'word_start_half'
+        elseif kind_str == 'end-half' then
+          boundary_kind = 'word_end_half'
+        else
+          boundary_kind = 'word' -- unknown, default to word
+        end
+        return { type = T.escape_boundary, value = value, pos = start_pos, boundary_kind = boundary_kind }, close + 1
+      end
+    end
+    return { type = T.escape_boundary, value = '\\b', pos = start_pos, boundary_kind = 'word' }, pos + 2
+  end
+
+  if c == 'B' then
+    return { type = T.escape_boundary, value = '\\B', pos = start_pos, boundary_kind = 'word_neg' }, pos + 2
+  end
+
+  -- string anchors: \A, \z
+  if c == 'A' then
+    return { type = T.escape_boundary, value = '\\A', pos = start_pos, boundary_kind = 'start' }, pos + 2
+  end
+
+  if c == 'z' then
+    return { type = T.escape_boundary, value = '\\z', pos = start_pos, boundary_kind = 'end' }, pos + 2
+  end
+
+  -- word boundary shortcuts: \<, \>
+  if c == '<' then
+    return { type = T.escape_boundary, value = '\\<', pos = start_pos, boundary_kind = 'word_start' }, pos + 2
+  end
+
+  if c == '>' then
+    return { type = T.escape_boundary, value = '\\>', pos = start_pos, boundary_kind = 'word_end' }, pos + 2
+  end
+
+  -- character class escapes: \d, \D, \w, \W, \s, \S, \h, \H, \v, \V
+  if class_escapes[c] then
+    return { type = T.escape_class, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- literal escapes: \n, \t, \r, etc. and escaped metacharacters
+  if literal_escapes[c] then
+    return { type = T.escape_literal, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- hex: \xNN or \x{...}
+  if c == 'x' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        local value = input:sub(start_pos, close)
+        return { type = T.escape_hex, value = value, pos = start_pos }, close + 1
+      end
+    else
+      -- \xNN: exactly two hex digits
+      if is_hex_digit(char_at(input, pos + 2)) and is_hex_digit(char_at(input, pos + 3)) then
+        local value = input:sub(start_pos, pos + 3)
+        return { type = T.escape_hex, value = value, pos = start_pos }, pos + 4
+      end
+    end
+    -- invalid hex escape: treat as literal
+    return { type = T.escape_literal, value = '\\x', pos = start_pos }, pos + 2
+  end
+
+  -- unicode: \uNNNN, \u{...}, \UNNNNNNNN, \U{...}
+  if c == 'u' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        local value = input:sub(start_pos, close)
+        return { type = T.escape_unicode, value = value, pos = start_pos }, close + 1
+      end
+    else
+      -- \uNNNN: exactly four hex digits
+      local valid = true
+      for i = 2, 5 do
+        if not is_hex_digit(char_at(input, pos + i)) then
+          valid = false
+          break
+        end
+      end
+      if valid then
+        local value = input:sub(start_pos, pos + 5)
+        return { type = T.escape_unicode, value = value, pos = start_pos }, pos + 6
+      end
+    end
+    -- invalid: treat as literal
+    return { type = T.escape_literal, value = '\\u', pos = start_pos }, pos + 2
+  end
+
+  if c == 'U' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        local value = input:sub(start_pos, close)
+        return { type = T.escape_unicode, value = value, pos = start_pos }, close + 1
+      end
+    else
+      -- \UNNNNNNNN: exactly eight hex digits
+      local valid = true
+      for i = 2, 9 do
+        if not is_hex_digit(char_at(input, pos + i)) then
+          valid = false
+          break
+        end
+      end
+      if valid then
+        local value = input:sub(start_pos, pos + 9)
+        return { type = T.escape_unicode, value = value, pos = start_pos }, pos + 10
+      end
+    end
+    -- invalid: treat as literal
+    return { type = T.escape_literal, value = '\\U', pos = start_pos }, pos + 2
+  end
+
+  -- octal: \o{...} or \NNN (1-3 octal digits, but only if starts with 0-7)
+  if c == 'o' and char_at(input, pos + 2) == '{' then
+    local close = input:find('}', pos + 3, true)
+    if close then
+      local value = input:sub(start_pos, close)
+      return { type = T.escape_octal, value = value, pos = start_pos }, close + 1
+    end
+    -- invalid: treat as literal
+    return { type = T.escape_literal, value = '\\o', pos = start_pos }, pos + 2
+  end
+
+  -- octal or backref: \0-\7 start octal, \1-\9 could be backref
+  -- rule: if multiple octal digits follow, it's octal; single digit 1-9 is backref
+  if is_octal_digit(c) then
+    local i = pos + 2
+    local count = 1
+    while count < 3 and is_octal_digit(char_at(input, i)) do
+      i = i + 1
+      count = count + 1
+    end
+    if count > 1 or c == '0' then
+      -- multiple digits or starts with 0: octal
+      local value = input:sub(start_pos, i - 1)
+      return { type = T.escape_octal, value = value, pos = start_pos }, i
+    else
+      -- single digit 1-9: backref
+      return { type = T.escape_backref, value = '\\' .. c, pos = start_pos }, pos + 2
+    end
+  end
+
+  -- backref: \9 when not followed by octal digits (already handled above for 1-7)
+  if c == '8' or c == '9' then
+    return { type = T.escape_backref, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- unicode properties: \p{...}, \P{...}
+  if c == 'p' or c == 'P' then
+    if char_at(input, pos + 2) == '{' then
+      local close = input:find('}', pos + 3, true)
+      if close then
+        local value = input:sub(start_pos, close)
+        local negated = (c == 'P')
+        return { type = T.escape_property, value = value, pos = start_pos, negated = negated }, close + 1
+      end
+    end
+    -- invalid: treat as literal
+    return { type = T.escape_literal, value = '\\' .. c, pos = start_pos }, pos + 2
+  end
+
+  -- anything else: escaped literal
+  return { type = T.escape_literal, value = '\\' .. c, pos = start_pos }, pos + 2
+end
+
+--------------------------------------------------------------------------------
 --- Group parsing --------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -374,16 +607,7 @@ function M.tokenise(input)
       end
 
     elseif c == '\\' then
-      -- TODO: handle escape sequences
-      local next_c = char_at(input, pos + 1)
-      if next_c then
-        token = { type = T.escape_literal, value = '\\' .. next_c, pos = pos }
-        pos = pos + 2
-      else
-        -- trailing backslash: treat as literal
-        token = { type = T.literal, value = '\\', pos = pos }
-        pos = pos + 1
-      end
+      token, pos = scan_escape(input, pos)
 
     elseif not special[c] then
       token = { type = T.literal, value = c, pos = pos }
