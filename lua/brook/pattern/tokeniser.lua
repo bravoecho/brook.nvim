@@ -122,6 +122,168 @@ local function try_brace_quantifier(input, pos)
 end
 
 --------------------------------------------------------------------------------
+--- Group parsing --------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+-- valid flag characters in ripgrep
+local flag_chars = {
+  i = true, m = true, s = true, U = true, u = true, x = true, R = true,
+}
+
+--- Check if character is a valid flag character.
+---
+---@param c string?
+---@return boolean
+local function is_flag_char(c)
+  return c ~= nil and flag_chars[c] == true
+end
+
+--- Check if character is valid for group names (alphanumeric or underscore).
+---
+---@param c string?
+---@return boolean
+local function is_name_char(c)
+  if c == nil then
+    return false
+  end
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')
+      or (c >= '0' and c <= '9') or c == '_'
+end
+
+--- Check if character is valid as first character of group name.
+--- Names must start with letter or underscore, not digit.
+---
+---@param c string?
+---@return boolean
+local function is_name_start_char(c)
+  if c == nil then
+    return false
+  end
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
+end
+
+--- Scan a group opening sequence starting at pos.
+--- Returns the token and the new position.
+---
+---@param input string
+---@param pos integer Position of the opening parenthesis
+---@return brook.pattern.Token token
+---@return integer new_pos
+local function scan_group_open(input, pos)
+  local start_pos = pos
+  local GK = types.group_kind
+
+  -- simple capturing group
+  if char_at(input, pos + 1) ~= '?' then
+    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+  end
+
+  local c2 = char_at(input, pos + 2)
+
+  -- non-capturing: (?:
+  if c2 == ':' then
+    return { type = T.group_open, value = '(?:', pos = start_pos, kind = GK.non_capturing }, pos + 3
+  end
+
+  -- positive lookahead: (?=
+  if c2 == '=' then
+    return { type = T.group_open, value = '(?=', pos = start_pos, kind = GK.lookahead_pos }, pos + 3
+  end
+
+  -- negative lookahead: (?!
+  if c2 == '!' then
+    return { type = T.group_open, value = '(?!', pos = start_pos, kind = GK.lookahead_neg }, pos + 3
+  end
+
+  -- lookbehind or named PCRE: (?< followed by = or ! or name
+  if c2 == '<' then
+    local c3 = char_at(input, pos + 3)
+    if c3 == '=' then
+      return { type = T.group_open, value = '(?<=', pos = start_pos, kind = GK.lookbehind_pos }, pos + 4
+    elseif c3 == '!' then
+      return { type = T.group_open, value = '(?<!', pos = start_pos, kind = GK.lookbehind_neg }, pos + 4
+    elseif is_name_start_char(c3) then
+      -- named PCRE: (?<name>
+      local name_start = pos + 3
+      local i = name_start
+      while is_name_char(char_at(input, i)) do
+        i = i + 1
+      end
+      if char_at(input, i) == '>' and i > name_start then
+        local name = input:sub(name_start, i - 1)
+        local value = input:sub(start_pos, i)
+        return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_pcre, name = name }, i + 1
+      end
+    end
+    -- invalid (?< sequence: fall through to capturing
+    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+  end
+
+  -- atomic: (?>
+  if c2 == '>' then
+    return { type = T.group_open, value = '(?>', pos = start_pos, kind = GK.atomic }, pos + 3
+  end
+
+  -- named Python: (?P<name>
+  if c2 == 'P' and char_at(input, pos + 3) == '<' then
+    local c4 = char_at(input, pos + 4)
+    if is_name_start_char(c4) then
+      local name_start = pos + 4
+      local i = name_start
+      while is_name_char(char_at(input, i)) do
+        i = i + 1
+      end
+      if char_at(input, i) == '>' and i > name_start then
+        local name = input:sub(name_start, i - 1)
+        local value = input:sub(start_pos, i)
+        return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_python, name = name }, i + 1
+      end
+    end
+    -- invalid (?P< sequence: fall through to capturing
+    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+  end
+
+  -- flags: (?flags) or (?flags:
+  -- flags can be: [imsUuxR] optionally followed by -[imsUuxR]
+  if is_flag_char(c2) or c2 == '-' then
+    local i = pos + 2
+    local flags_start = i
+
+    -- consume positive flags
+    while is_flag_char(char_at(input, i)) do
+      i = i + 1
+    end
+
+    -- optional negation section
+    if char_at(input, i) == '-' then
+      i = i + 1
+      while is_flag_char(char_at(input, i)) do
+        i = i + 1
+      end
+    end
+
+    local flags = input:sub(flags_start, i - 1)
+    local next_c = char_at(input, i)
+
+    if next_c == ')' then
+      -- standalone flags: (?i)
+      local value = input:sub(start_pos, i)
+      return { type = T.group_open, value = value, pos = start_pos, kind = GK.flags, flags = flags, scoped = false }, i + 1
+    elseif next_c == ':' then
+      -- scoped flags: (?i:
+      local value = input:sub(start_pos, i)
+      return { type = T.group_open, value = value, pos = start_pos, kind = GK.flags, flags = flags, scoped = true }, i + 1
+    end
+
+    -- didn't match a valid flag group: fall through to capturing
+    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+  end
+
+  -- unrecognised (? sequence: treat as capturing group
+  return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+end
+
+--------------------------------------------------------------------------------
 --- Main tokeniser -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -194,9 +356,7 @@ function M.tokenise(input)
       pos = pos + 1
 
     elseif c == '(' then
-      -- TODO: handle group opens with modifiers
-      token = { type = T.group_open, value = '(', pos = pos, kind = types.group_kind.capturing }
-      pos = pos + 1
+      token, pos = scan_group_open(input, pos)
 
     elseif c == ')' then
       token = { type = T.group_close, value = ')', pos = pos }
