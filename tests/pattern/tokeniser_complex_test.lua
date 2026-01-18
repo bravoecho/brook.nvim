@@ -112,13 +112,12 @@ test('edge: unmatched close paren', function()
 end)
 
 test('edge: multiple quantifiers after literal', function()
-  -- a+*? should be: literal, quantifier, quantifier, quantifier
+  -- a+*? should be: literal, quantifier +, non-greedy quantifier *?
   -- parser decides validity
   deep_eq(tokenise('a+*?'), {
-    { type = T.literal,    value = 'a', pos = 1 },
-    { type = T.quantifier, value = '+', pos = 2, greedy = true },
-    { type = T.quantifier, value = '*', pos = 3, greedy = true },
-    { type = T.quantifier, value = '?', pos = 4, greedy = true },
+    { type = T.literal,    value = 'a',  pos = 1 },
+    { type = T.quantifier, value = '+',  pos = 2, greedy = true },
+    { type = T.quantifier, value = '*?', pos = 3, greedy = false },
   })
 end)
 

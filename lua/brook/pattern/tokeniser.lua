@@ -170,7 +170,7 @@ local function scan_escape(input, pos)
 
   -- trailing backslash
   if c == nil then
-    return { type = T.literal, value = '\\', pos = start_pos }, pos + 1
+    return { type = T.escape_literal, value = '\\', pos = start_pos }, pos + 1
   end
 
   -- word boundary: \b, \B, \b{...}
