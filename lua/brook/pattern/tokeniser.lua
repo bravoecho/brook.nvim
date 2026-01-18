@@ -1,323 +1,124 @@
--- This file: lua/brook/pattern/tokenise.lua
+-- lua/brook/pattern/tokeniser.lua
 
---- Lexical analysis for ripgrep regex patterns.
+--- Lexical analyser for ripgrep regex patterns.
 ---
---- Identifies token boundaries without semantic interpretation. Produces a flat
---- list of tokens that the parser will classify and annotate.
+--- Scans input and produces a flat list of tokens. Does not validate semantic
+--- correctness: that's the parser's job. Recognises all ripgrep default regex
+--- syntax, including constructs that may not be translatable to Vim.
 ---
----@module 'brook.pattern.tokenise'
+---@module 'brook.pattern.tokeniser'
 local M = {}
 
 local types = require('brook.pattern.types')
-
 local T = types.token_type
-local CC = types.cc_token_type
-local GK = types.group_kind
 
 --------------------------------------------------------------------------------
---- Token construction helpers -------------------------------------------------
+--- Character sets -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
----@param token_type brook.pattern.TokenType|brook.pattern.CCTokenType
----@param value string
+-- characters that are special outside character classes
+local special = {
+  ['.'] = true,
+  ['^'] = true,
+  ['$'] = true,
+  ['|'] = true,
+  ['*'] = true,
+  ['+'] = true,
+  ['?'] = true,
+  ['('] = true,
+  [')'] = true,
+  ['['] = true,
+  ['{'] = true,
+  ['\\'] = true,
+  ['/'] = true,
+}
+
+--------------------------------------------------------------------------------
+--- Helpers --------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Check if position is within bounds.
+---
+---@param input string
 ---@param pos integer
----@param extra? table
----@return brook.pattern.Token
-local function tok(token_type, value, pos, extra)
-  local t = { type = token_type, value = value, pos = pos }
-  if extra then
-    for k, v in pairs(extra) do
-      t[k] = v
-    end
-  end
-  return t
-end
-
---------------------------------------------------------------------------------
---- Character predicates -------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Check if character can start a quantifier.
----@param c string Single character
 ---@return boolean
-local function is_quantifier_char(c)
-  return c == '*' or c == '+' or c == '?' or c == '{'
+local function in_bounds(input, pos)
+  return pos <= #input
 end
 
---- Check if this position has something that can be quantified.
---- Quantifiers need a preceding atom (literal, escape, group close, class close).
---- Note: literal quantifier characters (+, *, ?) are not quantifiable themselves.
----@param tokens brook.pattern.Token[]
+--- Get character at position, or nil if out of bounds.
+---
+---@param input string
+---@param pos integer
+---@return string?
+local function char_at(input, pos)
+  if not in_bounds(input, pos) then
+    return nil
+  end
+  return input:sub(pos, pos)
+end
+
+--- Check if a character is a digit.
+---
+---@param c string?
 ---@return boolean
-local function can_quantify(tokens)
-  if #tokens == 0 then
-    return false
-  end
-  local last = tokens[#tokens]
-  local t = last.type
-  if t == T.escape or t == T.group_close or t == T.char_class_close then
-    return true
-  end
-  if t == T.literal then
-    -- Literal quantifier chars that ended up as literals (e.g., + at start)
-    -- are not themselves quantifiable
-    local v = last.value
-    if v == '+' or v == '*' or v == '?' then
-      return false
-    end
-    return true
-  end
-  return false
+local function is_digit(c)
+  return c ~= nil and c >= '0' and c <= '9'
 end
 
 --------------------------------------------------------------------------------
---- Escape sequence extraction -------------------------------------------------
+--- Brace quantifier parsing ---------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Extract an escape sequence starting at position i.
---- Handles \p{...}, \P{...}, and simple two-character escapes.
----@param pattern string
----@param i integer Starting position (at the backslash)
----@return string value The complete escape sequence
----@return integer next_pos Position after the escape
-local function extract_escape(pattern, i)
-  local len = #pattern
-  if i >= len then
-    -- Trailing backslash
-    return '\\', i + 1
+--- Try to parse a brace quantifier starting at pos.
+--- Returns the full quantifier string and end position, or nil if invalid.
+---
+--- Valid forms: {n}, {n,}, {n,m}
+--- Invalid: {}, {,n}, {abc}
+---
+---@param input string
+---@param pos integer Position of the opening brace
+---@return string? value The quantifier including braces and any modifier
+---@return integer? end_pos Position after the quantifier
+local function try_brace_quantifier(input, pos)
+  local i = pos + 1 -- skip opening brace
+
+  -- must start with a digit
+  if not is_digit(char_at(input, i)) then
+    return nil, nil
   end
 
-  local next_char = pattern:sub(i + 1, i + 1)
-
-  -- Unicode property: \p{...} or \P{...}
-  if (next_char == 'p' or next_char == 'P') and pattern:sub(i + 2, i + 2) == '{' then
-    local close = pattern:find('}', i + 3, true)
-    if close then
-      return pattern:sub(i, close), close + 1
-    else
-      -- Unclosed brace - take what we have
-      return pattern:sub(i, len), len + 1
-    end
+  -- consume first number
+  while is_digit(char_at(input, i)) do
+    i = i + 1
   end
 
-  -- Simple two-character escape
-  return pattern:sub(i, i + 1), i + 2
-end
+  local c = char_at(input, i)
 
---------------------------------------------------------------------------------
---- Quantifier extraction ------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Try to extract a quantifier starting at position i.
---- Handles *, +, ?, {n}, {n,}, {n,m} with optional ? (non-greedy) or + (possessive).
----@param pattern string
----@param i integer Starting position
----@return string|nil value The quantifier string, or nil if not a valid quantifier
----@return boolean greedy Whether it's greedy
----@return boolean possessive Whether it's possessive
----@return integer next_pos Position after the quantifier (or i if not a quantifier)
-local function try_extract_quantifier(pattern, i)
-  local c = pattern:sub(i, i)
-  local len = #pattern
-
-  if c == '*' or c == '+' or c == '?' then
-    -- Check for modifier
-    local next_c = i < len and pattern:sub(i + 1, i + 1) or ''
-    if next_c == '?' then
-      return c .. '?', false, false, i + 2
-    elseif next_c == '+' then
-      return c .. '+', true, true, i + 2
-    else
-      return c, true, false, i + 1
-    end
-  end
-
-  -- Brace quantifier {n}, {n,}, {n,m} - must have at least one digit
-  if c == '{' then
-    -- Check there's at least one digit before any comma or close
-    local first_content = i + 1 <= len and pattern:sub(i + 1, i + 1) or ''
-    if not first_content:match('[0-9]') then
-      -- Empty or starts with comma/other - not a valid quantifier
-      return nil, false, false, i
-    end
-
-    -- Find closing brace
-    local j = i + 1
-    while j <= len do
-      local bc = pattern:sub(j, j)
-      if bc == '}' then
-        local value = pattern:sub(i, j)
-        -- Check for modifier
-        local next_c = j < len and pattern:sub(j + 1, j + 1) or ''
-        if next_c == '?' then
-          return value .. '?', false, false, j + 2
-        elseif next_c == '+' then
-          return value .. '+', true, true, j + 2
-        else
-          return value, true, false, j + 1
-        end
-      elseif not (bc:match('[0-9,]')) then
-        -- Invalid brace content - not a quantifier
-        return nil, false, false, i
-      end
-      j = j + 1
-    end
-    -- Unclosed brace - not a quantifier
-    return nil, false, false, i
-  end
-
-  -- Not a quantifier
-  return nil, false, false, i
-end
-
---------------------------------------------------------------------------------
---- Group opener extraction ----------------------------------------------------
---------------------------------------------------------------------------------
-
---- Extract a group opener starting at position i.
---- Handles (, (?:, (?P<name>, (?<name>, (?=, (?!, (?<=, (?<!, (?>.
----@param pattern string
----@param i integer Starting position (at the open paren)
----@return string value The group opener string
----@return brook.pattern.GroupKind kind The group kind
----@return string|nil name For named groups, the capture name
----@return integer next_pos Position after the opener
-local function extract_group_open(pattern, i)
-  local len = #pattern
-
-  -- Simple capturing group
-  if i >= len or pattern:sub(i + 1, i + 1) ~= '?' then
-    return '(', GK.capturing, nil, i + 1
-  end
-
-  -- Extended group syntax (?...
-  local third = pattern:sub(i + 2, i + 2)
-
-  -- Non-capturing (?:
-  if third == ':' then
-    return '(?:', GK.non_capturing, nil, i + 3
-  end
-
-  -- Named Python style (?P<name>
-  if third == 'P' and pattern:sub(i + 3, i + 3) == '<' then
-    local close = pattern:find('>', i + 4, true)
-    if close then
-      local name = pattern:sub(i + 4, close - 1)
-      return pattern:sub(i, close), GK.named_python, name, close + 1
-    else
-      -- No closing > - consume to end
-      local name = pattern:sub(i + 4)
-      return pattern:sub(i), GK.named_python, name, len + 1
-    end
-  end
-
-  -- Named PCRE style (?<name> (not (?<= or (?<!)
-  if third == '<' then
-    local fourth = pattern:sub(i + 3, i + 3)
-    if fourth ~= '=' and fourth ~= '!' then
-      local close = pattern:find('>', i + 3, true)
-      if close then
-        local name = pattern:sub(i + 3, close - 1)
-        return pattern:sub(i, close), GK.named_pcre, name, close + 1
-      else
-        local name = pattern:sub(i + 3)
-        return pattern:sub(i), GK.named_pcre, name, len + 1
-      end
-    end
-  end
-
-  -- Lookahead positive (?=
-  if third == '=' then
-    return '(?=', GK.lookahead_pos, nil, i + 3
-  end
-
-  -- Lookahead negative (?!
-  if third == '!' then
-    return '(?!', GK.lookahead_neg, nil, i + 3
-  end
-
-  -- Lookbehind positive (?<=
-  if third == '<' and pattern:sub(i + 3, i + 3) == '=' then
-    return '(?<=', GK.lookbehind_pos, nil, i + 4
-  end
-
-  -- Lookbehind negative (?<!
-  if third == '<' and pattern:sub(i + 3, i + 3) == '!' then
-    return '(?<!', GK.lookbehind_neg, nil, i + 4
-  end
-
-  -- Atomic group (?>
-  if third == '>' then
-    return '(?>', GK.atomic, nil, i + 3
-  end
-
-  -- Unknown (? sequence - treat as capturing with literal ?
-  -- Actually, just return the ( and let ? be handled separately
-  return '(', GK.capturing, nil, i + 1
-end
-
---------------------------------------------------------------------------------
---- Character class tokenisation -----------------------------------------------
---------------------------------------------------------------------------------
-
---- Tokenise the contents of a character class.
---- Called after [ or [^ has been consumed. Processes until ] or end of string.
----@param pattern string
----@param i integer Starting position (first char after [ or [^)
----@param tokens brook.pattern.Token[] Token list to append to
----@return integer next_pos Position after the closing ]
-local function tokenise_char_class(pattern, i, tokens)
-  local len = #pattern
-  local first_content = true -- ] at start is literal
-
-  while i <= len do
-    local c = pattern:sub(i, i)
-
-    -- Closing bracket (unless it's the first character)
-    if c == ']' and not first_content then
-      table.insert(tokens, tok(T.char_class_close, ']', i))
-      return i + 1
-    end
-
-    -- Escape sequence
-    if c == '\\' and i < len then
-      local esc_value, next_pos = extract_escape(pattern, i)
-      table.insert(tokens, tok(CC.cc_escape, esc_value, i))
-      i = next_pos
-      first_content = false
-      -- Potential range: check if this is X-Y where Y is not ]
-    elseif i + 2 <= len
-        and pattern:sub(i + 1, i + 1) == '-'
-        and pattern:sub(i + 2, i + 2) ~= ']'
-    then
-      -- It's a range
-      local from_char = c
-      local to_char = pattern:sub(i + 2, i + 2)
-      -- Handle escaped to_char
-      if to_char == '\\' and i + 3 <= len then
-        -- Range to escaped char like a-\] is unusual but handle it
-        -- Actually, in most regex engines a-\x is range from a to x
-        -- We'll treat the escaped char as literal for range endpoint
-        to_char = pattern:sub(i + 3, i + 3)
-        local range_value = pattern:sub(i, i + 3)
-        table.insert(tokens, tok(CC.cc_range, range_value, i, { from = from_char, to = to_char }))
-        i = i + 4
-      else
-        local range_value = pattern:sub(i, i + 2)
-        table.insert(tokens, tok(CC.cc_range, range_value, i, { from = from_char, to = to_char }))
-        i = i + 3
-      end
-      first_content = false
-    else
-      -- Literal character (including ] at start, - at start/end)
-      table.insert(tokens, tok(CC.cc_literal, c, i))
+  if c == '}' then
+    -- {n} form
+    i = i + 1
+  elseif c == ',' then
+    i = i + 1
+    -- optional second number
+    while is_digit(char_at(input, i)) do
       i = i + 1
-      first_content = false
     end
+    if char_at(input, i) ~= '}' then
+      return nil, nil
+    end
+    i = i + 1
+  else
+    return nil, nil
   end
 
-  -- Unclosed character class - return position past end
-  return i
+  -- check for non-greedy or possessive modifier
+  local next_c = char_at(input, i)
+  if next_c == '?' or next_c == '+' then
+    i = i + 1
+  end
+
+  return input:sub(pos, i - 1), i
 end
 
 --------------------------------------------------------------------------------
@@ -326,88 +127,115 @@ end
 
 --- Tokenise a ripgrep regex pattern.
 ---
---- Performs pure lexical analysis: identifies where tokens begin and end without
---- semantic interpretation. The parser will classify escapes, compute wordness,
---- and validate constructs.
----
----@param pattern string The ripgrep regex pattern
----@return brook.pattern.Token[] tokens Ordered list of tokens
-function M.tokenise(pattern)
+---@param input string The pattern to tokenise
+---@return brook.pattern.Token[] tokens
+function M.tokenise(input)
   local tokens = {}
-  local len = #pattern
-  local i = 1
+  local pos = 1
 
-  while i <= len do
-    local c = pattern:sub(i, i)
+  while in_bounds(input, pos) do
+    local c = char_at(input, pos)
+    local token
 
-    -- Escape sequence
-    if c == '\\' then
-      local value, next_pos = extract_escape(pattern, i)
-      table.insert(tokens, tok(T.escape, value, i))
-      i = next_pos
+    if c == '.' then
+      token = { type = T.dot, value = '.', pos = pos }
+      pos = pos + 1
 
-      -- Character class
-    elseif c == '[' then
-      local negated = pattern:sub(i + 1, i + 1) == '^'
-      if negated then
-        table.insert(tokens, tok(T.char_class_open, '[^', i, { negated = true }))
-        i = tokenise_char_class(pattern, i + 2, tokens)
-      else
-        table.insert(tokens, tok(T.char_class_open, '[', i, { negated = false }))
-        i = tokenise_char_class(pattern, i + 1, tokens)
-      end
-
-      -- Group open
-    elseif c == '(' then
-      local value, kind, name, next_pos = extract_group_open(pattern, i)
-      local extra = { kind = kind }
-      if name then
-        extra.name = name
-      end
-      table.insert(tokens, tok(T.group_open, value, i, extra))
-      i = next_pos
-
-      -- Group close
-    elseif c == ')' then
-      table.insert(tokens, tok(T.group_close, ')', i))
-      i = i + 1
-
-      -- Quantifiers (only valid after something to quantify)
-    elseif is_quantifier_char(c) and can_quantify(tokens) then
-      local value, greedy, possessive, next_pos = try_extract_quantifier(pattern, i)
-      if value then
-        local extra = { greedy = greedy }
-        if possessive then
-          extra.possessive = true
-        end
-        table.insert(tokens, tok(T.quantifier, value, i, extra))
-        i = next_pos
-      else
-        -- Invalid brace sequence like {abc} - treat { as literal
-        table.insert(tokens, tok(T.literal, c, i))
-        i = i + 1
-      end
-
-      -- Alternation
-    elseif c == '|' then
-      table.insert(tokens, tok(T.alternation, '|', i))
-      i = i + 1
-
-      -- Anchors
     elseif c == '^' or c == '$' then
-      table.insert(tokens, tok(T.anchor, c, i))
-      i = i + 1
+      token = { type = T.anchor, value = c, pos = pos }
+      pos = pos + 1
 
-      -- Forward slash (search delimiter in Vim)
+    elseif c == '|' then
+      token = { type = T.alternation, value = '|', pos = pos }
+      pos = pos + 1
+
+    elseif c == '*' or c == '+' or c == '?' then
+      -- simple quantifier, possibly with modifier
+      local next_c = char_at(input, pos + 1)
+      if next_c == '?' then
+        token = { type = T.quantifier, value = c .. '?', pos = pos, greedy = false }
+        pos = pos + 2
+      elseif next_c == '+' and (c == '*' or c == '+') then
+        token = { type = T.quantifier, value = c .. '+', pos = pos, greedy = true, possessive = true }
+        pos = pos + 2
+      else
+        token = { type = T.quantifier, value = c, pos = pos, greedy = true }
+        pos = pos + 1
+      end
+
+    elseif c == '{' then
+      local value, end_pos = try_brace_quantifier(input, pos)
+      if value then
+        local greedy = true
+        local possessive = nil
+        if value:sub(-1) == '?' then
+          greedy = false
+        elseif value:sub(-1) == '+' then
+          possessive = true
+        end
+        token = { type = T.quantifier, value = value, pos = pos, greedy = greedy }
+        if possessive then
+          token.possessive = true
+        end
+        pos = end_pos
+      else
+        -- invalid brace: treat as literal
+        token = { type = T.literal, value = '{', pos = pos }
+        pos = pos + 1
+      end
+
+    elseif c == '}' then
+      -- standalone closing brace is a literal
+      token = { type = T.literal, value = '}', pos = pos }
+      pos = pos + 1
+
     elseif c == '/' then
-      table.insert(tokens, tok(T.slash, '/', i))
-      i = i + 1
+      token = { type = T.slash, value = '/', pos = pos }
+      pos = pos + 1
 
-      -- Literal character (including ., which is semantically special but lexically simple)
+    elseif c == '(' then
+      -- TODO: handle group opens with modifiers
+      token = { type = T.group_open, value = '(', pos = pos, kind = types.group_kind.capturing }
+      pos = pos + 1
+
+    elseif c == ')' then
+      token = { type = T.group_close, value = ')', pos = pos }
+      pos = pos + 1
+
+    elseif c == '[' then
+      -- TODO: handle character classes
+      local negated = char_at(input, pos + 1) == '^'
+      if negated then
+        token = { type = T.char_class_open, value = '[^', pos = pos, negated = true }
+        pos = pos + 2
+      else
+        token = { type = T.char_class_open, value = '[', pos = pos, negated = false }
+        pos = pos + 1
+      end
+
+    elseif c == '\\' then
+      -- TODO: handle escape sequences
+      local next_c = char_at(input, pos + 1)
+      if next_c then
+        token = { type = T.escape_literal, value = '\\' .. next_c, pos = pos }
+        pos = pos + 2
+      else
+        -- trailing backslash: treat as literal
+        token = { type = T.literal, value = '\\', pos = pos }
+        pos = pos + 1
+      end
+
+    elseif not special[c] then
+      token = { type = T.literal, value = c, pos = pos }
+      pos = pos + 1
+
     else
-      table.insert(tokens, tok(T.literal, c, i))
-      i = i + 1
+      -- fallback for any unhandled special character
+      token = { type = T.literal, value = c, pos = pos }
+      pos = pos + 1
     end
+
+    tokens[#tokens + 1] = token
   end
 
   return tokens
