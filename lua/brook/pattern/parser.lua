@@ -1,540 +1,527 @@
 -- lua/brook/pattern/parser.lua
 
---- Parser phase of the pattern translation pipeline.
+--- Phase 2 of pattern translation: semantic analysis and annotation.
 ---
---- Takes tokens from the tokeniser and annotates them with semantic information:
---- - Classifies escape sequences (shorthand, boundary, anchor, backref, etc.)
---- - Computes wordness for each token
---- - Annotates \b tokens with prev_wordness and next_wordness
---- - Detects unsupported constructs and returns errors
---- - Collects warnings for translatable-with-caveats constructs
+--- Responsibilities:
+---   - Annotate \b tokens with prev_wordness and next_wordness
+---   - Classify escape sequences semantically
+---   - Compute wordness for all tokens
+---   - Detect and reject unsupported constructs
+---   - Collect warnings
 ---
 ---@module 'brook.pattern.parser'
 local M = {}
 
 local types = require('brook.pattern.types')
 
--- Shorthand references
 local T = types.token_type
 local CC = types.cc_token_type
-local GK = types.group_kind
-local EC = types.escape_class
 local W = types.wordness
+local EC = types.escape_class
 
 --------------------------------------------------------------------------------
---- Escape Classification ------------------------------------------------------
+--- Wordness classification ----------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Classify an escape sequence and return its class and wordness.
----@param value string The escape sequence (e.g., '\\w', '\\b', '\\p{L}')
----@return brook.pattern.EscapeClass? escape_class
----@return brook.pattern.Wordness? wordness
----@return string? error Error message if unsupported
----@return string? warning Warning message if translatable with caveats
-local function classify_escape(value)
-  -- Handle single backslash (trailing backslash edge case)
-  if value == '\\' then
-    return EC.escaped_literal, W.non_word, nil, nil
-  end
-
-  local char = value:sub(2, 2)
-
-  -- Word shorthands
-  if char == 'w' then
-    return EC.shorthand_word, W.word, nil, nil
-  end
-  if char == 'd' then
-    return EC.shorthand_word, W.word, nil, nil
-  end
-
-  -- Non-word shorthands
-  if char == 's' then
-    return EC.shorthand_nonword, W.non_word, nil, nil
-  end
-  if char == 'W' then
-    return EC.shorthand_nonword, W.non_word, nil, nil
-  end
-  if char == 't' then
-    return EC.shorthand_nonword, W.non_word, nil, nil
-  end
-  if char == 'n' then
-    return EC.shorthand_nonword, W.non_word, nil, nil
-  end
-  if char == 'r' then
-    return EC.shorthand_nonword, W.non_word, nil, nil
-  end
-
-  -- Unknown shorthands (match both word and non-word)
-  if char == 'S' then
-    return EC.shorthand_unknown, W.unknown, nil, nil
-  end
-  if char == 'D' then
-    return EC.shorthand_unknown, W.unknown, nil, nil
-  end
-
-  -- Word boundary
-  if char == 'b' then
-    return EC.boundary, nil, nil, nil -- wordness computed separately
-  end
-
-  -- Negative word boundary (unsupported)
-  if char == 'B' then
-    return EC.boundary_neg, nil, '\\B not supported', nil
-  end
-
-  -- Anchors
-  if char == 'A' then
-    return EC.anchor_start, W.non_word, nil, '\\A treated as ^'
-  end
-  if char == 'z' then
-    return EC.anchor_end, W.non_word, nil, '\\z treated as $'
-  end
-
-  -- Unicode properties (unsupported)
-  if char == 'p' or char == 'P' then
-    return EC.unicode_prop, nil, 'unicode properties not supported', nil
-  end
-
-  -- Backreferences (unsupported) - \1 through \9
-  if char >= '1' and char <= '9' then
-    return EC.backref, nil, 'backreferences require PCRE2', nil
-  end
-
-  -- Everything else is an escaped literal
-  -- Determine wordness based on what character is being escaped
-  local escaped_char = char
-  local wordness
-  if types.word_chars[escaped_char] then
-    wordness = W.word
-  else
-    wordness = W.non_word
-  end
-
-  return EC.escaped_literal, wordness, nil, nil
-end
-
---------------------------------------------------------------------------------
---- Literal Wordness -----------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Compute wordness for a literal token.
----@param value string The literal character
+--- Classify wordness of a literal character.
+---
+---@param char string Single character
 ---@return brook.pattern.Wordness
-local function literal_wordness(value)
-  -- Dot matches any character
-  if value == '.' then
-    return W.unknown
-  end
-
-  -- Word characters
-  if types.word_chars[value] then
+local function char_wordness(char)
+  if types.word_chars[char] then
     return W.word
   end
-
-  -- Everything else is non-word
   return W.non_word
 end
 
---------------------------------------------------------------------------------
---- Character Class Wordness ---------------------------------------------------
---------------------------------------------------------------------------------
-
--- ASCII byte values for word character range boundaries.
--- Word characters are: 0-9, A-Z, a-z, and underscore.
-local byte = {
-  ['0'] = 48,
-  ['9'] = 57,
-  A = 65,
-  Z = 90,
-  a = 97,
-  z = 122,
-}
-
---- Check if a range spans only word characters.
----@param from string Start of range
----@param to string End of range
+--- Classify wordness of an escape class token (\w, \d, \s, etc).
+---
+---@param value string The escape sequence (e.g. "\\w")
 ---@return brook.pattern.Wordness
-local function range_wordness(from, to)
-  local from_byte = string.byte(from)
-  local to_byte = string.byte(to)
-
-  -- Pure lowercase letters (a-z)
-  if from_byte >= byte.a and to_byte <= byte.z then
+local function escape_class_wordness(value)
+  if types.word_escapes[value] then
     return W.word
-  end
-
-  -- Pure uppercase letters (A-Z)
-  if from_byte >= byte.A and to_byte <= byte.Z then
-    return W.word
-  end
-
-  -- Pure digits (0-9)
-  if from_byte >= byte['0'] and to_byte <= byte['9'] then
-    return W.word
-  end
-
-  -- Check if range crosses a gap containing non-word characters.
-  -- Gaps: 58-64 (between '9' and 'A'), 91-96 (between 'Z' and 'a')
-
-  -- Crossing from digits to uppercase (spans : ; < = > ? @)
-  if from_byte <= byte['9'] and to_byte >= byte.A then
+  elseif types.non_word_escapes[value] then
+    return W.non_word
+  elseif types.unknown_escapes[value] then
     return W.unknown
   end
-
-  -- Crossing from uppercase to lowercase (spans [ \ ] ^ _ `)
-  if from_byte <= byte.Z and to_byte >= byte.a then
-    return W.unknown
-  end
-
-  -- Entirely in a non-word region
-  if to_byte < byte['0'] then
-    return W.non_word
-  end
-  if from_byte > byte['9'] and to_byte < byte.A then
-    return W.non_word
-  end
-  if from_byte > byte.Z and to_byte < byte.a then
-    return W.non_word
-  end
-  if from_byte > byte.z then
-    return W.non_word
-  end
-
-  -- Default to unknown for any other cases
+  -- Default to unknown for unrecognised escapes (\h, \H, \v, \V, etc)
   return W.unknown
 end
 
---- Compute wordness for a cc_escape token.
----@param value string The escape sequence
+--- Classify wordness of a character class based on its contents.
+---
+--- A non-negated class is:
+---   - word if ALL members are word characters
+---   - non_word if ALL members are non-word characters
+---   - unknown otherwise
+---
+--- A negated class is always unknown (could match anything not in the set).
+---
+---@param tokens brook.pattern.Token[] All tokens
+---@param open_idx integer Index of char_class_open token
 ---@return brook.pattern.Wordness
-local function cc_escape_wordness(value)
-  if types.word_escapes[value] then
-    return W.word
-  end
-  if types.non_word_escapes[value] then
-    return W.non_word
-  end
-  if types.unknown_escapes[value] then
-    return W.unknown
-  end
-
-  -- Escaped literal - check the escaped character
-  if #value >= 2 then
-    local escaped_char = value:sub(2, 2)
-    if types.word_chars[escaped_char] then
-      return W.word
-    end
-  end
-
-  return W.non_word
-end
-
---- Compute wordness for a cc_literal token.
----@param value string The literal character
----@return brook.pattern.Wordness
-local function cc_literal_wordness(value)
-  if types.word_chars[value] then
-    return W.word
-  end
-  return W.non_word
-end
-
---- Compute wordness for an entire character class.
---- Examines tokens between char_class_open and char_class_close.
----@param tokens brook.pattern.Token[] The token list
----@param start_idx integer Index of char_class_open token
----@param end_idx integer Index of char_class_close token (or #tokens if unclosed)
----@return brook.pattern.Wordness
-local function compute_class_wordness(tokens, start_idx, end_idx)
-  local open_token = tokens[start_idx]
-
-  -- Negated classes are always unknown
+local function classify_char_class(tokens, open_idx)
+  local open_token = tokens[open_idx]
   if open_token.negated then
     return W.unknown
   end
 
   local has_word = false
   local has_non_word = false
-  local has_unknown = false
 
-  for i = start_idx + 1, end_idx - 1 do
+  local i = open_idx + 1
+  while i <= #tokens do
     local tok = tokens[i]
-    if not tok then
+
+    if tok.type == T.char_class_close then
       break
     end
 
-    local wordness
-
     if tok.type == CC.cc_literal then
-      wordness = cc_literal_wordness(tok.value)
+      local w = char_wordness(tok.value)
+      if w == W.word then
+        has_word = true
+      elseif w == W.non_word then
+        has_non_word = true
+      end
     elseif tok.type == CC.cc_range then
-      wordness = range_wordness(tok.from, tok.to)
-    elseif tok.type == CC.cc_escape then
-      wordness = cc_escape_wordness(tok.value)
-    end
-
-    if wordness == W.word then
+      -- Check every char in range for word/non-word
+      local from_byte = string.byte(tok.from)
+      local to_byte = string.byte(tok.to)
+      for b = from_byte, to_byte do
+        local c = string.char(b)
+        if types.word_chars[c] then
+          has_word = true
+        else
+          has_non_word = true
+        end
+        if has_word and has_non_word then
+          break
+        end
+      end
+    elseif tok.type == CC.cc_escape_class then
+      local w = escape_class_wordness(tok.value)
+      if w == W.word then
+        has_word = true
+      elseif w == W.non_word then
+        has_non_word = true
+      else
+        has_word = true
+        has_non_word = true
+      end
+    elseif tok.type == CC.cc_escape_literal then
+      -- \n, \t, \r are non-word; \b inside class is literal 'b' (word)
+      local escaped_char = tok.value:sub(2)
+      if escaped_char == 'n' or escaped_char == 't' or escaped_char == 'r' then
+        has_non_word = true
+      elseif escaped_char == 'b' then
+        -- \b inside char class is literal 'b', a word char
+        has_word = true
+      else
+        -- Other escaped literals: classify the char itself
+        local w = char_wordness(escaped_char)
+        if w == W.word then
+          has_word = true
+        else
+          has_non_word = true
+        end
+      end
+    elseif tok.type == CC.cc_posix then
+      -- POSIX classes: [:alpha:], [:digit:], [:space:], etc
+      local name = tok.class_name
+      if tok.negated then
+        has_word = true
+        has_non_word = true
+      elseif name == 'alpha' or name == 'alnum' or name == 'digit'
+          or name == 'word' or name == 'xdigit' then
+        has_word = true
+      elseif name == 'space' or name == 'blank' or name == 'cntrl'
+          or name == 'punct' then
+        has_non_word = true
+      else
+        -- [:ascii:], [:graph:], [:print:], [:lower:], [:upper:] can vary
+        has_word = true
+        has_non_word = true
+      end
+    elseif tok.type == CC.cc_escape_hex or tok.type == CC.cc_escape_octal
+        or tok.type == CC.cc_escape_unicode then
+      -- Numeric escapes: could be word or non-word, treat as unknown
       has_word = true
-    elseif wordness == W.non_word then
       has_non_word = true
-    elseif wordness == W.unknown then
-      has_unknown = true
+    elseif tok.type == CC.cc_escape_property then
+      -- Unicode properties: treat as unknown
+      has_word = true
+      has_non_word = true
+    elseif tok.type == CC.cc_nested_open then
+      -- Nested class: treat as unknown for simplicity
+      has_word = true
+      has_non_word = true
+    elseif tok.type == CC.cc_intersection then
+      -- Intersection: treat as unknown
+      has_word = true
+      has_non_word = true
     end
+
+    i = i + 1
   end
 
-  -- If any unknown, result is unknown
-  if has_unknown then
-    return W.unknown
-  end
-
-  -- If mixed word and non-word, result is unknown
   if has_word and has_non_word then
     return W.unknown
-  end
-
-  -- Pure word
-  if has_word then
+  elseif has_word then
     return W.word
-  end
-
-  -- Pure non-word
-  if has_non_word then
+  elseif has_non_word then
     return W.non_word
   end
-
-  -- Empty class (shouldn't happen, but default to unknown)
+  -- Empty class (unlikely but handle it)
   return W.unknown
 end
 
---------------------------------------------------------------------------------
---- Group Validation -----------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Check if a group kind is unsupported.
----@param kind brook.pattern.GroupKind
----@return string? error Error message if unsupported
----@return string? warning Warning message if translatable with caveats
-local function validate_group(kind, name)
-  -- Unsupported: lookarounds and atomic groups
-  if kind == GK.lookahead_pos or kind == GK.lookahead_neg or kind == GK.atomic then
-    return 'lookarounds and atomic groups not supported', nil
-  end
-  if kind == GK.lookbehind_pos or kind == GK.lookbehind_neg then
-    return 'lookarounds not supported', nil
+--- Get wordness of a token at a given index.
+---
+--- Structural tokens (groups, alternation, anchors) return non_word.
+--- This matches the behaviour expected by word boundary translation.
+---
+---@param tokens brook.pattern.Token[]
+---@param idx integer Token index
+---@return brook.pattern.Wordness?
+local function token_wordness(tokens, idx)
+  if idx < 1 or idx > #tokens then
+    return nil
   end
 
-  -- Named groups: supported with warning
-  if kind == GK.named_python or kind == GK.named_pcre then
-    -- Empty name is invalid
-    if name == '' then
-      return 'invalid group name', nil
+  local tok = tokens[idx]
+  local tt = tok.type
+
+  if tt == T.literal then
+    return char_wordness(tok.value)
+  elseif tt == T.escape_class then
+    return escape_class_wordness(tok.value)
+  elseif tt == T.escape_literal then
+    local escaped = tok.value:sub(2)
+    if escaped == 'n' or escaped == 't' or escaped == 'r' then
+      return W.non_word
     end
-    return nil, 'named groups become numbered'
+    return char_wordness(escaped)
+  elseif tt == T.dot then
+    return W.unknown
+  elseif tt == T.char_class_open then
+    return classify_char_class(tokens, idx)
+  elseif tt == T.quantifier then
+    -- Quantifier inherits wordness from its target (previous non-quantifier)
+    local target_idx = idx - 1
+    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
+      target_idx = target_idx - 1
+    end
+    if target_idx >= 1 then
+      return token_wordness(tokens, target_idx)
+    end
+    return nil
+  elseif tt == T.group_open or tt == T.group_close then
+    return W.non_word
+  elseif tt == T.alternation then
+    return W.non_word
+  elseif tt == T.anchor then
+    return W.non_word
+  elseif tt == T.escape_boundary then
+    -- Boundaries themselves don't have wordness for adjacency purposes
+    -- When looking past a boundary, continue to next/prev token
+    return nil
+  elseif tt == T.char_class_close then
+    -- Should not be reached directly, but handle it
+    return nil
+  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
+    -- Numeric escapes could be word or non-word
+    return W.unknown
+  elseif tt == T.escape_property then
+    return W.unknown
+  elseif tt == T.escape_backref then
+    return W.unknown
+  elseif tt == T.slash then
+    return W.non_word
   end
 
-  -- Capturing and non-capturing are fully supported
-  return nil, nil
+  return W.unknown
 end
 
---------------------------------------------------------------------------------
---- Quantifier Validation ------------------------------------------------------
---------------------------------------------------------------------------------
+--- Find the effective wordness looking backward from a boundary.
+---
+--- Skips over boundaries and quantifiers to find the meaningful predecessor.
+---
+---@param tokens brook.pattern.Token[]
+---@param boundary_idx integer Index of the \b token
+---@return brook.pattern.Wordness?
+local function find_prev_wordness(tokens, boundary_idx)
+  local i = boundary_idx - 1
 
---- Check if a quantifier is unsupported.
----@param token brook.pattern.QuantifierToken
----@return string? error Error message if unsupported
-local function validate_quantifier(token)
-  if token.possessive then
-    return 'possessive quantifiers not supported'
+  while i >= 1 do
+    local tok = tokens[i]
+
+    if tok.type == T.escape_boundary then
+      -- Skip past other boundaries
+      i = i - 1
+    elseif tok.type == T.quantifier then
+      -- Quantifier: look at what it quantifies
+      i = i - 1
+    elseif tok.type == T.char_class_close then
+      -- Find matching open
+      local depth = 1
+      i = i - 1
+      while i >= 1 and depth > 0 do
+        if tokens[i].type == T.char_class_close then
+          depth = depth + 1
+        elseif tokens[i].type == T.char_class_open then
+          depth = depth - 1
+        end
+        if depth > 0 then
+          i = i - 1
+        end
+      end
+      -- Now at char_class_open
+      if i >= 1 then
+        return token_wordness(tokens, i)
+      end
+      return nil
+    else
+      return token_wordness(tokens, i)
+    end
   end
+
+  return nil
+end
+
+--- Find the effective wordness looking forward from a boundary.
+---
+--- Skips over boundaries to find the meaningful successor.
+---
+---@param tokens brook.pattern.Token[]
+---@param boundary_idx integer Index of the \b token
+---@return brook.pattern.Wordness?
+local function find_next_wordness(tokens, boundary_idx)
+  local i = boundary_idx + 1
+
+  while i <= #tokens do
+    local tok = tokens[i]
+
+    if tok.type == T.escape_boundary then
+      -- Skip past other boundaries
+      i = i + 1
+    elseif tok.type == T.quantifier then
+      -- A quantifier after \b is unusual but skip it
+      i = i + 1
+    elseif tok.type == T.char_class_open then
+      -- Wordness of the class
+      return token_wordness(tokens, i)
+    else
+      return token_wordness(tokens, i)
+    end
+  end
+
   return nil
 end
 
 --------------------------------------------------------------------------------
---- Main Parse Function --------------------------------------------------------
+--- Token wordness annotation --------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Parse tokens and annotate with semantic information.
----@param tokens brook.pattern.Token[] Input tokens from tokeniser
----@return brook.pattern.ParseResult
-function M.parse(tokens)
-  -- Handle empty input
-  if #tokens == 0 then
-    return { tokens = {}, warnings = {} }
-  end
+--- Assign wordness to a single token.
+---
+--- For most tokens, this is straightforward classification. For quantifiers,
+--- we need to look at the preceding token. For char_class_open, we analyse
+--- the class contents.
+---
+---@param tokens brook.pattern.Token[]
+---@param idx integer
+local function assign_token_wordness(tokens, idx)
+  local tok = tokens[idx]
+  local tt = tok.type
 
-  local result_tokens = {}
-  local warnings = {}
-  local boundary_indices = {} -- Track positions of \b tokens for second pass
-
-  -- First pass: classify tokens and compute wordness
-  local i = 1
-  while i <= #tokens do
-    local tok = tokens[i]
-    local new_tok = {}
-
-    -- Copy base fields
-    for k, v in pairs(tok) do
-      new_tok[k] = v
+  if tt == T.literal then
+    tok.wordness = char_wordness(tok.value)
+  elseif tt == T.escape_class then
+    tok.wordness = escape_class_wordness(tok.value)
+  elseif tt == T.escape_literal then
+    local escaped = tok.value:sub(2)
+    if escaped == 'n' or escaped == 't' or escaped == 'r' then
+      tok.wordness = W.non_word
+    else
+      tok.wordness = char_wordness(escaped)
     end
-
-    if tok.type == T.escape then
-      -- Classify escape sequence
-      local escape_class, wordness, err, warning = classify_escape(tok.value)
-
-      if err then
-        return {
-          tokens = nil,
-          warnings = warnings,
-          error = err,
-        }
-      end
-
-      new_tok.escape_class = escape_class
-      if wordness then
-        new_tok.wordness = wordness
-      end
-
-      if warning then
-        table.insert(warnings, warning)
-      end
-
-      -- Track boundary positions for second pass
-      if escape_class == EC.boundary then
-        table.insert(boundary_indices, #result_tokens + 1)
-      end
-
-    elseif tok.type == T.literal then
-      new_tok.wordness = literal_wordness(tok.value)
-
-    elseif tok.type == T.anchor then
-      new_tok.wordness = W.non_word
-
-    elseif tok.type == T.alternation then
-      new_tok.wordness = W.non_word
-
-    elseif tok.type == T.group_open then
-      local err, warning = validate_group(tok.kind, tok.name)
-      if err then
-        return {
-          tokens = nil,
-          warnings = warnings,
-          error = err,
-        }
-      end
-      if warning then
-        table.insert(warnings, warning)
-      end
-      new_tok.wordness = W.non_word
-
-    elseif tok.type == T.group_close then
-      new_tok.wordness = W.non_word
-
-    elseif tok.type == T.slash then
-      new_tok.wordness = W.non_word
-
-    elseif tok.type == T.quantifier then
-      local err = validate_quantifier(tok)
-      if err then
-        return {
-          tokens = nil,
-          warnings = warnings,
-          error = err,
-        }
-      end
-      -- Quantifier wordness is inherited from preceding token (done after this loop)
-
-    elseif tok.type == T.char_class_open then
-      -- Find matching close
-      local close_idx = #tokens + 1 -- Default if unclosed
-      for j = i + 1, #tokens do
-        if tokens[j].type == T.char_class_close then
-          close_idx = j
-          break
-        end
-      end
-
-      -- Compute class wordness from contents
-      local class_wordness = compute_class_wordness(tokens, i, close_idx)
-      new_tok.wordness = class_wordness
-
-      -- Process all tokens until close
-      table.insert(result_tokens, new_tok)
-
-      -- Process inner tokens
-      for j = i + 1, close_idx - 1 do
-        local inner_tok = {}
-        for k, v in pairs(tokens[j]) do
-          inner_tok[k] = v
-        end
-        table.insert(result_tokens, inner_tok)
-      end
-
-      -- Process close token if present
-      if close_idx <= #tokens then
-        local close_tok = {}
-        for k, v in pairs(tokens[close_idx]) do
-          close_tok[k] = v
-        end
-        close_tok.wordness = class_wordness
-        table.insert(result_tokens, close_tok)
-        i = close_idx
-      else
-        i = #tokens
-      end
-
-      i = i + 1
-      goto continue
+  elseif tt == T.dot then
+    tok.wordness = W.unknown
+  elseif tt == T.char_class_open then
+    tok.wordness = classify_char_class(tokens, idx)
+  elseif tt == T.quantifier then
+    -- Look backward for the quantified atom
+    local target_idx = idx - 1
+    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
+      target_idx = target_idx - 1
     end
-
-    table.insert(result_tokens, new_tok)
-    i = i + 1
-    ::continue::
-  end
-
-  -- Second pass: inherit quantifier wordness from preceding token
-  for idx = 1, #result_tokens do
-    local tok = result_tokens[idx]
-    if tok.type == T.quantifier then
-      if idx > 1 then
-        local prev = result_tokens[idx - 1]
-        tok.wordness = prev.wordness or W.unknown
+    if target_idx >= 1 then
+      -- For char_class, we need the open token
+      if tokens[target_idx].type == T.char_class_close then
+        -- Find matching open
+        local depth = 1
+        local search_idx = target_idx - 1
+        while search_idx >= 1 and depth > 0 do
+          if tokens[search_idx].type == T.char_class_close then
+            depth = depth + 1
+          elseif tokens[search_idx].type == T.char_class_open then
+            depth = depth - 1
+          end
+          if depth > 0 then
+            search_idx = search_idx - 1
+          end
+        end
+        if search_idx >= 1 and tokens[search_idx].wordness then
+          tok.wordness = tokens[search_idx].wordness
+        else
+          tok.wordness = W.unknown
+        end
+      elseif tokens[target_idx].wordness then
+        tok.wordness = tokens[target_idx].wordness
       else
         tok.wordness = W.unknown
       end
+    else
+      tok.wordness = W.unknown
+    end
+  elseif tt == T.group_open or tt == T.group_close then
+    tok.wordness = W.non_word
+  elseif tt == T.alternation then
+    tok.wordness = W.non_word
+  elseif tt == T.anchor then
+    tok.wordness = W.non_word
+  elseif tt == T.slash then
+    tok.wordness = W.non_word
+  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
+    tok.wordness = W.unknown
+  elseif tt == T.escape_property then
+    tok.wordness = W.unknown
+  elseif tt == T.escape_backref then
+    tok.wordness = W.unknown
+  end
+  -- Note: escape_boundary, char_class_close, and cc_* tokens don't get wordness
+end
+
+--------------------------------------------------------------------------------
+--- Escape classification ------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Classify an escape_class token semantically.
+---
+---@param tok brook.pattern.Token
+local function classify_escape_class_token(tok)
+  local value = tok.value
+  if value == '\\w' or value == '\\d' then
+    tok.escape_class = EC.shorthand_word
+  elseif value == '\\s' or value == '\\W' then
+    tok.escape_class = EC.shorthand_nonword
+  elseif value == '\\S' or value == '\\D' then
+    tok.escape_class = EC.shorthand_unknown
+  end
+  -- \h, \H, \v, \V don't get escape_class (not in the enum)
+end
+
+--- Classify an escape_boundary token semantically.
+---
+---@param tok brook.pattern.Token
+---@param warnings string[]
+---@return string? error message if unsupported
+local function classify_escape_boundary_token(tok, warnings)
+  local kind = tok.boundary_kind
+  if kind == 'word' then
+    tok.escape_class = EC.boundary
+  elseif kind == 'word_neg' then
+    return '\\B not supported'
+  elseif kind == 'start' then
+    tok.escape_class = EC.anchor_start
+    table.insert(warnings, '\\A treated as ^')
+  elseif kind == 'end' then
+    tok.escape_class = EC.anchor_end
+    table.insert(warnings, '\\z treated as $')
+  end
+  return nil
+end
+
+--- Unsupported group kinds.
+local unsupported_groups = {
+  [types.group_kind.lookahead_pos] = 'lookarounds and atomic groups not supported',
+  [types.group_kind.lookahead_neg] = 'lookarounds and atomic groups not supported',
+  [types.group_kind.lookbehind_pos] = 'lookarounds not supported',
+  [types.group_kind.lookbehind_neg] = 'lookarounds not supported',
+  [types.group_kind.atomic] = 'lookarounds and atomic groups not supported',
+}
+
+--------------------------------------------------------------------------------
+--- Main parse function --------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Parse and annotate tokens.
+---
+---@param tokens brook.pattern.Token[]
+---@return brook.pattern.ParseResult
+function M.parse(tokens)
+  local warnings = {}
+
+  -- First pass: classify escapes and check for unsupported constructs
+  for _, tok in ipairs(tokens) do
+    if tok.type == T.escape_class then
+      classify_escape_class_token(tok)
+    elseif tok.type == T.escape_boundary then
+      local err = classify_escape_boundary_token(tok, warnings)
+      if err then
+        return { error = err, warnings = warnings }
+      end
+    elseif tok.type == T.escape_literal then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_hex then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_unicode then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_octal then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_property then
+      return { error = 'unicode properties not supported', warnings = warnings }
+    elseif tok.type == T.escape_backref then
+      return { error = 'backreferences require PCRE2', warnings = warnings }
+    elseif tok.type == T.group_open then
+      -- Check for unsupported group kinds
+      local err = unsupported_groups[tok.kind]
+      if err then
+        return { error = err, warnings = warnings }
+      end
+      -- Named groups: warn (or error if empty name)
+      if tok.kind == types.group_kind.named_python
+          or tok.kind == types.group_kind.named_pcre then
+        if tok.name == '' then
+          return { error = 'invalid group name', warnings = warnings }
+        end
+        table.insert(warnings, 'named groups become numbered')
+      end
+    elseif tok.type == T.quantifier then
+      if tok.possessive then
+        return { error = 'possessive quantifiers not supported', warnings = warnings }
+      end
     end
   end
 
-  -- Third pass: annotate \b tokens with prev_wordness and next_wordness
-  for _, idx in ipairs(boundary_indices) do
-    local tok = result_tokens[idx]
+  -- Second pass: assign wordness to all applicable tokens
+  for i, _ in ipairs(tokens) do
+    assign_token_wordness(tokens, i)
+  end
 
-    -- Find previous non-structural atom
-    local prev_wordness = nil
-    for j = idx - 1, 1, -1 do
-      local prev = result_tokens[j]
-      if prev.wordness then
-        prev_wordness = prev.wordness
-        break
-      end
+  -- Third pass: annotate \b tokens with prev/next wordness
+  for i, tok in ipairs(tokens) do
+    if tok.type == T.escape_boundary and tok.boundary_kind == 'word' then
+      tok.prev_wordness = find_prev_wordness(tokens, i)
+      tok.next_wordness = find_next_wordness(tokens, i)
     end
-    tok.prev_wordness = prev_wordness
-
-    -- Find next non-structural atom
-    local next_wordness = nil
-    for j = idx + 1, #result_tokens do
-      local nxt = result_tokens[j]
-      -- Skip quantifiers - they don't count as the "next" atom for boundary purposes
-      if nxt.type ~= T.quantifier and nxt.wordness then
-        next_wordness = nxt.wordness
-        break
-      end
-    end
-    tok.next_wordness = next_wordness
   end
 
   return {
-    tokens = result_tokens,
+    tokens = tokens,
     warnings = warnings,
   }
 end
