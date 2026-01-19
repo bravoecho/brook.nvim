@@ -243,10 +243,10 @@ test('boundary: \\b before word-only class has next word', function()
 end)
 
 --------------------------------------------------------------------------------
---- Boundary with groups -------------------------------------------------------
+--- Boundary with groups (structural tokens have non_word wordness) ------------
 --------------------------------------------------------------------------------
 
-test('boundary: \\b looks past group_open to content', function()
+test('boundary: \\b before group_open sees non_word', function()
   local result = parse({
     { type = T.escape_boundary, value = '\\b', pos = 1, boundary_kind = 'word' },
     { type = T.group_open, value = '(', pos = 3, kind = GK.capturing },
@@ -254,58 +254,58 @@ test('boundary: \\b looks past group_open to content', function()
     { type = T.group_close, value = ')', pos = 5 },
   })
   eq(result.tokens[1].prev_wordness, nil)
-  eq(result.tokens[1].next_wordness, W.word)
+  eq(result.tokens[1].next_wordness, W.non_word)
 end)
 
-test('boundary: \\b looks past group_close to content', function()
+test('boundary: \\b after group_close sees non_word', function()
   local result = parse({
     { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
     { type = T.literal, value = 'a', pos = 2 },
     { type = T.group_close, value = ')', pos = 3 },
     { type = T.escape_boundary, value = '\\b', pos = 4, boundary_kind = 'word' },
   })
-  eq(result.tokens[4].prev_wordness, W.word)
+  eq(result.tokens[4].prev_wordness, W.non_word)
   eq(result.tokens[4].next_wordness, nil)
 end)
 
-test('boundary: \\b looks past nested groups', function()
+test('boundary: \\b between group_close and group_open', function()
   local result = parse({
-    { type = T.escape_boundary, value = '\\b', pos = 1, boundary_kind = 'word' },
-    { type = T.group_open, value = '(', pos = 3, kind = GK.capturing },
-    { type = T.group_open, value = '(?:', pos = 4, kind = GK.non_capturing },
-    { type = T.literal, value = 'x', pos = 7 },
+    { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
+    { type = T.literal, value = 'a', pos = 2 },
+    { type = T.group_close, value = ')', pos = 3 },
+    { type = T.escape_boundary, value = '\\b', pos = 4, boundary_kind = 'word' },
+    { type = T.group_open, value = '(', pos = 6, kind = GK.capturing },
+    { type = T.literal, value = 'b', pos = 7 },
     { type = T.group_close, value = ')', pos = 8 },
-    { type = T.group_close, value = ')', pos = 9 },
   })
-  eq(result.tokens[1].prev_wordness, nil)
-  eq(result.tokens[1].next_wordness, W.word)
+  eq(result.tokens[4].prev_wordness, W.non_word)
+  eq(result.tokens[4].next_wordness, W.non_word)
 end)
 
 --------------------------------------------------------------------------------
 --- Boundary with alternation --------------------------------------------------
 --------------------------------------------------------------------------------
 
-test('boundary: \\b before alternation sees first branch', function()
-  local result = parse({
-    { type = T.escape_boundary, value = '\\b', pos = 1, boundary_kind = 'word' },
-    { type = T.literal, value = 'a', pos = 3 },
-    { type = T.alternation, value = '|', pos = 4 },
-    { type = T.literal, value = '.', pos = 5 },
-  })
-  eq(result.tokens[1].prev_wordness, nil)
-  eq(result.tokens[1].next_wordness, W.word)
-end)
-
-test('boundary: \\b after alternation sees following token', function()
+test('boundary: \\b after alternation sees non_word', function()
   local result = parse({
     { type = T.literal, value = 'a', pos = 1 },
     { type = T.alternation, value = '|', pos = 2 },
     { type = T.escape_boundary, value = '\\b', pos = 3, boundary_kind = 'word' },
     { type = T.literal, value = 'x', pos = 5 },
   })
-  -- prev looks back past alternation: ambiguous, but alternation itself is non_word
   eq(result.tokens[3].prev_wordness, W.non_word)
   eq(result.tokens[3].next_wordness, W.word)
+end)
+
+test('boundary: \\b before alternation sees non_word', function()
+  local result = parse({
+    { type = T.literal, value = 'a', pos = 1 },
+    { type = T.escape_boundary, value = '\\b', pos = 2, boundary_kind = 'word' },
+    { type = T.alternation, value = '|', pos = 4 },
+    { type = T.literal, value = 'x', pos = 5 },
+  })
+  eq(result.tokens[2].prev_wordness, W.word)
+  eq(result.tokens[2].next_wordness, W.non_word)
 end)
 
 --------------------------------------------------------------------------------

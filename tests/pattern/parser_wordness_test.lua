@@ -226,6 +226,27 @@ test('escape literal wordness: \\. is non_word', function()
   eq(result.tokens[1].wordness, W.non_word)
 end)
 
+test('escape literal wordness: \\a is word (escaped word char)', function()
+  local result = parse({
+    { type = T.escape_literal, value = '\\a', pos = 1 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('escape literal wordness: \\e is word (escaped word char)', function()
+  local result = parse({
+    { type = T.escape_literal, value = '\\e', pos = 1 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('escape literal wordness: \\f is word (escaped word char)', function()
+  local result = parse({
+    { type = T.escape_literal, value = '\\f', pos = 1 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
 --------------------------------------------------------------------------------
 --- Structural token wordness --------------------------------------------------
 --------------------------------------------------------------------------------
@@ -316,14 +337,34 @@ test('quantifier wordness: *? (non-greedy) after \\d inherits word', function()
   eq(result.tokens[2].wordness, W.word)
 end)
 
-test('quantifier wordness: chained quantifiers inherit through', function()
-  -- Pattern like a+? where + is greedy and ? makes it non-greedy
-  -- In ripgrep, this would be a single token, but testing inheritance
+test('quantifier wordness: inherits non_word from group_close', function()
   local result = parse({
-    { type = T.literal, value = 'a', pos = 1 },
-    { type = T.quantifier, value = '+', pos = 2, greedy = true },
+    { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
+    { type = T.literal, value = 'a', pos = 2 },
+    { type = T.group_close, value = ')', pos = 3 },
+    { type = T.quantifier, value = '+', pos = 4, greedy = true },
   })
-  eq(result.tokens[2].wordness, W.word)
+  eq(result.tokens[4].wordness, W.non_word)
+end)
+
+test('quantifier wordness: inherits from char_class (word)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = CC.cc_literal, value = 'a', pos = 2 },
+    { type = T.char_class_close, value = ']', pos = 3 },
+    { type = T.quantifier, value = '+', pos = 4, greedy = true },
+  })
+  eq(result.tokens[4].wordness, W.word)
+end)
+
+test('quantifier wordness: inherits from char_class (unknown when negated)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[^', pos = 1, negated = true },
+    { type = CC.cc_literal, value = 'a', pos = 3 },
+    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.quantifier, value = '*', pos = 5, greedy = true },
+  })
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 --------------------------------------------------------------------------------
@@ -393,6 +434,42 @@ test('class wordness: [\\d] is word', function()
   local result = parse({
     { type = T.char_class_open, value = '[', pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\d', pos = 2 },
+    { type = T.char_class_close, value = ']', pos = 4 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('class wordness: [\\b] is word (literal b in Rust regex)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = CC.cc_escape_literal, value = '\\b', pos = 2 },
+    { type = T.char_class_close, value = ']', pos = 4 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('class wordness: [\\a] is word (escaped word char)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = CC.cc_escape_literal, value = '\\a', pos = 2 },
+    { type = T.char_class_close, value = ']', pos = 4 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('class wordness: [\\5] is word (escaped digit)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = CC.cc_escape_literal, value = '\\5', pos = 2 },
+    { type = T.char_class_close, value = ']', pos = 4 },
+  })
+  eq(result.tokens[1].wordness, W.word)
+end)
+
+test('class wordness: [\\_] is word (escaped underscore)', function()
+  local result = parse({
+    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = CC.cc_escape_literal, value = '\\_', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)

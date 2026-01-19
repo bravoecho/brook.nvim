@@ -220,7 +220,7 @@ test('escape class: \\B is boundary_neg (unsupported)', function()
   local result = parse({
     { type = T.escape_boundary, value = '\\B', pos = 1, boundary_kind = 'word_neg' },
   })
-  eq(result.error ~= nil, true)
+  eq(result.error, '\\B not supported')
 end)
 
 --------------------------------------------------------------------------------
@@ -303,14 +303,14 @@ test('escape class: \\p{L} errors (unsupported)', function()
   local result = parse({
     { type = T.escape_property, value = '\\p{L}', pos = 1, negated = false },
   })
-  eq(result.error ~= nil, true)
+  eq(result.error, 'unicode properties not supported')
 end)
 
 test('escape class: \\P{L} errors (unsupported)', function()
   local result = parse({
     { type = T.escape_property, value = '\\P{L}', pos = 1, negated = true },
   })
-  eq(result.error ~= nil, true)
+  eq(result.error, 'unicode properties not supported')
 end)
 
 --------------------------------------------------------------------------------
@@ -321,14 +321,14 @@ test('escape class: \\1 errors (unsupported)', function()
   local result = parse({
     { type = T.escape_backref, value = '\\1', pos = 1 },
   })
-  eq(result.error ~= nil, true)
+  eq(result.error, 'backreferences require PCRE2')
 end)
 
 test('escape class: \\9 errors (unsupported)', function()
   local result = parse({
     { type = T.escape_backref, value = '\\9', pos = 1 },
   })
-  eq(result.error ~= nil, true)
+  eq(result.error, 'backreferences require PCRE2')
 end)
 
 --------------------------------------------------------------------------------

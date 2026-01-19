@@ -172,18 +172,18 @@ end)
 test('complex: \\b(\\w+)\\b word with capture', function()
   local result = parse({
     { type = T.escape_boundary, value = '\\b', pos = 1, boundary_kind = 'word' },
-    { type = T.group_open, value = '(', pos = 3, kind = GK.capturing },
-    { type = T.escape_class, value = '\\w', pos = 4 },
-    { type = T.quantifier, value = '+', pos = 6, greedy = true },
-    { type = T.group_close, value = ')', pos = 7 },
-    { type = T.escape_boundary, value = '\\b', pos = 8, boundary_kind = 'word' },
+    { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
+    { type = T.escape_class, value = '\\w', pos = 1 },
+    { type = T.quantifier, value = '+', pos = 1, greedy = true },
+    { type = T.group_close, value = ')', pos = 1 },
+    { type = T.escape_boundary, value = '\\b', pos = 1, boundary_kind = 'word' },
   })
   eq(result.error, nil)
-  -- First \b looks past ( to \w
+  -- First \b sees ( which is non_word
   eq(result.tokens[1].prev_wordness, nil)
-  eq(result.tokens[1].next_wordness, W.word)
-  -- Last \b looks past ) to \w+
-  eq(result.tokens[6].prev_wordness, W.word)
+  eq(result.tokens[1].next_wordness, W.non_word)
+  -- Last \b sees ) which is non_word
+  eq(result.tokens[6].prev_wordness, W.non_word)
   eq(result.tokens[6].next_wordness, nil)
 end)
 
