@@ -1,270 +1,37 @@
 -- lua/brook/pattern/translator.lua
 
---- Translator phase of the pattern translation pipeline.
+--- Phase 3: Translate annotated tokens to Vim regex.
 ---
---- Takes annotated tokens from the parser and emits Vim regex syntax.
---- Pure mechanical transformation: no semantic decisions are made here.
+--- Takes the output from the parser (annotated tokens with wordness and semantic
+--- classifications) and mechanically generates Vim regex syntax.
+---
+--- Responsibilities:
+--- - Emit mode prefix (\v or \V)
+--- - Emit case modifier (\C or \c) if specified
+--- - Transform tokens to Vim equivalents
+--- - Apply word boundary wrapping if requested
+--- - Format warnings
+---
+--- Does NOT:
+--- - Re-examine token semantics
+--- - Make decisions about what tokens mean
+--- - Validate token sequences
 ---
 ---@module 'brook.pattern.translator'
 local M = {}
 
 local types = require('brook.pattern.types')
-
 local T = types.token_type
-local CC = types.cc_token_type
-local GK = types.group_kind
 local EC = types.escape_class
 local W = types.wordness
+local GK = types.group_kind
+local CC = types.cc_token_type
 
---------------------------------------------------------------------------------
---- Constants ------------------------------------------------------------------
---------------------------------------------------------------------------------
-
--- Characters that need escaping in very magic mode (outside char classes).
-local vim_special = {
-  ['='] = true,
-  ['~'] = true,
-  ['@'] = true,
-  ['&'] = true,
-  ['<'] = true,
-  ['>'] = true,
-}
-
---------------------------------------------------------------------------------
---- Quantifier Translation -----------------------------------------------------
---------------------------------------------------------------------------------
-
---- Translate a quantifier token to Vim syntax.
---- Greedy quantifiers pass through; non-greedy use {-} syntax.
----@param tok table Quantifier token with value and greedy fields
----@return string Vim quantifier syntax
-local function translate_quantifier(tok)
-  if tok.greedy then
-    return tok.value
-  end
-
-  local val = tok.value
-
-  -- Non-greedy: remove trailing ?
-  local base = val:sub(1, -2)
-
-  if base == '*' then
-    return '{-}'
-  elseif base == '+' then
-    return '{-1,}'
-  elseif base == '?' then
-    return '{-0,1}'
-  elseif base:match('^{%d+}$') then
-    -- {n}? => {-n}
-    local n = base:match('^{(%d+)}$')
-    return '{-' .. n .. '}'
-  elseif base:match('^{%d+,}$') then
-    -- {n,}? => {-n,}
-    local n = base:match('^{(%d+),}$')
-    return '{-' .. n .. ',}'
-  elseif base:match('^{%d+,%d+}$') then
-    -- {n,m}? => {-n,m}
-    local n, m = base:match('^{(%d+),(%d+)}$')
-    return '{-' .. n .. ',' .. m .. '}'
-  end
-
-  -- Fallback: shouldn't happen with well-formed input
-  return tok.value
-end
-
---------------------------------------------------------------------------------
---- Boundary Translation -------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Translate a word boundary (\b) based on surrounding wordness.
---- Returns <, >, or %(<|>) depending on context.
----@param tok table Boundary token with prev_wordness and next_wordness
----@return string Vim boundary syntax
-local function translate_boundary(tok)
-  local prev = tok.prev_wordness
-  local next = tok.next_wordness
-
-  -- At start of pattern (no prev) with word following => word start
-  if prev == nil and next == W.word then
-    return '<'
-  end
-
-  -- At end of pattern (no next) with word preceding => word end
-  if next == nil and prev == W.word then
-    return '>'
-  end
-
-  -- Non-word before, word after => word start
-  if prev == W.non_word and next == W.word then
-    return '<'
-  end
-
-  -- Word before, non-word after => word end
-  if prev == W.word and next == W.non_word then
-    return '>'
-  end
-
-  -- Ambiguous cases: word-word, unknown involved, or both nil
-  -- Use fallback that matches either boundary
-  return '%(<|>)'
-end
-
---------------------------------------------------------------------------------
---- Group Translation ----------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Translate a group opener based on its kind.
---- Returns the Vim equivalent and optionally a warning.
----@param tok table Group open token with kind field
----@return string Vim group syntax
----@return string? warning Warning message if applicable
-local function translate_group_open(tok)
-  local kind = tok.kind
-
-  if kind == GK.capturing then
-    return '('
-  elseif kind == GK.non_capturing then
-    return '%('
-  elseif kind == GK.named_python or kind == GK.named_pcre then
-    -- Named groups become numbered groups with a warning
-    return '(', 'named groups become numbered'
-  end
-
-  -- Unsupported group kinds should have been rejected by parser
-  -- but handle gracefully
-  return '('
-end
-
---------------------------------------------------------------------------------
---- Token Translation ----------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Translate a single token to Vim syntax.
---- Also collects warnings for translatable-with-caveats constructs.
----@param tok table Token from parser
----@param in_char_class boolean Whether we are inside a character class
----@param fixed boolean Whether we are in fixed string mode
----@return string Vim syntax for this token
----@return string? warning Warning message if applicable
-local function translate_token(tok, in_char_class, fixed)
-  local typ = tok.type
-
-  -- Literals
-  if typ == T.literal then
-    local ch = tok.value
-    if in_char_class then
-      -- Inside character class, only / needs escaping
-      if ch == '/' then
-        return '\\/'
-      end
-      return ch
-    end
-    -- Outside char class: escape vim-special chars
-    if vim_special[ch] then
-      return '\\' .. ch
-    end
-    return ch
-  end
-
-  -- Forward slash
-  if typ == T.slash then
-    return '\\/'
-  end
-
-  -- Anchors
-  if typ == T.anchor then
-    return tok.value
-  end
-
-  -- Escapes
-  if typ == T.escape then
-    local ec = tok.escape_class
-
-    -- Shorthands pass through
-    if ec == EC.shorthand_word or ec == EC.shorthand_nonword or ec == EC.shorthand_unknown then
-      return tok.value
-    end
-
-    -- Escaped literals pass through
-    if ec == EC.escaped_literal then
-      return tok.value
-    end
-
-    -- Word boundary
-    if ec == EC.boundary then
-      return translate_boundary(tok)
-    end
-
-    -- Anchors with warnings
-    if ec == EC.anchor_start then
-      return '^', '\\A treated as ^'
-    end
-    if ec == EC.anchor_end then
-      return '$', '\\z treated as $'
-    end
-
-    -- Fallback for unexpected escape classes
-    return tok.value
-  end
-
-  -- Quantifiers
-  if typ == T.quantifier then
-    return translate_quantifier(tok)
-  end
-
-  -- Groups
-  if typ == T.group_open then
-    return translate_group_open(tok)
-  end
-  if typ == T.group_close then
-    return ')'
-  end
-
-  -- Alternation
-  if typ == T.alternation then
-    return '|'
-  end
-
-  -- Character class boundaries
-  if typ == T.char_class_open then
-    if tok.negated then
-      return '[^'
-    end
-    return '['
-  end
-  if typ == T.char_class_close then
-    return ']'
-  end
-
-  -- Character class contents
-  if typ == CC.cc_literal then
-    local ch = tok.value
-    if ch == '/' then
-      return '\\/'
-    end
-    return ch
-  end
-  if typ == CC.cc_range then
-    return tok.value
-  end
-  if typ == CC.cc_escape then
-    return tok.value
-  end
-
-  -- Unknown token type: pass through value
-  return tok.value or ''
-end
-
---------------------------------------------------------------------------------
---- Main Translation -----------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Translation options.
----@alias brook.pattern.TranslateOpts brook.pattern.TranslateOpts
-
---- Translate annotated tokens to Vim regex.
+--- Translate annotated tokens to Vim regex pattern.
 ---
---- Returns full warnings array for caller to format as needed.
+--- This is a mechanical transformation: tokens have already been validated and
+--- annotated by the parser. The translator walks the token list and emits the
+--- corresponding Vim regex syntax.
 ---
 ---@param tokens brook.pattern.Token[] Annotated tokens from parser
 ---@param opts brook.pattern.TranslateOpts Translation options
@@ -272,58 +39,236 @@ end
 function M.translate(tokens, opts)
   opts = opts or {}
 
-  local parts = {}
   local warnings = {}
+  local parts = {}
 
-  -- Mode prefix: case modifier first, then magic mode
+  -- Emit case prefix if specified
   if opts.case == 'case-sensitive' then
-    parts[#parts+1] = '\\C'
+    table.insert(parts, '\\C')
   elseif opts.case == 'case-insensitive' then
-    parts[#parts+1] = '\\c'
+    table.insert(parts, '\\c')
   end
 
-  -- Magic mode
+  -- Emit mode prefix
   if opts.fixed then
-    parts[#parts+1] = '\\V'
+    table.insert(parts, '\\V')
   else
-    parts[#parts+1] = '\\v'
+    table.insert(parts, '\\v')
   end
 
-  -- Word boundary prefix (in \V mode need backslash, in \v mode don't)
+  -- Emit word boundary if requested
   if opts.word then
     if opts.fixed then
-      parts[#parts+1] = '\\<'
+      table.insert(parts, '\\<')
     else
-      parts[#parts+1] = '<'
+      table.insert(parts, '<')
     end
   end
 
-  -- Track char class state
-  local in_char_class = false
+  -- Walk tokens and emit Vim equivalents
+  for _, token in ipairs(tokens) do
+    if token.type == T.literal then
+      -- In fixed mode, all literals are literal
+      -- In regex mode, some need escaping for very magic mode
+      if opts.fixed then
+        table.insert(parts, token.value)
+      else
+        -- Very magic mode requires escaping: = ~ @ & < >
+        local escaped = token.value:gsub('[=~@&<>]', '\\%1')
+        table.insert(parts, escaped)
+      end
+    elseif token.type == T.char_class_open then
+      -- Character class open: [ or [^
+      table.insert(parts, token.value)
+    elseif token.type == T.char_class_close then
+      -- Character class close: ]
+      table.insert(parts, ']')
+    elseif token.type == CC.cc_literal then
+      -- Literal inside character class
+      -- Forward slash needs escaping, others pass through
+      if token.value == '/' then
+        table.insert(parts, '\\/')
+      else
+        table.insert(parts, token.value)
+      end
+    elseif token.type == CC.cc_range then
+      -- Range inside character class: a-z
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_escape_class then
+      -- Escape class inside character class: \d, \w, etc.
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_escape_literal then
+      -- Escape literal inside character class: \], \\, \b (literal b)
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_escape_hex then
+      -- Hex escape inside character class: \x41
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_escape_unicode then
+      -- Unicode escape inside character class: \u{41}
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_escape_octal then
+      -- Octal escape inside character class: \0, \123
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_posix then
+      -- POSIX class: [:alpha:], [:^digit:]
+      table.insert(parts, token.value)
+    elseif token.type == CC.cc_intersection then
+      -- Set intersection: &&
+      table.insert(parts, '&&')
+    elseif token.type == CC.cc_nested_open then
+      -- Nested character class open: [
+      -- Note: negated nested classes lose the ^ in Vim
+      -- [a-z&&[^aeiou]] becomes [a-z&&[aeiou]]
+      table.insert(parts, '[')
+    elseif token.type == CC.cc_nested_close then
+      -- Nested character class close: ]
+      table.insert(parts, ']')
+    elseif token.type == T.group_open then
+      -- Group openers: different kinds have different translations
+      if token.kind == GK.capturing then
+        -- Capturing group: ( ... )
+        table.insert(parts, '(')
+      elseif token.kind == GK.non_capturing then
+        -- Non-capturing group: (?:...) => %(...)
+        table.insert(parts, '%(')
+      elseif token.kind == GK.named_python or token.kind == GK.named_pcre then
+        -- Named groups: (?P<name>...) or (?<name>...) => (...)
+        -- Emit warning about losing the name
+        table.insert(parts, '(')
+        table.insert(warnings, 'named groups become numbered')
+      elseif token.kind == GK.flags then
+        -- Flag groups: (?i) or (?i:...)
+        -- Pass through unchanged in very magic mode
+        table.insert(parts, token.value)
+      else
+        -- Other group kinds (lookarounds, atomic) shouldn't reach here
+        -- (parser should reject them), but handle gracefully
+        table.insert(parts, token.value)
+      end
+    elseif token.type == T.group_close then
+      -- Group close: always )
+      table.insert(parts, ')')
+    elseif token.type == T.quantifier then
+      -- Quantifiers: greedy pass through, non-greedy use {-} syntax
+      if token.greedy then
+        -- Greedy quantifiers work the same in both syntaxes
+        table.insert(parts, token.value)
+      else
+        -- Non-greedy quantifiers need translation to Vim's {-} syntax
+        local val = token.value
 
-  -- Translate each token
-  for _, tok in ipairs(tokens) do
-    -- Track char class state
-    if tok.type == T.char_class_open then
-      in_char_class = true
-    elseif tok.type == T.char_class_close then
-      in_char_class = false
-    end
+        -- Strip the trailing ? from the value to get the base quantifier
+        -- (The tokeniser includes the ? in the value for non-greedy)
+        if val == '*?' then
+          table.insert(parts, '{-}')
+        elseif val == '+?' then
+          table.insert(parts, '{-1,}')
+        elseif val == '??' then
+          table.insert(parts, '{-0,1}')
+        elseif val:match('^{%d+}%?$') then
+          -- {n}? => {-n}
+          local n = val:match('^{(%d+)}%?$')
+          table.insert(parts, '{-' .. n .. '}')
+        elseif val:match('^{%d+,}%?$') then
+          -- {n,}? => {-n,}
+          local n = val:match('^{(%d+),}%?$')
+          table.insert(parts, '{-' .. n .. ',}')
+        elseif val:match('^{%d+,%d+}%?$') then
+          -- {n,m}? => {-n,m}
+          local n, m = val:match('^{(%d+),(%d+)}%?$')
+          table.insert(parts, '{-' .. n .. ',' .. m .. '}')
+        else
+          -- Fallback: shouldn't happen with valid tokeniser output
+          table.insert(parts, val)
+        end
+      end
+    elseif token.type == T.escape_boundary then
+      -- Word boundaries and anchors
+      if token.escape_class == EC.boundary then
+        -- \b translation depends on context (prev_wordness and next_wordness)
+        local prev = token.prev_wordness
+        local next = token.next_wordness
 
-    local translated, warning = translate_token(tok, in_char_class, opts.fixed)
-    parts[#parts+1] = translated
+        -- Determine boundary type based on wordness context
+        -- < for word start: non-word (or nil) before, word after
+        -- > for word end: word before, non-word (or nil) after
+        -- %(<|>) for ambiguous cases
 
-    if warning then
-      warnings[#warnings+1] = warning
+        if (prev == nil or prev == W.non_word) and next == W.word then
+          -- Word start boundary
+          table.insert(parts, '<')
+        elseif prev == W.word and (next == nil or next == W.non_word) then
+          -- Word end boundary
+          table.insert(parts, '>')
+        else
+          -- Ambiguous: could be either start or end
+          -- This includes: both unknown, both word, both non-word, or mixed unknown
+          table.insert(parts, '%(<|>)')
+        end
+      elseif token.escape_class == EC.anchor_start then
+        -- \A => ^ with warning
+        table.insert(parts, '^')
+        table.insert(warnings, '\\A treated as ^')
+      elseif token.escape_class == EC.anchor_end then
+        -- \z => $ with warning
+        table.insert(parts, '$')
+        table.insert(warnings, '\\z treated as $')
+      end
+    elseif token.type == T.escape_class then
+      -- Character class shorthands: \w, \d, \s, \W, \D, \S
+      -- These work identically in Rust regex and Vim very magic mode
+      table.insert(parts, token.value)
+    elseif token.type == T.escape_literal then
+      -- Escaped literals like \n, \t, \\, \., \*, etc.
+      if opts.fixed then
+        -- In fixed mode, we need to escape backslashes
+        if token.value == '\\\\' then
+          table.insert(parts, '\\\\')
+        else
+          -- Other escape literals: just emit the literal value
+          table.insert(parts, token.value)
+        end
+      else
+        -- In regex mode, emit as-is
+        table.insert(parts, token.value)
+      end
+    elseif token.type == T.escape_hex then
+      -- Hex escapes: \x7F, \x{0041}
+      -- Pass through unchanged
+      table.insert(parts, token.value)
+    elseif token.type == T.escape_unicode then
+      -- Unicode escapes: \u0041, \u{41}
+      -- Pass through unchanged
+      table.insert(parts, token.value)
+    elseif token.type == T.escape_octal then
+      -- Octal escapes: \0, \123
+      -- Pass through unchanged
+      table.insert(parts, token.value)
+    elseif token.type == T.slash then
+      -- Forward slash must be escaped in Vim search patterns
+      table.insert(parts, '\\/')
+    elseif token.type == T.dot then
+      -- Dot passes through in regex mode
+      table.insert(parts, '.')
+    elseif token.type == T.anchor then
+      -- Anchors (^ and $) pass through in regex mode
+      table.insert(parts, token.value)
+    elseif token.type == T.alternation then
+      -- Alternation passes through in regex mode
+      table.insert(parts, '|')
+    else
+      -- For now, unhandled token types (we'll add more as we go)
+      -- This shouldn't happen with the current test suite
+      table.insert(parts, token.value)
     end
   end
 
-  -- Word boundary suffix (in \V mode need backslash, in \v mode don't)
+  -- Close word boundary if requested
   if opts.word then
     if opts.fixed then
-      parts[#parts+1] = '\\>'
+      table.insert(parts, '\\>')
     else
-      parts[#parts+1] = '>'
+      table.insert(parts, '>')
     end
   end
 
