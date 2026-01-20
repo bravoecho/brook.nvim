@@ -8,7 +8,7 @@ run_test() {
   local name="$1"
 
   echo -e "\n--- $name ---\n"
-  nvim --headless \
+  nvim --headless -u NONE -c "set rtp+=." \
     -c "luafile $testsdir/${name}_test.lua" \
     -c "q"
 }
