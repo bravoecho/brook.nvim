@@ -10,11 +10,15 @@ local eq = h.eq
 
 local tokeniser = require('brook.pattern.tokeniser')
 
-local tokenise = tokeniser.tokenise
 local types = require('brook.pattern.types')
 local T = types.token_type
 local CC = types.cc_token_type
 local GK = types.group_kind
+
+--- Helper to extract tokens from tokenise result.
+local function tokenise(input)
+  return tokeniser.tokenise(input).tokens
+end
 
 --------------------------------------------------------------------------------
 -- Complex patterns ------------------------------------------------------------

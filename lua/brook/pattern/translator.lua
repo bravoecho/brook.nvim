@@ -10,7 +10,7 @@
 --- - Emit case modifier (\C or \c) if specified
 --- - Transform tokens to Vim equivalents
 --- - Apply word boundary wrapping if requested
---- - Format warnings
+--- - Forward and extend warnings from parser
 ---
 --- Does NOT:
 --- - Re-examine token semantics
@@ -33,13 +33,34 @@ local CC = types.cc_token_type
 --- annotated by the parser. The translator walks the token list and emits the
 --- corresponding Vim regex syntax.
 ---
+--- If an error is passed in, the translator returns immediately with that error
+--- and any warnings collected so far.
+---
 ---@param tokens brook.pattern.Token[] Annotated tokens from parser
 ---@param opts brook.pattern.TranslateOpts Translation options
+---@param incoming_warnings? string[] Warnings from earlier pipeline stages
+---@param incoming_error? string Error from earlier pipeline stages
 ---@return brook.pattern.TranslatorResult
-function M.translate(tokens, opts)
+function M.translate(tokens, opts, incoming_warnings, incoming_error)
   opts = opts or {}
 
+  -- Start with incoming warnings, add our own as we go
   local warnings = {}
+  if incoming_warnings then
+    for _, w in ipairs(incoming_warnings) do
+      warnings[#warnings + 1] = w
+    end
+  end
+
+  -- If an error was passed in, forward it immediately
+  if incoming_error then
+    return {
+      pattern = '',
+      warnings = warnings,
+      error = incoming_error,
+    }
+  end
+
   local parts = {}
 
   -- Emit case prefix if specified

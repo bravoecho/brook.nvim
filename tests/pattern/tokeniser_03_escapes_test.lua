@@ -9,9 +9,13 @@ local deep_eq = h.deep_eq
 
 local tokeniser = require('brook.pattern.tokeniser')
 
-local tokenise = tokeniser.tokenise
 local types = require('brook.pattern.types')
 local T = types.token_type
+
+--- Helper to extract tokens from tokenise result.
+local function tokenise(input)
+  return tokeniser.tokenise(input).tokens
+end
 
 --------------------------------------------------------------------------------
 -- Escape sequences: boundaries ------------------------------------------------

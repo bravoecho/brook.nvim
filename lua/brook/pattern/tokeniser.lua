@@ -40,9 +40,10 @@ local special = {
 --- Tokenise a ripgrep regex pattern.
 ---
 ---@param input string The pattern to tokenise
----@return brook.pattern.Token[] tokens
+---@return brook.pattern.TokeniseResult
 function M.tokenise(input)
   local tokens = {}
+  local warnings = {}
   local pos = 1
 
   while M._in_bounds(input, pos) do
@@ -126,7 +127,10 @@ function M.tokenise(input)
     ::continue::
   end
 
-  return tokens
+  return {
+    tokens = tokens,
+    warnings = warnings,
+  }
 end
 
 --------------------------------------------------------------------------------

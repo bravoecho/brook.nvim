@@ -149,6 +149,63 @@ test('fixed: escapes forward slashes', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Error and warning forwarding -----------------------------------------------
+--------------------------------------------------------------------------------
+
+test('forward: incoming warnings are preserved', function()
+  local result = translate({
+    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+  }, {}, { 'parser warning 1', 'parser warning 2' })
+  eq(result.pattern, '\\va')
+  eq(#result.warnings, 2)
+  eq(result.warnings[1], 'parser warning 1')
+  eq(result.warnings[2], 'parser warning 2')
+end)
+
+test('forward: incoming warnings combined with translator warnings', function()
+  local result = translate({
+    { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
+  }, {}, { 'parser warning' })
+  eq(result.pattern, '\\v^')
+  eq(#result.warnings, 2)
+  eq(result.warnings[1], 'parser warning')
+  eq(result.warnings[2], '\\A treated as ^')
+end)
+
+test('forward: incoming error returns early with empty pattern', function()
+  local result = translate({
+    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+  }, {}, {}, 'parser error')
+  eq(result.pattern, '')
+  eq(result.error, 'parser error')
+end)
+
+test('forward: incoming error preserves warnings', function()
+  local result = translate({
+    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+  }, {}, { 'warning before error' }, 'parser error')
+  eq(result.pattern, '')
+  eq(result.error, 'parser error')
+  eq(#result.warnings, 1)
+  eq(result.warnings[1], 'warning before error')
+end)
+
+test('forward: nil incoming warnings treated as empty', function()
+  local result = translate({
+    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+  }, {}, nil, nil)
+  eq(result.pattern, '\\va')
+  deep_eq(result.warnings, {})
+end)
+
+test('forward: empty tokens with error returns early', function()
+  local result = translate({}, {}, {}, 'unsupported construct')
+  eq(result.pattern, '')
+  eq(result.error, 'unsupported construct')
+  deep_eq(result.warnings, {})
+end)
+
+--------------------------------------------------------------------------------
 --- Summary --------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
