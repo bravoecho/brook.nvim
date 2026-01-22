@@ -7,13 +7,7 @@ local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
 
-local ok, tokeniser = pcall(require, 'brook.pattern.tokeniser')
-if not ok then
-  print('SKIP: brook.pattern.tokeniser not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local tokeniser = require('brook.pattern.tokeniser')
 
 local tokenise = tokeniser.tokenise
 local types = require('brook.pattern.types')

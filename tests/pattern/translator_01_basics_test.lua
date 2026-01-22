@@ -13,19 +13,11 @@ local eq = h.eq
 local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
-local ok, translator = pcall(require, 'brook.pattern.translator')
-if not ok then
-  print('SKIP: brook.pattern.translator not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
 local T = types.token_type
-local CC = types.cc_token_type
-local GK = types.group_kind
 local EC = types.escape_class
 local W = types.wordness
 
@@ -132,13 +124,13 @@ end)
 
 test('fixed: escapes backslashes', function()
   local result = translate({
-    { type = T.literal, value = 'f', pos = 1, wordness = W.word },
-    { type = T.literal, value = 'o', pos = 2, wordness = W.word },
-    { type = T.literal, value = 'o', pos = 3, wordness = W.word },
+    { type = T.literal,        value = 'f',    pos = 1, wordness = W.word },
+    { type = T.literal,        value = 'o',    pos = 2, wordness = W.word },
+    { type = T.literal,        value = 'o',    pos = 3, wordness = W.word },
     { type = T.escape_literal, value = '\\\\', pos = 4, escape_class = EC.escaped_literal, wordness = W.non_word },
-    { type = T.literal, value = 'b', pos = 6, wordness = W.word },
-    { type = T.literal, value = 'a', pos = 7, wordness = W.word },
-    { type = T.literal, value = 'r', pos = 8, wordness = W.word },
+    { type = T.literal,        value = 'b',    pos = 6, wordness = W.word },
+    { type = T.literal,        value = 'a',    pos = 7, wordness = W.word },
+    { type = T.literal,        value = 'r',    pos = 8, wordness = W.word },
   }, { fixed = true })
   eq(result.pattern, '\\Vfoo\\\\bar')
 end)
@@ -148,7 +140,7 @@ test('fixed: escapes forward slashes', function()
     { type = T.literal, value = 'f', pos = 1, wordness = W.word },
     { type = T.literal, value = 'o', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
-    { type = T.slash, value = '/', pos = 4, wordness = W.non_word },
+    { type = T.slash,   value = '/', pos = 4, wordness = W.non_word },
     { type = T.literal, value = 'b', pos = 5, wordness = W.word },
     { type = T.literal, value = 'a', pos = 6, wordness = W.word },
     { type = T.literal, value = 'r', pos = 7, wordness = W.word },

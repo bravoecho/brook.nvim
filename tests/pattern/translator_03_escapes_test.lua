@@ -10,16 +10,9 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
-local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
-local ok, translator = pcall(require, 'brook.pattern.translator')
-if not ok then
-  print('SKIP: brook.pattern.translator not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
@@ -264,7 +257,7 @@ end)
 
 test('escape: trailing backslash passes through', function()
   local result = translate({
-    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+    { type = T.literal,        value = 'a',  pos = 1, wordness = W.word },
     { type = T.escape_literal, value = '\\', pos = 2, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\va\\')
@@ -277,7 +270,7 @@ end)
 test('escape: consecutive escapes', function()
   local result = translate({
     { type = T.escape_literal, value = '\\\\', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
-    { type = T.escape_class, value = '\\d', pos = 3, escape_class = EC.shorthand_word, wordness = W.word },
+    { type = T.escape_class,   value = '\\d',  pos = 3, escape_class = EC.shorthand_word,  wordness = W.word },
   }, {})
   eq(result.pattern, '\\v\\\\\\d')
 end)

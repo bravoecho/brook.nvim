@@ -20,6 +20,87 @@ local W = types.wordness
 local EC = types.escape_class
 
 --------------------------------------------------------------------------------
+--- Main parse function --------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Unsupported group kinds.
+local unsupported_groups = {
+  [types.group_kind.lookahead_pos] = 'lookarounds and atomic groups not supported',
+  [types.group_kind.lookahead_neg] = 'lookarounds and atomic groups not supported',
+  [types.group_kind.lookbehind_pos] = 'lookarounds not supported',
+  [types.group_kind.lookbehind_neg] = 'lookarounds not supported',
+  [types.group_kind.atomic] = 'lookarounds and atomic groups not supported',
+}
+
+--- Parse and annotate tokens.
+---
+---@param tokens brook.pattern.Token[]
+---@return brook.pattern.ParseResult
+function M.parse(tokens)
+  local warnings = {}
+
+  -- First pass: classify escapes and check for unsupported constructs
+  for _, tok in ipairs(tokens) do
+    if tok.type == T.escape_class then
+      M._classify_escape_class_token(tok)
+    elseif tok.type == T.escape_boundary then
+      local err = M._classify_escape_boundary_token(tok, warnings)
+      if err then
+        return { error = err, warnings = warnings }
+      end
+    elseif tok.type == T.escape_literal then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_hex then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_unicode then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_octal then
+      tok.escape_class = EC.escaped_literal
+    elseif tok.type == T.escape_property then
+      return { error = 'unicode properties not supported', warnings = warnings }
+    elseif tok.type == T.escape_backref then
+      return { error = 'backreferences require PCRE2', warnings = warnings }
+    elseif tok.type == T.group_open then
+      -- Check for unsupported group kinds
+      local err = unsupported_groups[tok.kind]
+      if err then
+        return { error = err, warnings = warnings }
+      end
+      -- Named groups: warn (or error if empty name)
+      if tok.kind == types.group_kind.named_python
+          or tok.kind == types.group_kind.named_pcre then
+        if tok.name == '' then
+          return { error = 'invalid group name', warnings = warnings }
+        end
+        table.insert(warnings, 'named groups become numbered')
+      end
+    elseif tok.type == T.quantifier then
+      if tok.possessive then
+        return { error = 'possessive quantifiers not supported', warnings = warnings }
+      end
+    end
+  end
+
+  -- Second pass: assign wordness to all applicable tokens
+  for i, _ in ipairs(tokens) do
+    M._assign_token_wordness(tokens, i)
+  end
+
+  -- Third pass: annotate \b tokens with prev/next wordness
+  for i, tok in ipairs(tokens) do
+    if tok.type == T.escape_boundary and tok.boundary_kind == 'word' then
+      tok.prev_wordness = M._find_prev_wordness(tokens, i)
+      tok.next_wordness = M._find_next_wordness(tokens, i)
+    end
+  end
+
+  return {
+    tokens = tokens,
+    warnings = warnings,
+  }
+end
+
+--------------------------------------------------------------------------------
 --- Wordness classification ----------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -27,7 +108,7 @@ local EC = types.escape_class
 ---
 ---@param char string Single character
 ---@return brook.pattern.Wordness
-local function char_wordness(char)
+function M._char_wordness(char)
   if types.word_chars[char] then
     return W.word
   end
@@ -38,7 +119,7 @@ end
 ---
 ---@param value string The escape sequence (e.g. "\\w")
 ---@return brook.pattern.Wordness
-local function escape_class_wordness(value)
+function M._escape_class_wordness(value)
   if types.word_escapes[value] then
     return W.word
   elseif types.non_word_escapes[value] then
@@ -62,7 +143,7 @@ end
 ---@param tokens brook.pattern.Token[] All tokens
 ---@param open_idx integer Index of char_class_open token
 ---@return brook.pattern.Wordness
-local function classify_char_class(tokens, open_idx)
+function M._classify_char_class(tokens, open_idx)
   local open_token = tokens[open_idx]
   if open_token.negated then
     return W.unknown
@@ -80,7 +161,7 @@ local function classify_char_class(tokens, open_idx)
     end
 
     if tok.type == CC.cc_literal then
-      local w = char_wordness(tok.value)
+      local w = M._char_wordness(tok.value)
       if w == W.word then
         has_word = true
       elseif w == W.non_word then
@@ -102,7 +183,7 @@ local function classify_char_class(tokens, open_idx)
         end
       end
     elseif tok.type == CC.cc_escape_class then
-      local w = escape_class_wordness(tok.value)
+      local w = M._escape_class_wordness(tok.value)
       if w == W.word then
         has_word = true
       elseif w == W.non_word then
@@ -121,7 +202,7 @@ local function classify_char_class(tokens, open_idx)
         has_word = true
       else
         -- Other escaped literals: classify the char itself
-        local w = char_wordness(escaped_char)
+        local w = M._char_wordness(escaped_char)
         if w == W.word then
           has_word = true
         else
@@ -186,7 +267,7 @@ end
 ---@param tokens brook.pattern.Token[]
 ---@param idx integer Token index
 ---@return brook.pattern.Wordness?
-local function token_wordness(tokens, idx)
+function M._token_wordness(tokens, idx)
   if idx < 1 or idx > #tokens then
     return nil
   end
@@ -195,19 +276,19 @@ local function token_wordness(tokens, idx)
   local tt = tok.type
 
   if tt == T.literal then
-    return char_wordness(tok.value)
+    return M._char_wordness(tok.value)
   elseif tt == T.escape_class then
-    return escape_class_wordness(tok.value)
+    return M._escape_class_wordness(tok.value)
   elseif tt == T.escape_literal then
     local escaped = tok.value:sub(2)
     if escaped == 'n' or escaped == 't' or escaped == 'r' then
       return W.non_word
     end
-    return char_wordness(escaped)
+    return M._char_wordness(escaped)
   elseif tt == T.dot then
     return W.unknown
   elseif tt == T.char_class_open then
-    return classify_char_class(tokens, idx)
+    return M._classify_char_class(tokens, idx)
   elseif tt == T.quantifier then
     -- Quantifier inherits wordness from its target (previous non-quantifier)
     local target_idx = idx - 1
@@ -215,7 +296,7 @@ local function token_wordness(tokens, idx)
       target_idx = target_idx - 1
     end
     if target_idx >= 1 then
-      return token_wordness(tokens, target_idx)
+      return M._token_wordness(tokens, target_idx)
     end
     return nil
   elseif tt == T.group_open or tt == T.group_close then
@@ -252,7 +333,7 @@ end
 ---@param tokens brook.pattern.Token[]
 ---@param boundary_idx integer Index of the \b token
 ---@return brook.pattern.Wordness?
-local function find_prev_wordness(tokens, boundary_idx)
+function M._find_prev_wordness(tokens, boundary_idx)
   local i = boundary_idx - 1
 
   while i >= 1 do
@@ -280,11 +361,11 @@ local function find_prev_wordness(tokens, boundary_idx)
       end
       -- Now at char_class_open
       if i >= 1 then
-        return token_wordness(tokens, i)
+        return M._token_wordness(tokens, i)
       end
       return nil
     else
-      return token_wordness(tokens, i)
+      return M._token_wordness(tokens, i)
     end
   end
 
@@ -298,7 +379,7 @@ end
 ---@param tokens brook.pattern.Token[]
 ---@param boundary_idx integer Index of the \b token
 ---@return brook.pattern.Wordness?
-local function find_next_wordness(tokens, boundary_idx)
+function M._find_next_wordness(tokens, boundary_idx)
   local i = boundary_idx + 1
 
   while i <= #tokens do
@@ -312,9 +393,9 @@ local function find_next_wordness(tokens, boundary_idx)
       i = i + 1
     elseif tok.type == T.char_class_open then
       -- Wordness of the class
-      return token_wordness(tokens, i)
+      return M._token_wordness(tokens, i)
     else
-      return token_wordness(tokens, i)
+      return M._token_wordness(tokens, i)
     end
   end
 
@@ -333,25 +414,25 @@ end
 ---
 ---@param tokens brook.pattern.Token[]
 ---@param idx integer
-local function assign_token_wordness(tokens, idx)
+function M._assign_token_wordness(tokens, idx)
   local tok = tokens[idx]
   local tt = tok.type
 
   if tt == T.literal then
-    tok.wordness = char_wordness(tok.value)
+    tok.wordness = M._char_wordness(tok.value)
   elseif tt == T.escape_class then
-    tok.wordness = escape_class_wordness(tok.value)
+    tok.wordness = M._escape_class_wordness(tok.value)
   elseif tt == T.escape_literal then
     local escaped = tok.value:sub(2)
     if escaped == 'n' or escaped == 't' or escaped == 'r' then
       tok.wordness = W.non_word
     else
-      tok.wordness = char_wordness(escaped)
+      tok.wordness = M._char_wordness(escaped)
     end
   elseif tt == T.dot then
     tok.wordness = W.unknown
   elseif tt == T.char_class_open then
-    tok.wordness = classify_char_class(tokens, idx)
+    tok.wordness = M._classify_char_class(tokens, idx)
   elseif tt == T.quantifier then
     -- Look backward for the quantified atom
     local target_idx = idx - 1
@@ -412,7 +493,7 @@ end
 --- Classify an escape_class token semantically.
 ---
 ---@param tok brook.pattern.Token
-local function classify_escape_class_token(tok)
+function M._classify_escape_class_token(tok)
   local value = tok.value
   if value == '\\w' or value == '\\d' then
     tok.escape_class = EC.shorthand_word
@@ -429,7 +510,7 @@ end
 ---@param tok brook.pattern.Token
 ---@param warnings string[]
 ---@return string? error message if unsupported
-local function classify_escape_boundary_token(tok, warnings)
+function M._classify_escape_boundary_token(tok, warnings)
   local kind = tok.boundary_kind
   if kind == 'word' then
     tok.escape_class = EC.boundary
@@ -443,87 +524,6 @@ local function classify_escape_boundary_token(tok, warnings)
     table.insert(warnings, '\\z treated as $')
   end
   return nil
-end
-
---- Unsupported group kinds.
-local unsupported_groups = {
-  [types.group_kind.lookahead_pos] = 'lookarounds and atomic groups not supported',
-  [types.group_kind.lookahead_neg] = 'lookarounds and atomic groups not supported',
-  [types.group_kind.lookbehind_pos] = 'lookarounds not supported',
-  [types.group_kind.lookbehind_neg] = 'lookarounds not supported',
-  [types.group_kind.atomic] = 'lookarounds and atomic groups not supported',
-}
-
---------------------------------------------------------------------------------
---- Main parse function --------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Parse and annotate tokens.
----
----@param tokens brook.pattern.Token[]
----@return brook.pattern.ParseResult
-function M.parse(tokens)
-  local warnings = {}
-
-  -- First pass: classify escapes and check for unsupported constructs
-  for _, tok in ipairs(tokens) do
-    if tok.type == T.escape_class then
-      classify_escape_class_token(tok)
-    elseif tok.type == T.escape_boundary then
-      local err = classify_escape_boundary_token(tok, warnings)
-      if err then
-        return { error = err, warnings = warnings }
-      end
-    elseif tok.type == T.escape_literal then
-      tok.escape_class = EC.escaped_literal
-    elseif tok.type == T.escape_hex then
-      tok.escape_class = EC.escaped_literal
-    elseif tok.type == T.escape_unicode then
-      tok.escape_class = EC.escaped_literal
-    elseif tok.type == T.escape_octal then
-      tok.escape_class = EC.escaped_literal
-    elseif tok.type == T.escape_property then
-      return { error = 'unicode properties not supported', warnings = warnings }
-    elseif tok.type == T.escape_backref then
-      return { error = 'backreferences require PCRE2', warnings = warnings }
-    elseif tok.type == T.group_open then
-      -- Check for unsupported group kinds
-      local err = unsupported_groups[tok.kind]
-      if err then
-        return { error = err, warnings = warnings }
-      end
-      -- Named groups: warn (or error if empty name)
-      if tok.kind == types.group_kind.named_python
-          or tok.kind == types.group_kind.named_pcre then
-        if tok.name == '' then
-          return { error = 'invalid group name', warnings = warnings }
-        end
-        table.insert(warnings, 'named groups become numbered')
-      end
-    elseif tok.type == T.quantifier then
-      if tok.possessive then
-        return { error = 'possessive quantifiers not supported', warnings = warnings }
-      end
-    end
-  end
-
-  -- Second pass: assign wordness to all applicable tokens
-  for i, _ in ipairs(tokens) do
-    assign_token_wordness(tokens, i)
-  end
-
-  -- Third pass: annotate \b tokens with prev/next wordness
-  for i, tok in ipairs(tokens) do
-    if tok.type == T.escape_boundary and tok.boundary_kind == 'word' then
-      tok.prev_wordness = find_prev_wordness(tokens, i)
-      tok.next_wordness = find_next_wordness(tokens, i)
-    end
-  end
-
-  return {
-    tokens = tokens,
-    warnings = warnings,
-  }
 end
 
 return M

@@ -14,19 +14,12 @@ local eq = h.eq
 local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
-local ok, parser = pcall(require, 'brook.pattern.parser')
-if not ok then
-  print('SKIP: brook.pattern.parser not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local parser = require('brook.pattern.parser')
 
 local parse = parser.parse
 
 local T = types.token_type
 local EC = types.escape_class
-local W = types.wordness
 
 --------------------------------------------------------------------------------
 --- Shorthand word escapes -----------------------------------------------------

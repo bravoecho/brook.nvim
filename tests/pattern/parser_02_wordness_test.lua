@@ -10,16 +10,9 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
-local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
-local ok, parser = pcall(require, 'brook.pattern.parser')
-if not ok then
-  print('SKIP: brook.pattern.parser not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local parser = require('brook.pattern.parser')
 
 local parse = parser.parse
 
@@ -300,7 +293,7 @@ end)
 test('quantifier wordness: * after \\w inherits word', function()
   local result = parse({
     { type = T.escape_class, value = '\\w', pos = 1 },
-    { type = T.quantifier, value = '*', pos = 3, greedy = true },
+    { type = T.quantifier,   value = '*',   pos = 3, greedy = true },
   })
   eq(result.tokens[2].wordness, W.word)
 end)
@@ -308,14 +301,14 @@ end)
 test('quantifier wordness: + after \\s inherits non_word', function()
   local result = parse({
     { type = T.escape_class, value = '\\s', pos = 1 },
-    { type = T.quantifier, value = '+', pos = 3, greedy = true },
+    { type = T.quantifier,   value = '+',   pos = 3, greedy = true },
   })
   eq(result.tokens[2].wordness, W.non_word)
 end)
 
 test('quantifier wordness: ? after . inherits unknown', function()
   local result = parse({
-    { type = T.dot, value = '.', pos = 1 },
+    { type = T.dot,        value = '.', pos = 1 },
     { type = T.quantifier, value = '?', pos = 2, greedy = true },
   })
   eq(result.tokens[2].wordness, W.unknown)
@@ -323,7 +316,7 @@ end)
 
 test('quantifier wordness: {2,3} after literal a inherits word', function()
   local result = parse({
-    { type = T.literal, value = 'a', pos = 1 },
+    { type = T.literal,    value = 'a',     pos = 1 },
     { type = T.quantifier, value = '{2,3}', pos = 2, greedy = true },
   })
   eq(result.tokens[2].wordness, W.word)
@@ -332,37 +325,37 @@ end)
 test('quantifier wordness: *? (non-greedy) after \\d inherits word', function()
   local result = parse({
     { type = T.escape_class, value = '\\d', pos = 1 },
-    { type = T.quantifier, value = '*?', pos = 3, greedy = false },
+    { type = T.quantifier,   value = '*?',  pos = 3, greedy = false },
   })
   eq(result.tokens[2].wordness, W.word)
 end)
 
 test('quantifier wordness: inherits non_word from group_close', function()
   local result = parse({
-    { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
-    { type = T.literal, value = 'a', pos = 2 },
+    { type = T.group_open,  value = '(', pos = 1, kind = GK.capturing },
+    { type = T.literal,     value = 'a', pos = 2 },
     { type = T.group_close, value = ')', pos = 3 },
-    { type = T.quantifier, value = '+', pos = 4, greedy = true },
+    { type = T.quantifier,  value = '+', pos = 4, greedy = true },
   })
   eq(result.tokens[4].wordness, W.non_word)
 end)
 
 test('quantifier wordness: inherits from char_class (word)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_literal, value = 'a', pos = 2 },
+    { type = T.char_class_open,  value = '[', pos = 1, negated = false },
+    { type = CC.cc_literal,      value = 'a', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
-    { type = T.quantifier, value = '+', pos = 4, greedy = true },
+    { type = T.quantifier,       value = '+', pos = 4, greedy = true },
   })
   eq(result.tokens[4].wordness, W.word)
 end)
 
 test('quantifier wordness: inherits from char_class (unknown when negated)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[^', pos = 1, negated = true },
-    { type = CC.cc_literal, value = 'a', pos = 3 },
-    { type = T.char_class_close, value = ']', pos = 4 },
-    { type = T.quantifier, value = '*', pos = 5, greedy = true },
+    { type = T.char_class_open,  value = '[^', pos = 1, negated = true },
+    { type = CC.cc_literal,      value = 'a',  pos = 3 },
+    { type = T.char_class_close, value = ']',  pos = 4 },
+    { type = T.quantifier,       value = '*',  pos = 5, greedy = true },
   })
   eq(result.tokens[4].wordness, W.unknown)
 end)
@@ -373,49 +366,49 @@ end)
 
 test('class wordness: [a-z] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'a-z', pos = 2, from = 'a', to = 'z' },
-    { type = T.char_class_close, value = ']', pos = 5 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
+    { type = T.char_class_close, value = ']',   pos = 5 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [A-Z] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'A-Z', pos = 2, from = 'A', to = 'Z' },
-    { type = T.char_class_close, value = ']', pos = 5 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'A-Z', pos = 2, from = 'A',     to = 'Z' },
+    { type = T.char_class_close, value = ']',   pos = 5 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [0-9] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = '0-9', pos = 2, from = '0', to = '9' },
-    { type = T.char_class_close, value = ']', pos = 5 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = '0-9', pos = 2, from = '0',     to = '9' },
+    { type = T.char_class_close, value = ']',   pos = 5 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [a-zA-Z0-9_] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'a-z', pos = 2, from = 'a', to = 'z' },
-    { type = CC.cc_range, value = 'A-Z', pos = 5, from = 'A', to = 'Z' },
-    { type = CC.cc_range, value = '0-9', pos = 8, from = '0', to = '9' },
-    { type = CC.cc_literal, value = '_', pos = 11 },
-    { type = T.char_class_close, value = ']', pos = 12 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
+    { type = CC.cc_range,        value = 'A-Z', pos = 5, from = 'A',     to = 'Z' },
+    { type = CC.cc_range,        value = '0-9', pos = 8, from = '0',     to = '9' },
+    { type = CC.cc_literal,      value = '_',   pos = 11 },
+    { type = T.char_class_close, value = ']',   pos = 12 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [abc] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_literal, value = 'a', pos = 2 },
-    { type = CC.cc_literal, value = 'b', pos = 3 },
-    { type = CC.cc_literal, value = 'c', pos = 4 },
+    { type = T.char_class_open,  value = '[', pos = 1, negated = false },
+    { type = CC.cc_literal,      value = 'a', pos = 2 },
+    { type = CC.cc_literal,      value = 'b', pos = 3 },
+    { type = CC.cc_literal,      value = 'c', pos = 4 },
     { type = T.char_class_close, value = ']', pos = 5 },
   })
   eq(result.tokens[1].wordness, W.word)
@@ -423,54 +416,54 @@ end)
 
 test('class wordness: [\\w] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\w', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [\\d] is word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\d', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [\\b] is word (literal b in Rust regex)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\b', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close,   value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [\\a] is word (escaped word char)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\a', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close,   value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [\\5] is word (escaped digit)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\5', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close,   value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
 
 test('class wordness: [\\_] is word (escaped underscore)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\_', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close,   value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.word)
 end)
@@ -481,40 +474,40 @@ end)
 
 test('class wordness: [ \\t\\n] is non_word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_literal, value = ' ', pos = 2 },
+    { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
+    { type = CC.cc_literal,        value = ' ',   pos = 2 },
     { type = CC.cc_escape_literal, value = '\\t', pos = 3 },
     { type = CC.cc_escape_literal, value = '\\n', pos = 5 },
-    { type = T.char_class_close, value = ']', pos = 7 },
+    { type = T.char_class_close,   value = ']',   pos = 7 },
   })
   eq(result.tokens[1].wordness, W.non_word)
 end)
 
 test('class wordness: [\\s] is non_word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\s', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.non_word)
 end)
 
 test('class wordness: [\\W] is non_word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\W', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.non_word)
 end)
 
 test('class wordness: [.!@#] is non_word', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_literal, value = '.', pos = 2 },
-    { type = CC.cc_literal, value = '!', pos = 3 },
-    { type = CC.cc_literal, value = '@', pos = 4 },
-    { type = CC.cc_literal, value = '#', pos = 5 },
+    { type = T.char_class_open,  value = '[', pos = 1, negated = false },
+    { type = CC.cc_literal,      value = '.', pos = 2 },
+    { type = CC.cc_literal,      value = '!', pos = 3 },
+    { type = CC.cc_literal,      value = '@', pos = 4 },
+    { type = CC.cc_literal,      value = '#', pos = 5 },
     { type = T.char_class_close, value = ']', pos = 6 },
   })
   eq(result.tokens[1].wordness, W.non_word)
@@ -526,85 +519,85 @@ end)
 
 test('class wordness: [^a-z] is unknown (negated)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[^', pos = 1, negated = true },
-    { type = CC.cc_range, value = 'a-z', pos = 3, from = 'a', to = 'z' },
-    { type = T.char_class_close, value = ']', pos = 6 },
+    { type = T.char_class_open,  value = '[^',  pos = 1, negated = true },
+    { type = CC.cc_range,        value = 'a-z', pos = 3, from = 'a',    to = 'z' },
+    { type = T.char_class_close, value = ']',   pos = 6 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [a-z.] is unknown (mixed)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'a-z', pos = 2, from = 'a', to = 'z' },
-    { type = CC.cc_literal, value = '.', pos = 5 },
-    { type = T.char_class_close, value = ']', pos = 6 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
+    { type = CC.cc_literal,      value = '.',   pos = 5 },
+    { type = T.char_class_close, value = ']',   pos = 6 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [-a-z] is unknown (leading hyphen)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_literal, value = '-', pos = 2 },
-    { type = CC.cc_range, value = 'a-z', pos = 3, from = 'a', to = 'z' },
-    { type = T.char_class_close, value = ']', pos = 6 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_literal,      value = '-',   pos = 2 },
+    { type = CC.cc_range,        value = 'a-z', pos = 3, from = 'a',     to = 'z' },
+    { type = T.char_class_close, value = ']',   pos = 6 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [a-z-] is unknown (trailing hyphen)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'a-z', pos = 2, from = 'a', to = 'z' },
-    { type = CC.cc_literal, value = '-', pos = 5 },
-    { type = T.char_class_close, value = ']', pos = 6 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
+    { type = CC.cc_literal,      value = '-',   pos = 5 },
+    { type = T.char_class_close, value = ']',   pos = 6 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [A-z] is unknown (range spans word/non-word)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = 'A-z', pos = 2, from = 'A', to = 'z' },
-    { type = T.char_class_close, value = ']', pos = 5 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = 'A-z', pos = 2, from = 'A',     to = 'z' },
+    { type = T.char_class_close, value = ']',   pos = 5 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [0-Z] is unknown (range digit to letter via gap)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
-    { type = CC.cc_range, value = '0-Z', pos = 2, from = '0', to = 'Z' },
-    { type = T.char_class_close, value = ']', pos = 5 },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
+    { type = CC.cc_range,        value = '0-Z', pos = 2, from = '0',     to = 'Z' },
+    { type = T.char_class_close, value = ']',   pos = 5 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [\\S] is unknown', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\S', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [\\D] is unknown', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\D', pos = 2 },
-    { type = T.char_class_close, value = ']', pos = 4 },
+    { type = T.char_class_close, value = ']',   pos = 4 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
 
 test('class wordness: [\\w\\s] is unknown (mixed word and non-word)', function()
   local result = parse({
-    { type = T.char_class_open, value = '[', pos = 1, negated = false },
+    { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\w', pos = 2 },
     { type = CC.cc_escape_class, value = '\\s', pos = 4 },
-    { type = T.char_class_close, value = ']', pos = 6 },
+    { type = T.char_class_close, value = ']',   pos = 6 },
   })
   eq(result.tokens[1].wordness, W.unknown)
 end)
@@ -637,10 +630,10 @@ end)
 
 test('pattern wordness: <.*?> has mixed wordness', function()
   local result = parse({
-    { type = T.literal, value = '<', pos = 1 },
-    { type = T.dot, value = '.', pos = 2 },
+    { type = T.literal,    value = '<',  pos = 1 },
+    { type = T.dot,        value = '.',  pos = 2 },
     { type = T.quantifier, value = '*?', pos = 3, greedy = false },
-    { type = T.literal, value = '>', pos = 5 },
+    { type = T.literal,    value = '>',  pos = 5 },
   })
   eq(result.tokens[1].wordness, W.non_word)
   eq(result.tokens[2].wordness, W.unknown)

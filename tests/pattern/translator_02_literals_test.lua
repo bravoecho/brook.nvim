@@ -10,22 +10,13 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
-local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
-local ok, translator = pcall(require, 'brook.pattern.translator')
-if not ok then
-  print('SKIP: brook.pattern.translator not yet implemented')
-  print('0/0 tests passed')
-  vim.cmd('cquit 0')
-  return
-end
+local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
 local T = types.token_type
-local CC = types.cc_token_type
-local EC = types.escape_class
 local W = types.wordness
 
 --------------------------------------------------------------------------------
@@ -161,7 +152,7 @@ test('slash: forward slash escaped', function()
     { type = T.literal, value = 'f', pos = 1, wordness = W.word },
     { type = T.literal, value = 'o', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
-    { type = T.slash, value = '/', pos = 4, wordness = W.non_word },
+    { type = T.slash,   value = '/', pos = 4, wordness = W.non_word },
     { type = T.literal, value = 'b', pos = 5, wordness = W.word },
     { type = T.literal, value = 'a', pos = 6, wordness = W.word },
     { type = T.literal, value = 'r', pos = 7, wordness = W.word },
@@ -171,11 +162,11 @@ end)
 
 test('slash: multiple slashes', function()
   local result = translate({
-    { type = T.slash, value = '/', pos = 1, wordness = W.non_word },
+    { type = T.slash,   value = '/', pos = 1, wordness = W.non_word },
     { type = T.literal, value = 'a', pos = 2, wordness = W.word },
     { type = T.literal, value = 'p', pos = 3, wordness = W.word },
     { type = T.literal, value = 'i', pos = 4, wordness = W.word },
-    { type = T.slash, value = '/', pos = 5, wordness = W.non_word },
+    { type = T.slash,   value = '/', pos = 5, wordness = W.non_word },
     { type = T.literal, value = 'v', pos = 6, wordness = W.word },
     { type = T.literal, value = '1', pos = 7, wordness = W.word },
   }, {})
@@ -196,7 +187,7 @@ end)
 test('dot: in context', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
-    { type = T.dot, value = '.', pos = 2, wordness = W.unknown },
+    { type = T.dot,     value = '.', pos = 2, wordness = W.unknown },
     { type = T.literal, value = 'b', pos = 3, wordness = W.word },
   }, {})
   eq(result.pattern, '\\va.b')
@@ -222,11 +213,11 @@ end)
 
 test('anchor: both anchors', function()
   local result = translate({
-    { type = T.anchor, value = '^', pos = 1, wordness = W.non_word },
+    { type = T.anchor,  value = '^', pos = 1, wordness = W.non_word },
     { type = T.literal, value = 'f', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
     { type = T.literal, value = 'o', pos = 4, wordness = W.word },
-    { type = T.anchor, value = '$', pos = 5, wordness = W.non_word },
+    { type = T.anchor,  value = '$', pos = 5, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v^foo$')
 end)
@@ -237,20 +228,20 @@ end)
 
 test('alternation: simple', function()
   local result = translate({
-    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+    { type = T.literal,     value = 'a', pos = 1, wordness = W.word },
     { type = T.alternation, value = '|', pos = 2, wordness = W.non_word },
-    { type = T.literal, value = 'b', pos = 3, wordness = W.word },
+    { type = T.literal,     value = 'b', pos = 3, wordness = W.word },
   }, {})
   eq(result.pattern, '\\va|b')
 end)
 
 test('alternation: multiple', function()
   local result = translate({
-    { type = T.literal, value = 'a', pos = 1, wordness = W.word },
+    { type = T.literal,     value = 'a', pos = 1, wordness = W.word },
     { type = T.alternation, value = '|', pos = 2, wordness = W.non_word },
-    { type = T.literal, value = 'b', pos = 3, wordness = W.word },
+    { type = T.literal,     value = 'b', pos = 3, wordness = W.word },
     { type = T.alternation, value = '|', pos = 4, wordness = W.non_word },
-    { type = T.literal, value = 'c', pos = 5, wordness = W.word },
+    { type = T.literal,     value = 'c', pos = 5, wordness = W.word },
   }, {})
   eq(result.pattern, '\\va|b|c')
 end)

@@ -34,6 +34,102 @@ local special = {
 }
 
 --------------------------------------------------------------------------------
+--- Main tokeniser -------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Tokenise a ripgrep regex pattern.
+---
+---@param input string The pattern to tokenise
+---@return brook.pattern.Token[] tokens
+function M.tokenise(input)
+  local tokens = {}
+  local pos = 1
+
+  while M._in_bounds(input, pos) do
+    local c = M._char_at(input, pos)
+    local token
+
+    if c == '.' then
+      token = { type = T.dot, value = '.', pos = pos }
+      pos = pos + 1
+    elseif c == '^' or c == '$' then
+      token = { type = T.anchor, value = c, pos = pos }
+      pos = pos + 1
+    elseif c == '|' then
+      token = { type = T.alternation, value = '|', pos = pos }
+      pos = pos + 1
+    elseif c == '*' or c == '+' or c == '?' then
+      -- simple quantifier, possibly with modifier
+      local next_c = M._char_at(input, pos + 1)
+      if next_c == '?' then
+        token = { type = T.quantifier, value = c .. '?', pos = pos, greedy = false }
+        pos = pos + 2
+      elseif next_c == '+' and (c == '*' or c == '+') then
+        token = { type = T.quantifier, value = c .. '+', pos = pos, greedy = true, possessive = true }
+        pos = pos + 2
+      else
+        token = { type = T.quantifier, value = c, pos = pos, greedy = true }
+        pos = pos + 1
+      end
+    elseif c == '{' then
+      local value, end_pos = M._try_brace_quantifier(input, pos)
+      if value and end_pos then
+        local greedy = true
+        local possessive = nil
+        if value:sub(-1) == '?' then
+          greedy = false
+        elseif value:sub(-1) == '+' then
+          possessive = true
+        end
+        token = { type = T.quantifier, value = value, pos = pos, greedy = greedy }
+        if possessive then
+          token.possessive = true
+        end
+        pos = end_pos
+      else
+        -- invalid brace: treat as literal
+        token = { type = T.literal, value = '{', pos = pos }
+        pos = pos + 1
+      end
+    elseif c == '}' then
+      -- standalone closing brace is a literal
+      token = { type = T.literal, value = '}', pos = pos }
+      pos = pos + 1
+    elseif c == '/' then
+      token = { type = T.slash, value = '/', pos = pos }
+      pos = pos + 1
+    elseif c == '(' then
+      token, pos = M._scan_group_open(input, pos)
+    elseif c == ')' then
+      token = { type = T.group_close, value = ')', pos = pos }
+      pos = pos + 1
+    elseif c == '[' then
+      local cc_tokens, new_pos = M._scan_char_class(input, pos)
+      for _, t in ipairs(cc_tokens) do
+        tokens[#tokens+1] = t
+      end
+      pos = new_pos
+      -- skip the token append below
+      goto continue
+    elseif c == '\\' then
+      token, pos = M._scan_escape(input, pos)
+    elseif not special[c] then
+      token = { type = T.literal, value = c, pos = pos }
+      pos = pos + 1
+    else
+      -- fallback for any unhandled special character
+      token = { type = T.literal, value = c, pos = pos }
+      pos = pos + 1
+    end
+
+    tokens[#tokens+1] = token
+    ::continue::
+  end
+
+  return tokens
+end
+
+--------------------------------------------------------------------------------
 --- Helpers --------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -42,7 +138,7 @@ local special = {
 ---@param input string
 ---@param pos integer
 ---@return boolean
-local function in_bounds(input, pos)
+function M._in_bounds(input, pos)
   return pos <= #input
 end
 
@@ -51,8 +147,8 @@ end
 ---@param input string
 ---@param pos integer
 ---@return string?
-local function char_at(input, pos)
-  if not in_bounds(input, pos) then
+function M._char_at(input, pos)
+  if not M._in_bounds(input, pos) then
     return nil
   end
   return input:sub(pos, pos)
@@ -62,7 +158,7 @@ end
 ---
 ---@param c string?
 ---@return boolean
-local function is_digit(c)
+function M._is_digit(c)
   return c ~= nil and c >= '0' and c <= '9'
 end
 
@@ -80,20 +176,20 @@ end
 ---@param pos integer Position of the opening brace
 ---@return string? value The quantifier including braces and any modifier
 ---@return integer? end_pos Position after the quantifier
-local function try_brace_quantifier(input, pos)
+function M._try_brace_quantifier(input, pos)
   local i = pos + 1 -- skip opening brace
 
   -- must start with a digit
-  if not is_digit(char_at(input, i)) then
+  if not M._is_digit(M._char_at(input, i)) then
     return nil, nil
   end
 
   -- consume first number
-  while is_digit(char_at(input, i)) do
+  while M._is_digit(M._char_at(input, i)) do
     i = i + 1
   end
 
-  local c = char_at(input, i)
+  local c = M._char_at(input, i)
 
   if c == '}' then
     -- {n} form
@@ -101,10 +197,10 @@ local function try_brace_quantifier(input, pos)
   elseif c == ',' then
     i = i + 1
     -- optional second number
-    while is_digit(char_at(input, i)) do
+    while M._is_digit(M._char_at(input, i)) do
       i = i + 1
     end
-    if char_at(input, i) ~= '}' then
+    if M._char_at(input, i) ~= '}' then
       return nil, nil
     end
     i = i + 1
@@ -113,7 +209,7 @@ local function try_brace_quantifier(input, pos)
   end
 
   -- check for non-greedy or possessive modifier
-  local next_c = char_at(input, i)
+  local next_c = M._char_at(input, i)
   if next_c == '?' or next_c == '+' then
     i = i + 1
   end
@@ -129,7 +225,7 @@ end
 ---
 ---@param c string?
 ---@return boolean
-local function is_hex_digit(c)
+function M._is_hex_digit(c)
   if c == nil then
     return false
   end
@@ -140,22 +236,47 @@ end
 ---
 ---@param c string?
 ---@return boolean
-local function is_octal_digit(c)
+function M._is_octal_digit(c)
   return c ~= nil and c >= '0' and c <= '7'
 end
 
 --- Escape characters that map to literal escapes (control chars and special).
 local literal_escapes = {
-  n = true, t = true, r = true, f = true, a = true, e = true, -- control
-  ['\\'] = true, ['.'] = true, ['*'] = true, ['+'] = true, ['?'] = true,
-  ['^'] = true, ['$'] = true, ['|'] = true, ['('] = true, [')'] = true,
-  ['['] = true, [']'] = true, ['{'] = true, ['}'] = true, ['/'] = true,
+  n = true,
+  t = true,
+  r = true,
+  f = true,
+  a = true,
+  e = true, -- control
+  ['\\'] = true,
+  ['.'] = true,
+  ['*'] = true,
+  ['+'] = true,
+  ['?'] = true,
+  ['^'] = true,
+  ['$'] = true,
+  ['|'] = true,
+  ['('] = true,
+  [')'] = true,
+  ['['] = true,
+  [']'] = true,
+  ['{'] = true,
+  ['}'] = true,
+  ['/'] = true,
 }
 
 --- Escape characters that map to character classes.
 local class_escapes = {
-  d = true, D = true, w = true, W = true, s = true, S = true,
-  h = true, H = true, v = true, V = true,
+  d = true,
+  D = true,
+  w = true,
+  W = true,
+  s = true,
+  S = true,
+  h = true,
+  H = true,
+  v = true,
+  V = true,
 }
 
 --- Scan an escape sequence starting at pos (which points to the backslash).
@@ -164,9 +285,9 @@ local class_escapes = {
 ---@param pos integer
 ---@return brook.pattern.Token token
 ---@return integer new_pos
-local function scan_escape(input, pos)
+function M._scan_escape(input, pos)
   local start_pos = pos
-  local c = char_at(input, pos + 1)
+  local c = M._char_at(input, pos + 1)
 
   -- trailing backslash
   if c == nil then
@@ -176,7 +297,7 @@ local function scan_escape(input, pos)
   -- word boundary: \b, \B, \b{...}
   if c == 'b' then
     -- check for extended form \b{...}
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         local value = input:sub(start_pos, close)
@@ -233,7 +354,7 @@ local function scan_escape(input, pos)
 
   -- hex: \xNN or \x{...}
   if c == 'x' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         local value = input:sub(start_pos, close)
@@ -241,7 +362,7 @@ local function scan_escape(input, pos)
       end
     else
       -- \xNN: exactly two hex digits
-      if is_hex_digit(char_at(input, pos + 2)) and is_hex_digit(char_at(input, pos + 3)) then
+      if M._is_hex_digit(M._char_at(input, pos + 2)) and M._is_hex_digit(M._char_at(input, pos + 3)) then
         local value = input:sub(start_pos, pos + 3)
         return { type = T.escape_hex, value = value, pos = start_pos }, pos + 4
       end
@@ -252,7 +373,7 @@ local function scan_escape(input, pos)
 
   -- unicode: \uNNNN, \u{...}, \UNNNNNNNN, \U{...}
   if c == 'u' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         local value = input:sub(start_pos, close)
@@ -262,7 +383,7 @@ local function scan_escape(input, pos)
       -- \uNNNN: exactly four hex digits
       local valid = true
       for i = 2, 5 do
-        if not is_hex_digit(char_at(input, pos + i)) then
+        if not M._is_hex_digit(M._char_at(input, pos + i)) then
           valid = false
           break
         end
@@ -277,7 +398,7 @@ local function scan_escape(input, pos)
   end
 
   if c == 'U' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         local value = input:sub(start_pos, close)
@@ -287,7 +408,7 @@ local function scan_escape(input, pos)
       -- \UNNNNNNNN: exactly eight hex digits
       local valid = true
       for i = 2, 9 do
-        if not is_hex_digit(char_at(input, pos + i)) then
+        if not M._is_hex_digit(M._char_at(input, pos + i)) then
           valid = false
           break
         end
@@ -302,7 +423,7 @@ local function scan_escape(input, pos)
   end
 
   -- octal: \o{...} or \NNN (1-3 octal digits, but only if starts with 0-7)
-  if c == 'o' and char_at(input, pos + 2) == '{' then
+  if c == 'o' and M._char_at(input, pos + 2) == '{' then
     local close = input:find('}', pos + 3, true)
     if close then
       local value = input:sub(start_pos, close)
@@ -314,10 +435,10 @@ local function scan_escape(input, pos)
 
   -- octal or backref: \0-\7 start octal, \1-\9 could be backref
   -- rule: if multiple octal digits follow, it's octal; single digit 1-9 is backref
-  if is_octal_digit(c) then
+  if M._is_octal_digit(c) then
     local i = pos + 2
     local count = 1
-    while count < 3 and is_octal_digit(char_at(input, i)) do
+    while count < 3 and M._is_octal_digit(M._char_at(input, i)) do
       i = i + 1
       count = count + 1
     end
@@ -338,7 +459,7 @@ local function scan_escape(input, pos)
 
   -- unicode properties: \p{...}, \P{...}
   if c == 'p' or c == 'P' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         local value = input:sub(start_pos, close)
@@ -367,7 +488,7 @@ local flag_chars = {
 ---
 ---@param c string?
 ---@return boolean
-local function is_flag_char(c)
+function M._is_flag_char(c)
   return c ~= nil and flag_chars[c] == true
 end
 
@@ -375,7 +496,7 @@ end
 ---
 ---@param c string?
 ---@return boolean
-local function is_name_char(c)
+function M._is_name_char(c)
   if c == nil then
     return false
   end
@@ -388,7 +509,7 @@ end
 ---
 ---@param c string?
 ---@return boolean
-local function is_name_start_char(c)
+function M._is_name_start_char(c)
   if c == nil then
     return false
   end
@@ -402,16 +523,16 @@ end
 ---@param pos integer Position of the opening parenthesis
 ---@return brook.pattern.Token token
 ---@return integer new_pos
-local function scan_group_open(input, pos)
+function M._scan_group_open(input, pos)
   local start_pos = pos
   local GK = types.group_kind
 
   -- simple capturing group
-  if char_at(input, pos + 1) ~= '?' then
+  if M._char_at(input, pos + 1) ~= '?' then
     return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
   end
 
-  local c2 = char_at(input, pos + 2)
+  local c2 = M._char_at(input, pos + 2)
 
   -- non-capturing: (?:
   if c2 == ':' then
@@ -430,19 +551,19 @@ local function scan_group_open(input, pos)
 
   -- lookbehind or named PCRE: (?< followed by = or ! or name
   if c2 == '<' then
-    local c3 = char_at(input, pos + 3)
+    local c3 = M._char_at(input, pos + 3)
     if c3 == '=' then
       return { type = T.group_open, value = '(?<=', pos = start_pos, kind = GK.lookbehind_pos }, pos + 4
     elseif c3 == '!' then
       return { type = T.group_open, value = '(?<!', pos = start_pos, kind = GK.lookbehind_neg }, pos + 4
-    elseif is_name_start_char(c3) then
+    elseif M._is_name_start_char(c3) then
       -- named PCRE: (?<name>
       local name_start = pos + 3
       local i = name_start
-      while is_name_char(char_at(input, i)) do
+      while M._is_name_char(M._char_at(input, i)) do
         i = i + 1
       end
-      if char_at(input, i) == '>' and i > name_start then
+      if M._char_at(input, i) == '>' and i > name_start then
         local name = input:sub(name_start, i - 1)
         local value = input:sub(start_pos, i)
         return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_pcre, name = name }, i + 1
@@ -458,15 +579,15 @@ local function scan_group_open(input, pos)
   end
 
   -- named Python: (?P<name>
-  if c2 == 'P' and char_at(input, pos + 3) == '<' then
-    local c4 = char_at(input, pos + 4)
-    if is_name_start_char(c4) then
+  if c2 == 'P' and M._char_at(input, pos + 3) == '<' then
+    local c4 = M._char_at(input, pos + 4)
+    if M._is_name_start_char(c4) then
       local name_start = pos + 4
       local i = name_start
-      while is_name_char(char_at(input, i)) do
+      while M._is_name_char(M._char_at(input, i)) do
         i = i + 1
       end
-      if char_at(input, i) == '>' and i > name_start then
+      if M._char_at(input, i) == '>' and i > name_start then
         local name = input:sub(name_start, i - 1)
         local value = input:sub(start_pos, i)
         return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_python, name = name }, i + 1
@@ -478,25 +599,25 @@ local function scan_group_open(input, pos)
 
   -- flags: (?flags) or (?flags:
   -- flags can be: [imsUuxR] optionally followed by -[imsUuxR]
-  if is_flag_char(c2) or c2 == '-' then
+  if M._is_flag_char(c2) or c2 == '-' then
     local i = pos + 2
     local flags_start = i
 
     -- consume positive flags
-    while is_flag_char(char_at(input, i)) do
+    while M._is_flag_char(M._char_at(input, i)) do
       i = i + 1
     end
 
     -- optional negation section
-    if char_at(input, i) == '-' then
+    if M._char_at(input, i) == '-' then
       i = i + 1
-      while is_flag_char(char_at(input, i)) do
+      while M._is_flag_char(M._char_at(input, i)) do
         i = i + 1
       end
     end
 
     local flags = input:sub(flags_start, i - 1)
-    local next_c = char_at(input, i)
+    local next_c = M._char_at(input, i)
 
     if next_c == ')' then
       -- standalone flags: (?i)
@@ -529,9 +650,9 @@ local CC = types.cc_token_type
 ---@param pos integer Position of the backslash
 ---@return brook.pattern.Token token
 ---@return integer new_pos
-local function scan_cc_escape(input, pos)
+function M._scan_cc_escape(input, pos)
   local start_pos = pos
-  local c = char_at(input, pos + 1)
+  local c = M._char_at(input, pos + 1)
 
   if c == nil then
     return { type = CC.cc_literal, value = '\\', pos = start_pos }, pos + 1
@@ -549,12 +670,12 @@ local function scan_cc_escape(input, pos)
 
   -- hex: \xNN or \x{...}
   if c == 'x' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         return { type = CC.cc_escape_hex, value = input:sub(start_pos, close), pos = start_pos }, close + 1
       end
-    elseif is_hex_digit(char_at(input, pos + 2)) and is_hex_digit(char_at(input, pos + 3)) then
+    elseif M._is_hex_digit(M._char_at(input, pos + 2)) and M._is_hex_digit(M._char_at(input, pos + 3)) then
       return { type = CC.cc_escape_hex, value = input:sub(start_pos, pos + 3), pos = start_pos }, pos + 4
     end
     return { type = CC.cc_escape_literal, value = '\\x', pos = start_pos }, pos + 2
@@ -562,7 +683,7 @@ local function scan_cc_escape(input, pos)
 
   -- unicode: \u{...}, \uNNNN, \U{...}, \UNNNNNNNN
   if c == 'u' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         return { type = CC.cc_escape_unicode, value = input:sub(start_pos, close), pos = start_pos }, close + 1
@@ -570,7 +691,7 @@ local function scan_cc_escape(input, pos)
     else
       local valid = true
       for i = 2, 5 do
-        if not is_hex_digit(char_at(input, pos + i)) then
+        if not M._is_hex_digit(M._char_at(input, pos + i)) then
           valid = false
           break
         end
@@ -583,7 +704,7 @@ local function scan_cc_escape(input, pos)
   end
 
   if c == 'U' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         return { type = CC.cc_escape_unicode, value = input:sub(start_pos, close), pos = start_pos }, close + 1
@@ -591,7 +712,7 @@ local function scan_cc_escape(input, pos)
     else
       local valid = true
       for i = 2, 9 do
-        if not is_hex_digit(char_at(input, pos + i)) then
+        if not M._is_hex_digit(M._char_at(input, pos + i)) then
           valid = false
           break
         end
@@ -604,7 +725,7 @@ local function scan_cc_escape(input, pos)
   end
 
   -- octal: \o{...} or \NNN
-  if c == 'o' and char_at(input, pos + 2) == '{' then
+  if c == 'o' and M._char_at(input, pos + 2) == '{' then
     local close = input:find('}', pos + 3, true)
     if close then
       return { type = CC.cc_escape_octal, value = input:sub(start_pos, close), pos = start_pos }, close + 1
@@ -612,10 +733,10 @@ local function scan_cc_escape(input, pos)
     return { type = CC.cc_escape_literal, value = '\\o', pos = start_pos }, pos + 2
   end
 
-  if is_octal_digit(c) then
+  if M._is_octal_digit(c) then
     local i = pos + 2
     local count = 1
-    while count < 3 and is_octal_digit(char_at(input, i)) do
+    while count < 3 and M._is_octal_digit(M._char_at(input, i)) do
       i = i + 1
       count = count + 1
     end
@@ -624,7 +745,7 @@ local function scan_cc_escape(input, pos)
 
   -- unicode properties: \p{...}, \P{...}
   if c == 'p' or c == 'P' then
-    if char_at(input, pos + 2) == '{' then
+    if M._char_at(input, pos + 2) == '{' then
       local close = input:find('}', pos + 3, true)
       if close then
         return { type = CC.cc_escape_property, value = input:sub(start_pos, close), pos = start_pos, negated = (c == 'P') }, close + 1
@@ -643,19 +764,19 @@ end
 ---@param pos integer Position of the first '['
 ---@return brook.pattern.Token? token
 ---@return integer? new_pos
-local function try_posix_class(input, pos)
-  if char_at(input, pos) ~= '[' or char_at(input, pos + 1) ~= ':' then
+function M._try_posix_class(input, pos)
+  if M._char_at(input, pos) ~= '[' or M._char_at(input, pos + 1) ~= ':' then
     return nil, nil
   end
 
-  local negated = char_at(input, pos + 2) == '^'
+  local negated = M._char_at(input, pos + 2) == '^'
   local name_start = negated and pos + 3 or pos + 2
 
   -- find closing :]
   local i = name_start
-  while in_bounds(input, i) do
-    local c = char_at(input, i)
-    if c == ':' and char_at(input, i + 1) == ']' then
+  while M._in_bounds(input, i) do
+    local c = M._char_at(input, i)
+    if c == ':' and M._char_at(input, i + 1) == ']' then
       local name = input:sub(name_start, i - 1)
       if #name > 0 then
         local value = input:sub(pos, i + 1)
@@ -677,209 +798,101 @@ end
 ---@param pos integer
 ---@return brook.pattern.Token[] tokens
 ---@return integer new_pos
-local function scan_char_class(input, pos)
+function M._scan_char_class(input, pos)
   local tokens = {}
   local start_pos = pos
   local depth = 1 -- track nesting
 
   -- opening bracket
-  local negated = char_at(input, pos + 1) == '^'
+  local negated = M._char_at(input, pos + 1) == '^'
   if negated then
-    tokens[#tokens + 1] = { type = T.char_class_open, value = '[^', pos = start_pos, negated = true }
+    tokens[#tokens+1] = { type = T.char_class_open, value = '[^', pos = start_pos, negated = true }
     pos = pos + 2
   else
-    tokens[#tokens + 1] = { type = T.char_class_open, value = '[', pos = start_pos, negated = false }
+    tokens[#tokens+1] = { type = T.char_class_open, value = '[', pos = start_pos, negated = false }
     pos = pos + 1
   end
 
   -- ] immediately after [ or [^ is a literal
   local first_char = true
 
-  while in_bounds(input, pos) and depth > 0 do
-    local c = char_at(input, pos)
+  while M._in_bounds(input, pos) and depth > 0 do
+    local c = M._char_at(input, pos)
 
     -- ] as first character is literal
     if c == ']' and first_char then
-      tokens[#tokens + 1] = { type = CC.cc_literal, value = ']', pos = pos }
+      tokens[#tokens+1] = { type = CC.cc_literal, value = ']', pos = pos }
       pos = pos + 1
       first_char = false
 
-    -- closing bracket
+      -- closing bracket
     elseif c == ']' then
       depth = depth - 1
       if depth == 0 then
-        tokens[#tokens + 1] = { type = T.char_class_close, value = ']', pos = pos }
+        tokens[#tokens+1] = { type = T.char_class_close, value = ']', pos = pos }
       else
-        tokens[#tokens + 1] = { type = CC.cc_nested_close, value = ']', pos = pos }
+        tokens[#tokens+1] = { type = CC.cc_nested_close, value = ']', pos = pos }
       end
       pos = pos + 1
 
-    -- escape sequence
+      -- escape sequence
     elseif c == '\\' then
-      local tok, new_pos = scan_cc_escape(input, pos)
-      tokens[#tokens + 1] = tok
+      local tok, new_pos = M._scan_cc_escape(input, pos)
+      tokens[#tokens+1] = tok
       pos = new_pos
       first_char = false
 
-    -- intersection: &&
-    elseif c == '&' and char_at(input, pos + 1) == '&' then
-      tokens[#tokens + 1] = { type = CC.cc_intersection, value = '&&', pos = pos }
+      -- intersection: &&
+    elseif c == '&' and M._char_at(input, pos + 1) == '&' then
+      tokens[#tokens+1] = { type = CC.cc_intersection, value = '&&', pos = pos }
       pos = pos + 2
       first_char = false
 
-    -- nested class or POSIX
+      -- nested class or POSIX
     elseif c == '[' then
       -- try POSIX first
-      local posix_tok, posix_end = try_posix_class(input, pos)
-      if posix_tok then
-        tokens[#tokens + 1] = posix_tok
+      local posix_tok, posix_end = M._try_posix_class(input, pos)
+      if posix_tok and posix_end then
+        tokens[#tokens+1] = posix_tok
         pos = posix_end
         first_char = false
       else
         -- nested class
         depth = depth + 1
-        local nested_negated = char_at(input, pos + 1) == '^'
+        local nested_negated = M._char_at(input, pos + 1) == '^'
         if nested_negated then
-          tokens[#tokens + 1] = { type = CC.cc_nested_open, value = '[^', pos = pos, negated = true }
+          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[^', pos = pos, negated = true }
           pos = pos + 2
         else
-          tokens[#tokens + 1] = { type = CC.cc_nested_open, value = '[', pos = pos, negated = false }
+          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[', pos = pos, negated = false }
           pos = pos + 1
         end
         first_char = true -- reset for nested class
       end
 
-    -- range: check if this is start of a range (char-char)
-    elseif char_at(input, pos + 1) == '-' and char_at(input, pos + 2) ~= ']' and char_at(input, pos + 2) ~= nil then
+      -- range: check if this is start of a range (char-char)
+    elseif M._char_at(input, pos + 1) == '-' and M._char_at(input, pos + 2) ~= ']' and M._char_at(input, pos + 2) ~= nil then
       local from_char = c
-      local to_char = char_at(input, pos + 2)
+      local to_char = M._char_at(input, pos + 2)
       if to_char and to_char ~= '[' and to_char ~= '\\' then
-        tokens[#tokens + 1] = { type = CC.cc_range, value = from_char .. '-' .. to_char, pos = pos, from = from_char, to = to_char }
+        tokens[#tokens+1] = { type = CC.cc_range, value = from_char .. '-' .. to_char, pos = pos, from = from_char, to = to_char }
         pos = pos + 3
       else
         -- not a simple range, treat as literal
-        tokens[#tokens + 1] = { type = CC.cc_literal, value = c, pos = pos }
+        tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
         pos = pos + 1
       end
       first_char = false
 
-    -- literal
+      -- literal
     else
-      tokens[#tokens + 1] = { type = CC.cc_literal, value = c, pos = pos }
+      tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
       pos = pos + 1
       first_char = false
     end
   end
 
   return tokens, pos
-end
-
---------------------------------------------------------------------------------
---- Main tokeniser -------------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Tokenise a ripgrep regex pattern.
----
----@param input string The pattern to tokenise
----@return brook.pattern.Token[] tokens
-function M.tokenise(input)
-  local tokens = {}
-  local pos = 1
-
-  while in_bounds(input, pos) do
-    local c = char_at(input, pos)
-    local token
-
-    if c == '.' then
-      token = { type = T.dot, value = '.', pos = pos }
-      pos = pos + 1
-
-    elseif c == '^' or c == '$' then
-      token = { type = T.anchor, value = c, pos = pos }
-      pos = pos + 1
-
-    elseif c == '|' then
-      token = { type = T.alternation, value = '|', pos = pos }
-      pos = pos + 1
-
-    elseif c == '*' or c == '+' or c == '?' then
-      -- simple quantifier, possibly with modifier
-      local next_c = char_at(input, pos + 1)
-      if next_c == '?' then
-        token = { type = T.quantifier, value = c .. '?', pos = pos, greedy = false }
-        pos = pos + 2
-      elseif next_c == '+' and (c == '*' or c == '+') then
-        token = { type = T.quantifier, value = c .. '+', pos = pos, greedy = true, possessive = true }
-        pos = pos + 2
-      else
-        token = { type = T.quantifier, value = c, pos = pos, greedy = true }
-        pos = pos + 1
-      end
-
-    elseif c == '{' then
-      local value, end_pos = try_brace_quantifier(input, pos)
-      if value then
-        local greedy = true
-        local possessive = nil
-        if value:sub(-1) == '?' then
-          greedy = false
-        elseif value:sub(-1) == '+' then
-          possessive = true
-        end
-        token = { type = T.quantifier, value = value, pos = pos, greedy = greedy }
-        if possessive then
-          token.possessive = true
-        end
-        pos = end_pos
-      else
-        -- invalid brace: treat as literal
-        token = { type = T.literal, value = '{', pos = pos }
-        pos = pos + 1
-      end
-
-    elseif c == '}' then
-      -- standalone closing brace is a literal
-      token = { type = T.literal, value = '}', pos = pos }
-      pos = pos + 1
-
-    elseif c == '/' then
-      token = { type = T.slash, value = '/', pos = pos }
-      pos = pos + 1
-
-    elseif c == '(' then
-      token, pos = scan_group_open(input, pos)
-
-    elseif c == ')' then
-      token = { type = T.group_close, value = ')', pos = pos }
-      pos = pos + 1
-
-    elseif c == '[' then
-      local cc_tokens, new_pos = scan_char_class(input, pos)
-      for _, t in ipairs(cc_tokens) do
-        tokens[#tokens + 1] = t
-      end
-      pos = new_pos
-      -- skip the token append below
-      goto continue
-
-    elseif c == '\\' then
-      token, pos = scan_escape(input, pos)
-
-    elseif not special[c] then
-      token = { type = T.literal, value = c, pos = pos }
-      pos = pos + 1
-
-    else
-      -- fallback for any unhandled special character
-      token = { type = T.literal, value = c, pos = pos }
-      pos = pos + 1
-    end
-
-    tokens[#tokens + 1] = token
-    ::continue::
-  end
-
-  return tokens
 end
 
 return M
