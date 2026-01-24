@@ -95,20 +95,6 @@
 
 --------------------------------------------------------------------------------
 
---- Options controlling ripgrep search behaviour and pattern translation.
----@class brook.PatternOpts
----
---- Whether to match whole words only (--word-regexp)
----@field word? boolean
----
---- Whether to treat the pattern as a literal string (--fixed-strings)
----@field fixed? boolean
----
---- Whether to treat the pattern as case sensitive, case insensitive, or unspecified
----@field case? brook.SearchCase
-
---------------------------------------------------------------------------------
-
 local M = {}
 
 --------------------------------------------------------------------------------

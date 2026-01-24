@@ -705,7 +705,7 @@ end
 --- Notifies the user of any pattern translation issues.
 ---
 ---@param rg_pattern string|nil The ripgrep search pattern
----@param pattern_opts brook.PatternOpts Options affecting pattern translation
+---@param pattern_opts brook.pattern.TranslateOpts Options affecting pattern translation
 function M._set_search_register(rg_pattern, pattern_opts)
   if not rg_pattern then
     return
