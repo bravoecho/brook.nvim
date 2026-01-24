@@ -1,16 +1,15 @@
-# Ripgrep to "Very Magic" Vim Pattern Translation Specification
+# Ripgrep to Vim Pattern Translation Specification
 
 ## Overview
 
 This specification defines the translation from ripgrep (Rust regex) patterns to
-Neovim's patterns in very magic mode (`\v`).
+Neovim patterns in very magic mode (`\v`).
 
-**Target Environment:**
-
+Target environment:
 - Neovim with `regexpengine=2` (NFA engine) for predictable behaviour
 - Very magic mode (`\v`) for closer semantic alignment with ripgrep
 
-**Design Principle:**
+Design principle:
 
 > Incorrect highlighting is worse than no highlighting.
 
@@ -25,47 +24,104 @@ Ripgrep uses Rust's regex crate, which has PCRE-like syntax familiar to most
 developers. Vim's traditional regex syntax differs significantly. This
 translation enables:
 
-1. Search register integration (`@/`) for `n`/`N` navigation
-2. Match highlighting in the buffer
-3. Seamless workflow between ripgrep results and Vim's native search
+- Search register integration (`@/`) for `n`/`N` navigation
+- Match highlighting in the buffer
+- Seamless workflow between ripgrep results and Vim's native search
 
-## Return value
+## Architecture
+
+The translator uses a three-phase pipeline:
+
+```
+Input: ripgrep regex pattern
+
+  1. Tokenise: lexical analysis, identify token boundaries
+  2. Parse: semantic analysis, classify, validate, annotate
+  3. Translate: code generation, emit Vim regex
+
+Output: { pattern, warning }
+```
+
+### Phase 1: Tokenise
+
+Lexical analysis producing a flat list of tokens.
+
+Responsibilities:
+- Identify token boundaries
+- Categorise tokens as specifically as the lexical grammar allows
+- Handle character class as a lexical submode (different rules inside `[...]`)
+
+The tokeniser does not:
+- Look at preceding tokens to decide a category
+- Validate whether sequences make semantic sense
+- Emit errors (invalid sequences become tokens; the parser decides validity)
+
+### Phase 2: Parse
+
+Semantic analysis and annotation.
+
+Responsibilities:
+- Classify escape sequences semantically
+- Compute wordness for all tokens (for `\b` translation)
+- Annotate `\b` tokens with prev/next wordness context
+- Detect and reject unsupported constructs
+- Collect warnings for translatable-with-caveats constructs
+
+The parser does not:
+- Emit any Vim regex syntax
+
+### Phase 3: Translate
+
+Mechanical transformation from annotated tokens to Vim regex.
+
+Responsibilities:
+- Emit mode prefix (`\v` or `\V`)
+- Emit case modifier (`\C` or `\c`) if specified
+- Walk tokens and emit Vim equivalents
+- Apply word boundary wrapping if requested
+- Format accumulated warnings
+
+The translator does not:
+- Re-examine token contents
+- Make semantic decisions (already done by parser)
+
+## Return Value
 
 The translator returns a result structure with two fields:
 
-- `pattern`: The translated Vim regex string, or `nil` if translation failed
-- `warning`: An optional warning message describing any issues or adjustments
+- `pattern`: the translated Vim regex string, or `nil` if translation failed
+- `warning`: an optional warning message describing any issues or adjustments
 
 When multiple warnings occur, only the first is shown with a count of
-additional warnings, e.g. `"named groups become numbered (+1 more)"`.
+additional warnings: `"named groups become numbered (+1 more)"`.
 
 ## Scope
 
 ### Features in scope
 
-1. Literal characters and basic metacharacters
-2. Vim-special characters requiring escaping
-3. Character classes
-4. Character class shorthands
-5. Word boundaries (`\b`)
-6. Quantifiers (greedy and non-greedy)
-7. Groups (capturing and non-capturing)
-8. Named groups (translated to numbered with warning)
-9. Case sensitivity modifiers
-10. Anchors `\A` and `\z` (translated with warning)
+- Literal characters and basic metacharacters
+- Vim-special characters requiring escaping
+- Character classes (including ranges, POSIX classes, nesting, intersection)
+- Character class shorthands (`\d`, `\w`, `\s`, etc.)
+- Word boundaries (`\b`)
+- Quantifiers (greedy and non-greedy)
+- Groups (capturing, non-capturing, named, flag groups)
+- Case sensitivity modifiers
+- Anchors `\A` and `\z` (translated with warning)
+- Hex, Unicode, and octal escapes
 
 ### Features out of scope
 
-These features will cause the translator to return `nil`:
+These features cause the translator to return `nil`:
 
-1. Lookarounds: `(?=...)` `(?!...)` `(?<=...)` `(?<!...)`
-2. Non-word boundary: `\B`
-3. Unicode categories: `\p{...}` `\P{...}`
-4. Atomic groups: `(?>...)`
-5. Possessive quantifiers: `*+` `++` `?+`
-6. Backreferences: `\1` through `\9` (require PCRE2, which the plugin disallows)
+- Lookarounds: `(?=...)` `(?!...)` `(?<=...)` `(?<!...)`
+- Non-word boundary: `\B`
+- Unicode categories: `\p{...}` `\P{...}`
+- Atomic groups: `(?>.,.)`
+- Possessive quantifiers: `*+` `++` `?+`
+- Backreferences: `\1` through `\9`
 
-## Translation rules
+## Translation Rules
 
 ### 1. Mode prefixes
 
@@ -75,182 +131,136 @@ These features will cause the translator to return `nil`:
 ### 2. Case sensitivity
 
 Case sensitivity is controlled by ripgrep's `-s`/`--case-sensitive` and
-`-i`/`--ignore-case` flags. When specified, these translate to Vim's `\C`
-and `\c` pattern modifiers respectively.
+`-i`/`--ignore-case` flags.
 
-The case modifier must appear at the very beginning of the pattern, before the
-magic mode prefix, or Vim will interpret it as an escaped literal character.
-
-**Translation:**
-
+Translation:
 - `-s` / `--case-sensitive` => prepend `\C`
 - `-i` / `--ignore-case` => prepend `\c`
 - Neither specified => no modifier (defer to Vim's `'ignorecase'`/`'smartcase'`)
 
-**Flag precedence:** When multiple case flags are specified, the last one wins.
-This matches ripgrep's behaviour.
+The case modifier appears before the magic mode prefix.
 
-**Test Cases (regex mode):**
-
+Test cases (regex mode):
 - `hello` with `-s` => `\C\vhello`
 - `hello` with `-i` => `\c\vhello`
 - `hello` (no flag) => `\vhello`
 - `foo.*bar` with `-s` => `\C\vfoo.*bar`
 - `foo=bar` with `-i` => `\c\vfoo\=bar`
 
-**Test Cases (fixed string mode):**
-
+Test cases (fixed string mode):
 - `hello` with `-F -s` => `\C\Vhello`
 - `hello` with `-F -i` => `\c\Vhello`
-- `hello` with `-F` (no case flag) => `\Vhello`
 - `[a+b].*` with `-F -s` => `\C\V[a+b].*`
 - `foo/bar` with `-F -i` => `\c\Vfoo\/bar`
 
-**Test Cases (with word boundaries):**
-
+Test cases (with word boundaries):
 - `hello` with `-w -s` => `\C\v<hello>`
 - `hello` with `-w -i` => `\c\v<hello>`
 - `hello` with `-F -w -s` => `\C\V\<hello\>`
-- `hello` with `-F -w -i` => `\c\V\<hello\>`
 
-**Note on `--smart-case`:**
-
-Ripgrep's `-S`/`--smart-case` flag has no direct Vim pattern equivalent. Users
-who want consistent smart-case behaviour should configure both tools similarly:
-
-- Ripgrep: Set `--smart-case` in `~/.ripgreprc`
-- Neovim: Set `vim.o.ignorecase = true` and `vim.o.smartcase = true`
-
-When neither `-s` nor `-i` is explicitly passed, the translator omits any case
-modifier, allowing Vim's native settings to govern match highlighting.
+Note on `--smart-case`: ripgrep's `-S`/`--smart-case` flag has no direct Vim
+pattern equivalent. Users who want consistent smart-case behaviour should
+configure both tools similarly.
 
 ### 3. Characters literal in ripgrep, special in very magic
 
 These must be escaped when they appear as literals outside character classes:
 
-- `=` - quantifier in `\v` (synonym for `?`) => escape as `\=`
-- `<` - start of word boundary in `\v` => escape as `\<`
-- `>` - end of word boundary in `\v` => escape as `\>`
-- `~` - last substitute string in `\v` => escape as `\~`
-- `@` - complex pattern atoms (`@=`, `@!`, etc.) => escape as `\@`
-- `&` - branch concatenation (rare) => escape as `\&`
+- `=` => `\=` (quantifier in `\v`, synonym for `?`)
+- `<` => `\<` (start of word boundary)
+- `>` => `\>` (end of word boundary)
+- `~` => `\~` (last substitute string)
+- `@` => `\@` (complex pattern atoms)
+- `&` => `\&` (branch concatenation)
 
-**Test Cases:**
-
-- `foo=bar` => `\vfoo\=bar` (literal equals)
-- `x~y` => `\vx\~y` (literal tilde)
-- `a@b` => `\va\@b` (literal at-sign)
-- `a&b` => `\va\&b` (literal ampersand)
-- `a<b` => `\va\<b` (literal less-than)
-- `x > 0` => `\vx \> 0` (literal greater-than)
-- `Vec<T>` => `\vVec\<T\>` (generic type syntax)
-- `<div>` => `\v\<div\>` (HTML tag)
+Test cases:
+- `foo=bar` => `\vfoo\=bar`
+- `x~y` => `\vx\~y`
+- `a@b` => `\va\@b`
+- `a&b` => `\va\&b`
+- `a<b` => `\va\<b`
+- `x > 0` => `\vx \> 0`
+- `Vec<T>` => `\vVec\<T\>`
+- `<div>` => `\v\<div\>`
 - `[~=]= nil` => `\v[~=]\= nil` (inside class literal, outside escaped)
-- `foo==bar` => `\vfoo\=\=bar` (multiple equals)
-- `@decorator` => `\v\@decorator` (Python decorator)
-- `a && b` => `\va \&\& b` (logical AND)
 
 ### 4. Characters special in both engines
 
-These pass through unchanged (both engines treat them as metacharacters):
+These pass through unchanged:
 
-- `.` - any character
-- `*` - zero or more
-- `+` - one or more
-- `?` - zero or one
-- `(` `)` - grouping
-- `[` `]` - character class
-- `|` - alternation
-- `^` - start of line / negation in class
-- `$` - end of line
-- `\` - escape character
-- `{` `}` - range quantifier
+- `.` any character
+- `*` zero or more
+- `+` one or more
+- `?` zero or one
+- `(` `)` grouping
+- `[` `]` character class
+- `|` alternation
+- `^` start of line / negation in class
+- `$` end of line
+- `\` escape character
+- `{` `}` range quantifier
 
-**Test Cases:**
+Test cases:
+- `a.b` => `\va.b`
+- `a*b` => `\va*b`
+- `a+b` => `\va+b`
+- `(foo)` => `\v(foo)`
+- `foo|bar` => `\vfoo|bar`
+- `a{2,3}` => `\va{2,3}`
 
-- `a.b` => `\va.b` (any char)
-- `a*b` => `\va*b` (zero or more)
-- `a+b` => `\va+b` (one or more)
-- `a?b` => `\va?b` (zero or one)
-- `(foo)` => `\v(foo)` (capturing group)
-- `foo|bar` => `\vfoo|bar` (alternation)
-- `^start` => `\v^start` (line start)
-- `end$` => `\vend$` (line end)
-- `a{2,3}` => `\va{2,3}` (range quantifier)
-
-### 5. Escaped metacharacters (literal in both)
+### 5. Escaped metacharacters
 
 When ripgrep escapes a metacharacter to make it literal, the escape passes
-through (very magic uses the same convention):
+through unchanged:
 
-**Test Cases:**
-
-- `\(` => `\v\(` (literal parenthesis)
-- `\)` => `\v\)` (literal parenthesis)
-- `\+` => `\v\+` (literal plus)
-- `\?` => `\v\?` (literal question mark)
-- `\{` => `\v\{` (literal brace)
-- `\}` => `\v\}` (literal brace)
-- `\[` => `\v\[` (literal bracket)
-- `\]` => `\v\]` (literal bracket)
-- `\|` => `\v\|` (literal pipe)
-- `\.` => `\v\.` (literal dot)
-- `\*` => `\v\*` (literal asterisk)
-- `\\` => `\v\\` (literal backslash)
-- `\^` => `\v\^` (literal caret)
-- `\$` => `\v\$` (literal dollar)
+- `\(` => `\v\(`
+- `\)` => `\v\)`
+- `\+` => `\v\+`
+- `\.` => `\v\.`
+- `\\` => `\v\\`
 
 ### 6. Character class shorthands
 
-These are compatible between engines and pass through:
+These are compatible between engines:
 
-- `\d` - digit `[0-9]`
-- `\D` - non-digit
-- `\w` - word character `[a-zA-Z0-9_]`
-- `\W` - non-word character
-- `\s` - whitespace
-- `\S` - non-whitespace
-- `\t` - tab
-- `\n` - newline
-- `\r` - carriage return
+- `\d` digit `[0-9]`
+- `\D` non-digit
+- `\w` word character `[a-zA-Z0-9_]`
+- `\W` non-word character
+- `\s` whitespace
+- `\S` non-whitespace
+- `\t` tab
+- `\n` newline
+- `\r` carriage return
 
-**Test cases:**
-
+Test cases:
 - `\d+` => `\v\d+`
 - `\w+` => `\v\w+`
-- `\s*` => `\v\s*`
 - `[\d\w]` => `\v[\d\w]`
 
 ### 7. Word boundaries
 
-- `\b` => `%(<|>)` (word boundary, either side, non-capturing)
-- `\B` => **unsupported**, return `nil` with warning `"\B not supported"`; it
-  could be approximated as a negated boundary check using Vim assertions, but
-  this would be beyond the scope of the plugin for a rarely used regex feature.
-
 Ripgrep's `\b` matches at any word boundary. Vim has separate `\<` (start) and
-`\>` (end). Since we cannot determine from the pattern alone which side is
-intended, we use `%(<|>)` as a conservative translation that matches either.
-The non-capturing group `%()` ensures that `\b` does not pollute the capture
-group numbering, preserving the intended group indices for replacements.
+`\>` (end). The translator uses wordness analysis to choose the appropriate
+boundary:
 
-**Test Cases:**
+- `\b` before word character => `<` (word start)
+- `\b` after word character => `>` (word end)
+- `\b` in ambiguous context => `%(<|>)` (either boundary)
 
-- `\bword\b` => `\v%(<|>)word%(<|>)` (word boundaries)
-- `\btest` => `\v%(<|>)test` (start boundary)
-- `test\b` => `\vtest%(<|>)` (end boundary)
-- `foo\bbar` => `\vfoo%(<|>)bar` (mid-pattern boundary)
-- `\b\w+\b` => `\v%(<|>)\w+%(<|>)` (with shorthand)
-- `\B` => `nil` with warning (unsupported)
-- `foo\Bbar` => `nil` with warning (unsupported)
+The `%()` non-capturing group ensures `\b` does not affect capture numbering.
 
-**Note on `-w` / `--word-regexp` flag:**
+Test cases:
+- `\bword` => `\v<word` (start boundary, word char follows)
+- `word\b` => `\vword>` (end boundary, word char precedes)
+- `\bword\b` => `\v<word>` (both determined by context)
+- `\b\w+\b` => `\v<\w+>` (word chars on both sides)
+- `foo\bbar` => `\vfoo%(<|>)bar` (ambiguous mid-pattern)
+- `\b` alone => `\v%(<|>)` (no context)
+- `\B` => `nil` with warning `"\B not supported"`
 
-When the user passes `-w`, ripgrep wraps the pattern in `\b...\b` internally.
-However, for the Vim pattern, we use the cleaner `<...>` word boundary syntax
-since we know definitively it's a whole-word match:
-
-- `-w hello` => `\v<hello>`
+The `-w` flag (whole word match) wraps the pattern in word boundaries:
+- `-w foo` => `\v<foo>`
 - `-w foo.*bar` => `\v<foo.*bar>`
 
 ### 8. Quantifiers
@@ -264,233 +274,334 @@ since we know definitively it's a whole-word match:
 - `a{3,}` => `\va{3,}`
 - `a{3,5}` => `\va{3,5}`
 
-#### 8.2 Non-greedy quantifiers (translation required)
+#### 8.2 Non-greedy quantifiers
 
 Vim uses `\{-}` syntax for non-greedy matching:
 
-- `a*?` => `\va{-}` (zero or more, non-greedy)
-- `a+?` => `\va{-1,}` (one or more, non-greedy)
-- `a??` => `\va{-0,1}` (zero or one, non-greedy)
-- `a{3}?` => `\va{-3}` (exactly 3, non-greedy)
-- `a{3,}?` => `\va{-3,}` (3 or more, non-greedy)
-- `a{3,5}?` => `\va{-3,5}` (3 to 5, non-greedy)
+- `a*?` => `\va{-}`
+- `a+?` => `\va{-1,}`
+- `a??` => `\va{-0,1}`
+- `a{3}?` => `\va{-3}`
+- `a{3,}?` => `\va{-3,}`
+- `a{3,5}?` => `\va{-3,5}`
 
-**Test Cases:**
+Test cases:
+- `.*?` => `\v.{-}`
+- `.+?` => `\v.{-1,}`
+- `<.*?>` => `\v\<.{-}\>`
+- `".*?"` => `\v".{-}"`
 
-- `.*?` => `\v.{-}` (common: match minimal)
-- `.+?` => `\v.{-1,}` (at least one, minimal)
-- `<.*?>` => `\v\<.{-}\>` (HTML tag, non-greedy)
-- `".*?"` => `\v".{-}"` (quoted string)
-- `\w+?` => `\v\w{-1,}` (word chars, minimal)
-- `a{2,4}?` => `\va{-2,4}` (range, non-greedy)
-- `(ab)+?` => `\v(ab){-1,}` (group, non-greedy)
+#### 8.3 Possessive quantifiers (unsupported)
+
+- `*+` => `nil` with warning `"possessive quantifiers not supported"`
+- `++` => `nil` with warning
+- `?+` => `nil` with warning
 
 ### 9. Character classes
 
 Inside `[...]`, most metacharacters lose their special meaning.
 
-#### 9.1 Basic syntax (pass through)
+#### 9.1 Basic syntax
 
-- `[abc]` => `\v[abc]` (simple class)
-- `[a-z]` => `\v[a-z]` (range)
-- `[^abc]` => `\v[^abc]` (negated class)
-- `[a-zA-Z0-9]` => `\v[a-zA-Z0-9]` (multiple ranges)
+- `[abc]` => `\v[abc]`
+- `[a-z]` => `\v[a-z]`
+- `[^abc]` => `\v[^abc]`
+- `[a-zA-Z0-9]` => `\v[a-zA-Z0-9]`
 
-#### 9.2 Special positions within classes
+#### 9.2 Special positions
 
 - `[]abc]` => `\v[]abc]` (literal `]` at start)
 - `[^]abc]` => `\v[^]abc]` (literal `]` at start of negated)
 - `[-abc]` => `\v[-abc]` (literal `-` at start)
 - `[abc-]` => `\v[abc-]` (literal `-` at end)
-- `[a-z-]` => `\v[a-z-]` (range then literal `-`)
 
-#### 9.3 Vim-Special characters inside classes (no escaping needed)
+#### 9.3 Vim-special characters inside classes
 
 Characters that need escaping outside classes are literal inside:
 
-- `[~=]` => `\v[~=]` (literal tilde and equals)
-- `[<>]` => `\v[<>]` (literal angle brackets)
-- `[@&]` => `\v[@&]` (literal at and ampersand)
-- `[~=]= nil` => `\v[~=]\= nil` (inside literal, outside escaped)
+- `[~=]` => `\v[~=]`
+- `[<>]` => `\v[<>]`
+- `[@&]` => `\v[@&]`
 
 #### 9.4 Escapes inside classes
 
 - `[\d\w]` => `\v[\d\w]` (shorthands work)
 - `[\]]` => `\v[\]]` (escaped `]`)
 - `[\\]` => `\v[\\]` (escaped backslash)
-- `[\^]` => `\v[\^]` (escaped caret, literal)
-- `[\-]` => `\v[\-]` (escaped hyphen)
+- `[\^]` => `\v[\^]` (escaped caret)
 
-#### 9.5 Metacharacters literal inside classes
+#### 9.5 POSIX classes
 
-- `[+*?]` => `\v[+*?]` (quantifiers literal)
-- `[()]` => `\v[()]` (parens literal)
-- `[{}]` => `\v[{}]` (braces literal)
-- `[|]` => `\v[|]` (pipe literal)
-- `[.]` => `\v[.]` (dot literal)
+- `[:alpha:]` => `\v[:alpha:]`
+- `[:digit:]` => `\v[:digit:]`
+- `[:^digit:]` => `\v[:^digit:]` (negated)
+
+#### 9.6 Nesting and intersection
+
+The tokeniser recognises nested classes and set intersection:
+
+- `[a-z&&[^aeiou]]` => nested class with intersection
+- `[[a-z][A-Z]]` => nested classes
+
+Note: negated nested classes lose the `^` in Vim's syntax.
+
+#### 9.7 `\b` inside character classes
+
+In Rust regex (and ripgrep), `\b` inside a character class is the literal
+character `b`, not a word boundary. The tokeniser emits `cc_escape_literal`.
 
 ### 10. Groups
 
-#### 10.1 Capturing groups (pass through)
+#### 10.1 Capturing groups
 
 - `(foo)` => `\v(foo)`
 - `(a|b)` => `\v(a|b)`
-- `(foo)(bar)` => `\v(foo)(bar)`
 - `((nested))` => `\v((nested))`
 
-#### 10.2 Non-capturing groups (translation required)
+#### 10.2 Non-capturing groups
 
-- `(?:foo)` => `\v%(foo)` (non-capturing)
-- `(?:a|b)` => `\v%(a|b)` (with alternation)
-- `(?:foo)+` => `\v%(foo)+` (with quantifier)
-- `(?:foo)?` => `\v%(foo)?` (optional group)
+- `(?:foo)` => `\v%(foo)`
+- `(?:a|b)` => `\v%(a|b)`
 - `(a)(?:b)(c)` => `\v(a)%(b)(c)` (mixed)
 
-#### 10.3 Named groups (translated with warning)
+#### 10.3 Named groups
 
-Vim doesn't support named capture groups. The translator converts them to
-numbered capture groups and emits a warning:
+Vim does not support named capture groups. The translator converts them to
+numbered groups and emits a warning:
 
 - `(?P<n>foo)` => `\v(foo)` with warning `"named groups become numbered"`
-- `(?<n>foo)` => `\v(foo)` with warning `"named groups become numbered"`
-- `(?P<id>ab|cd)+` => `\v(ab|cd)+` with warning
+- `(?<n>foo)` => `\v(foo)` with warning
 
-**Validation:** Named groups with empty or missing names return `nil`:
+Invalid names return an error:
 
-- `(?P<>foo)` => `nil` with warning `"invalid group name"`
-- `(?<>foo)` => `nil` with warning `"invalid group name"`
-- `(?P<name` (unterminated) => `nil` with warning `"invalid group name"`
+- `(?P<>foo)` => `nil` with error `"invalid group name"`
+- `(?<>foo)` => `nil` with error
 
-**Note:** Named group syntax inside character classes is treated as literal:
+#### 10.4 Flag groups
 
-- `[(?P<n>]` => `\v[(?P<n>]` (no warning)
+Flag groups pass through unchanged in very magic mode:
 
-### 11. Backreferences (unsupported)
+- `(?i)foo` => `\v(?i)foo` (case insensitive)
+- `(?i:foo)` => `\v(?i:foo)` (scoped)
 
-Backreferences (`\1` through `\9`) require PCRE2 in ripgrep, which the plugin
-actively rejects. The translator returns `nil` when backreferences are detected:
+Supported flags: `i`, `m`, `s`, `U`, `u`, `x`, `R`
 
-- `(\w+) \1` => `nil` with warning `"backreferences require PCRE2"`
-- `(.).*\1` => `nil` with warning `"backreferences require PCRE2"`
-- `(a)(b)\2\1` => `nil` with warning `"backreferences require PCRE2"`
-
-### 12. Forward slash (search Delimiter)
-
-The `/` character is Vim's default search delimiter and must be escaped
-everywhere, including inside character classes:
-
-- `foo/bar` => `\vfoo\/bar` (path)
-- `/api/v1` => `\v\/api\/v1` (URL path)
-- `[/]` => `\v[\/]` (inside class too)
-- `a/b/c` => `\va\/b\/c` (multiple)
-
-### 13. Fixed-string mode (`-F` / `--fixed-strings`)
-
-When ripgrep's `-F` flag is active, the pattern is treated as a literal string.
-Use Vim's very-nomagic mode (`\V`):
-
-- `hello` => `\Vhello` (simple)
-- `foo\bar` => `\Vfoo\\bar` (backslash escaped)
-- `foo/bar` => `\Vfoo\/bar` (slash escaped)
-- `[a+b].*` => `\V[a+b].*` (metacharacters literal)
-- `path/to/file.txt` => `\Vpath\/to\/file.txt` (path)
-
-With `-w` (word boundary) combined with `-F`:
-
-- `-F -w hello` => `\V\<hello\>` (literal word)
-- `-F -w foo.bar` => `\V\<foo.bar\>` (dot is literal)
-
-### 14. Anchors: `\A` and `\z`
+### 11. Anchors: `\A` and `\z`
 
 Ripgrep's `\A` (start of string) and `\z` (end of string) are translated to
-`^` and `$` respectively, with warnings. This is semantically correct under
-the translator's constraints:
-
-- No multiline patterns
-- No PCRE2 (default ripgrep engine only)
-- Line-oriented matching
-
-Using Vim's `\%^` and `\%$` would introduce buffer-level semantics and subtle
-differences (e.g. EOF newline handling), so we deliberately map to line anchors.
-
-**Test Cases:**
+`^` and `$` respectively, with warnings:
 
 - `\Afoo` => `\v^foo` with warning `"\A treated as ^"`
 - `foo\z` => `\vfoo$` with warning `"\z treated as $"`
 - `\Afoo\z` => `\v^foo$` with warning `"\A treated as ^ (+1 more)"`
 
-## Unsupported features detection
+This is semantically correct under the translator's constraints: no multiline
+patterns, no PCRE2, line-oriented matching.
 
-The translator detects these patterns and returns `nil` with an appropriate
-warning message:
+### 12. Forward slash
 
-### Lookarounds
+The `/` character is Vim's default search delimiter and must be escaped
+everywhere, including inside character classes:
 
-- `(?=...)` - positive lookahead => warning: `"lookarounds and atomic groups not supported"`
-- `(?!...)` - negative lookahead => warning: `"lookarounds and atomic groups not supported"`
-- `(?<=...)` - positive lookbehind => warning: `"lookarounds not supported"`
-- `(?<!...)` - negative lookbehind => warning: `"lookarounds not supported"`
+- `foo/bar` => `\vfoo\/bar`
+- `/api/v1` => `\v\/api\/v1`
+- `[/]` => `\v[\/]`
 
-### Atomic groups
+### 13. Fixed-string mode (`-F`)
 
-- `(?>...)` - atomic group => warning: `"lookarounds and atomic groups not supported"`
+When ripgrep's `-F` flag is active, the pattern is treated as a literal string.
+The translator uses Vim's very-nomagic mode (`\V`):
 
-### Possessive quantifiers
+- `hello` => `\Vhello`
+- `foo\bar` => `\Vfoo\\bar` (backslash escaped)
+- `foo/bar` => `\Vfoo\/bar` (slash escaped)
+- `[a+b].*` => `\V[a+b].*` (metacharacters literal)
 
-- `*+` => warning: `"possessive quantifiers not supported"`
-- `++` => warning: `"possessive quantifiers not supported"`
-- `?+` => warning: `"possessive quantifiers not supported"`
+With `-w` (word boundary):
 
-### Unicode properties
+- `-F -w hello` => `\V\<hello\>`
+- `-F -w foo.bar` => `\V\<foo.bar\>`
 
-- `\p{...}` => warning: `"unicode properties not supported"`
-- `\P{...}` => warning: `"unicode properties not supported"`
+### 14. Numeric escapes
 
-### Non-word boundary
+Hex, Unicode, and octal escapes pass through unchanged:
 
-- `\B` => warning: `"\B not supported"`
+- `\x7F` => `\v\x7F`
+- `\x{10FFFF}` => `\v\x{10FFFF}`
+- `\u0041` => `\v\u0041`
+- `\u{41}` => `\v\u{41}`
+- `\0` => `\v\0`
+- `\123` => `\v\123`
+- `\o{177}` => `\v\o{177}`
 
-### Backreferences
+### 15. Backreferences (unsupported)
 
-- `\1` through `\9` => warning: `"backreferences require PCRE2"`
+Backreferences require PCRE2 in ripgrep, which the plugin actively rejects:
 
-## Edge cases
+- `(\w+) \1` => `nil` with error `"backreferences require PCRE2"`
+- `(.).*\1` => `nil` with error
 
-The translator handles various malformed or edge-case inputs gracefully:
+### 16. Unicode properties (unsupported)
+
+- `\p{L}` => `nil` with error `"unicode properties not supported"`
+- `\P{Greek}` => `nil` with error
+
+### 17. Lookarounds and atomic groups (unsupported)
+
+- `(?=...)` => `nil` with error `"lookarounds and atomic groups not supported"`
+- `(?!...)` => `nil` with error
+- `(?<=...)` => `nil` with error `"lookarounds not supported"`
+- `(?<!...)` => `nil` with error
+- `(?>...)` => `nil` with error `"lookarounds and atomic groups not supported"`
+
+## Token Types
+
+### Top-level tokens (outside character classes)
+
+- `literal`: literal character (`a`, `1`, `=`)
+- `dot`: any character (`.`)
+- `anchor`: line anchor (`^`, `$`)
+- `alternation`: alternation (`|`)
+- `quantifier`: quantifier (`*`, `+`, `?`, `{n,m}`), with `greedy` and `possessive` fields
+- `group_open`: group opener, with `kind`, `name`, `flags`, `scoped` fields
+- `group_close`: group closer (`)`)
+- `char_class_open`: character class opener (`[`, `[^`), with `negated` field
+- `char_class_close`: character class closer (`]`)
+- `escape_boundary`: boundary or anchor (`\b`, `\B`, `\A`, `\z`), with `boundary_kind` field
+- `escape_class`: character class shorthand (`\d`, `\w`, `\s`, `\h`, `\v`, etc.)
+- `escape_literal`: escaped literal (`\n`, `\t`, `\\`, `\.`, etc.)
+- `escape_hex`: hex escape (`\x7F`, `\x{...}`)
+- `escape_unicode`: unicode escape (`\u{...}`, `\U{...}`)
+- `escape_octal`: octal escape (`\0`, `\123`, `\o{...}`)
+- `escape_property`: unicode property (`\p{...}`, `\P{...}`), with `negated` field
+- `escape_backref`: backreference (`\1` through `\9`)
+- `slash`: forward slash (`/`)
+
+### Character class tokens (inside `[...]`)
+
+These tokens use a `cc_` prefix to indicate they follow character class rules:
+
+- `cc_literal`: literal character
+- `cc_range`: character range (`a-z`), with `from` and `to` fields
+- `cc_escape_class`: shorthand (`\d`, `\w`)
+- `cc_escape_literal`: escaped character (`\]`, `\\`, `\b` as literal `b`)
+- `cc_escape_hex`: hex escape
+- `cc_escape_unicode`: unicode escape
+- `cc_escape_octal`: octal escape
+- `cc_escape_property`: unicode property
+- `cc_posix`: POSIX class (`[:alpha:]`), with `class_name` and `negated` fields
+- `cc_intersection`: set intersection (`&&`)
+- `cc_nested_open`: nested class open (`[`, `[^`)
+- `cc_nested_close`: nested class close (`]`)
+
+### Boundary kinds
+
+The `escape_boundary` token includes a `boundary_kind` field:
+
+- `word`: `\b`
+- `word_neg`: `\B`
+- `start`: `\A`
+- `end`: `\z`
+- `word_start`: `\<`, `\b{start}`
+- `word_end`: `\>`, `\b{end}`
+- `word_start_half`: `\b{start-half}`
+- `word_end_half`: `\b{end-half}`
+
+### Group kinds
+
+- `capturing`: `(`
+- `non_capturing`: `(?:`
+- `named_python`: `(?P<n>`
+- `named_pcre`: `(?<n>`
+- `lookahead_pos`: `(?=`
+- `lookahead_neg`: `(?!`
+- `lookbehind_pos`: `(?<=`
+- `lookbehind_neg`: `(?<!`
+- `atomic`: `(?>`
+- `flags`: `(?i)`, `(?i:...)`
+
+### Escape classifications (assigned by parser)
+
+- `shorthand_word`: `\w`, `\d`
+- `shorthand_nonword`: `\s`, `\W`, `\t`, `\n`, `\r`
+- `shorthand_unknown`: `\S`, `\D`
+- `boundary`: `\b`
+- `boundary_neg`: `\B` (unsupported)
+- `anchor_start`: `\A`
+- `anchor_end`: `\z`
+- `unicode_prop`: `\p{...}`, `\P{...}` (unsupported)
+- `backref`: `\1`-`\9` (unsupported)
+- `escaped_literal`: everything else
+
+## Wordness Classification
+
+Wordness determines how `\b` translates based on adjacent tokens.
+
+| Token                        | Wordness   |
+|------------------------------|------------|
+| `\w`, `\d`                   | word       |
+| `\s`, `\W`, `\t`, `\n`, `\r` | non_word   |
+| `\S`, `\D`                   | unknown    |
+| `\h`, `\H`, `\v`, `\V`       | unknown    |
+| `.`                          | unknown    |
+| `^`, `$`, `\|`, `(`, `)`     | non_word   |
+| `/`                          | non_word   |
+| Literal `[a-zA-Z0-9_]`       | word       |
+| Literal other                | non_word   |
+| Character class              | computed   |
+| Quantifier                   | inherited  |
+
+Character class wordness is computed from contents:
+
+- Negated class => unknown
+- All members are word characters => word
+- All members are non-word characters => non_word
+- Mixed or contains unknown => unknown
+
+Quantifiers inherit wordness from their target token.
+
+## Edge Cases
+
+The translator handles malformed or edge-case inputs gracefully:
 
 - Empty string: `""` => `\v`
-- Single trailing backslash: `\` => `\v\` (passed through)
+- Trailing backslash: `\` => `\v\` (passed through)
 - Unclosed bracket: `[abc` => `\v[abc` (passed through)
 - Unclosed group: `(foo` => `\v(foo` (passed through)
 - Only metacharacters: `+?|` => `\v+?|`
 - Only Vim-special chars: `~=@&<>` => `\v\~\=\@\&\<\>`
-- Consecutive escapes: `\\\d` => `\v\\\d`
 
-## Warning format
+## Warning Format
 
-When multiple issues occur during translation, warnings are formatted as:
+When multiple issues occur during translation:
 
 ```
 "first warning (+N more)"
 ```
 
-where N is the count of additional warnings beyond the first.
-
-**Examples:**
-
+Examples:
 - Single warning: `"named groups become numbered"`
 - Two warnings: `"\A treated as ^ (+1 more)"`
 - Three warnings: `"named groups become numbered (+2 more)"`
 
+## File Structure
+
+```
+lua/brook/pattern/
+  init.lua       # public API: rg_to_vim()
+  tokeniser.lua  # phase 1: lexical analysis
+  parser.lua     # phase 2: semantic analysis
+  translator.lua # phase 3: code generation
+  types.lua      # type definitions and enums
+```
+
 ## References
 
-- `:help /magic` - Vim magic modes
-- `:help /\v` - very magic mode
-- `:help pattern-atoms` - Vim pattern atoms
-- `:help /character-classes` - character class syntax
-- `:help /\c` - case insensitive modifier
-- `:help /\C` - case sensitive modifier
-- `:help 'ignorecase'` - global ignore case setting
-- `:help 'smartcase'` - smart case setting
-- Rust regex documentation: <https://docs.rs/regex/latest/regex/>
-- Ripgrep user guide: <https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md>
+- `:help /magic` Vim magic modes
+- `:help /\v` very magic mode
+- `:help pattern-atoms` Vim pattern atoms
+- `:help /character-classes` character class syntax
+- `:help /\c` case insensitive modifier
+- `:help /\C` case sensitive modifier
+- Rust regex documentation: https://docs.rs/regex/latest/regex/
+- Ripgrep user guide: https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md
