@@ -32,6 +32,7 @@
 
 local pattern = require('brook.pattern')
 local fifo = require('brook.lib.fifo')
+local args_types = require('brook.args.types')
 local types = require('brook.types')
 
 local M = {}
@@ -106,8 +107,10 @@ local qf_operation = {
 ---
 ---@class brook.SearchContext
 ---@field args string[] Shell-unquoted command tokens to be passed to `rg`
----@field parsed_args brook.ParsedArgs Subset of command arguments needed to integrate the command correctly
+---@field parsed_args brook.args.ParsedArgs Subset of command arguments needed to integrate the command correctly
 ---@field cfg brook.ExecConfig Control how search is performed and results displayed
+
+--------------------------------------------------------------------------------
 
 ---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
@@ -171,7 +174,7 @@ function M._exec(ctx)
     exit_code = nil,
   }
 
-  local parse_line = ctx.cfg.output_format == types.output_format.unique_lines
+  local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
       and M._parse_line_number
       or M._parse_vimgrep
 
@@ -227,7 +230,7 @@ function M._build_rg_cmd(ctx)
   -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
   -- This omits the column number, causing ripgrep to emit each line only once
   -- regardless of how many matches it contains.
-  if ctx.cfg.output_format == types.output_format.unique_lines then
+  if ctx.cfg.output_format == args_types.output_format.unique_lines then
     table.insert(cmd, '--line-number')
   else
     table.insert(cmd, '--vimgrep')
@@ -241,9 +244,9 @@ function M._build_rg_cmd(ctx)
     table.insert(cmd, '--fixed-strings')
   end
 
-  if ctx.parsed_args.case == types.search_case.sensitive then
+  if ctx.parsed_args.case == args_types.search_case.sensitive then
     table.insert(cmd, '--case-sensitive')
-  elseif ctx.parsed_args.case == types.search_case.insensitive then
+  elseif ctx.parsed_args.case == args_types.search_case.insensitive then
     table.insert(cmd, '--ignore-case')
   end
 

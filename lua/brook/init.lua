@@ -11,12 +11,13 @@ local M = {}
 
 local rg = require('brook.rg')
 local util = require('brook.util')
+local args_types = require('brook.args.types')
 local types = require('brook.types')
 
 --- Valid values for output_format config option.
 local valid_output_formats = {
-  [types.output_format.one_line_per_match] = true,
-  [types.output_format.unique_lines] = true,
+  [args_types.output_format.one_line_per_match] = true,
+  [args_types.output_format.unique_lines] = true,
 }
 
 --- @param cfg? brook.UserConfig User-provided configuration
@@ -38,7 +39,7 @@ function M.setup(cfg)
     qf_open = true,
     qf_auto_resize = true,
     qf_win_height = 10,
-    output_format = types.output_format.one_line_per_match,
+    output_format = args_types.output_format.one_line_per_match,
     set_search_register = true,
     max_preview_chars = 200,
   }

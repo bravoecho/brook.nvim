@@ -12,7 +12,7 @@ local M = {}
 -- Load a pre-built sets of valid ripgrep flags and options, extracted from the
 -- ripgrep help.
 local rg_named_args = require('brook.lib.rg_named_args')
-local types = require('brook.types')
+local types = require('brook.args.types')
 local rg_flags = rg_named_args.flags
 local rg_options = rg_named_args.options
 
@@ -35,9 +35,9 @@ local POSITIONAL_SEPARATOR = '--'
 ---
 ---@param tokens string[]|nil A list of shell-unquoted command-line tokens
 ---@param raw string Original raw command, only to be forwarded
----@return brook.ParsedArgs result Parsed arguments, or nil if malformed
+---@return brook.args.ParsedArgs result Parsed arguments, or nil if malformed
 function M.parse_args(tokens, raw)
-  ---@type brook.ParsedArgs
+  ---@type brook.args.ParsedArgs
   local result = {
     pattern = nil,
     fixed = false,

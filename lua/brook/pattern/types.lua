@@ -317,18 +317,12 @@ M.unknown_escapes = {
 --- Pattern Options ------------------------------------------------------------
 --------------------------------------------------------------------------------
 
----@enum brook.pattern.SearchCase
-M.search_case = {
-  sensitive = 'case-sensitive',
-  insensitive = 'case-insensitive',
-}
-
 --- Options controlling pattern translation.
 ---
 ---@class brook.pattern.TranslateOpts
 ---@field word? boolean Match whole words only
 ---@field fixed? boolean Treat pattern as literal string
----@field case? brook.pattern.SearchCase Case sensitivity
+---@field case? brook.args.SearchCase Case sensitivity
 
 --------------------------------------------------------------------------------
 --- Translation Results --------------------------------------------------------

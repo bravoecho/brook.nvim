@@ -42,7 +42,7 @@
 ---@field qf_win_height? number
 ---
 --- Output format: 'one-line-per-match' (default) or 'unique-lines'
----@field output_format? brook.OutputFormat
+---@field output_format? brook.args.OutputFormat
 ---
 --- Whether to set Vim's search register (/) with the pattern, enabling n/N
 --- navigation and hlsearch (default: true)
@@ -77,7 +77,7 @@
 ---@field qf_win_height number
 ---
 --- Output format: 'one-line-per-match' or 'unique-lines'
----@field output_format brook.OutputFormat
+---@field output_format brook.args.OutputFormat
 ---
 --- Whether to set Vim's search register (/) with the pattern, enabling n/N
 --- navigation and hlsearch (default: true)
@@ -99,54 +99,11 @@ local M = {}
 
 --------------------------------------------------------------------------------
 
----@enum brook.SearchCase
-M.search_case = {
-  sensitive = 'case-sensitive',
-  insensitive = 'case-insensitive',
-}
-
---------------------------------------------------------------------------------
-
----@enum brook.OutputFormat
-M.output_format = {
-  one_line_per_match = 'one-line-per-match',
-  unique_lines = 'unique-lines',
-}
-
---------------------------------------------------------------------------------
-
 M.validations = {
   max_results = { min = 1, max = 10000 },
   max_preview_chars = { min = 100, max = 500 },
 }
 
 --------------------------------------------------------------------------------
-
---- Result of parsing ripgrep command-line arguments.
----@class brook.ParsedArgs
----
---- The ripgrep search pattern
----@field pattern string|nil
----
---- Whether --fixed-strings / -F was specified
----@field fixed boolean
----
---- Whether --word-regexp / -w was specified
----@field word boolean
----
---- Whether -s, --case-sensitive, -i or --ignore-case were specified
----@field case brook.SearchCase|nil
----
---- Output format override from command line, or nil to use config default
----@field output_format brook.OutputFormat|nil
----
---- Whether the pattern should match over multiple lines
----@field multiline boolean
----
---- Whether PCRE2 regex engine is enabled (-P, --pcre2, --engine=pcre2, --engine=auto)
----@field pcre2 boolean
----
---- Original user command, forwarded so it can be echoed back
----@field raw string
 
 return M
