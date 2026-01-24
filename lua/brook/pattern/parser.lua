@@ -101,36 +101,236 @@ function M.parse(tokens)
   }
 end
 
+--- Find the effective wordness looking backward from a boundary.
+---
+--- Skips over boundaries and quantifiers to find the meaningful predecessor.
+---
+---@param tokens brook.pattern.Token[]
+---@param boundary_idx integer Index of the \b token
+---@return brook.pattern.Wordness?
+function M._find_prev_wordness(tokens, boundary_idx)
+  local i = boundary_idx - 1
+
+  while i >= 1 do
+    local tok = tokens[i]
+
+    if tok.type == T.escape_boundary then
+      -- Skip past other boundaries
+      i = i - 1
+    elseif tok.type == T.quantifier then
+      -- Quantifier: look at what it quantifies
+      i = i - 1
+    elseif tok.type == T.char_class_close then
+      -- Find matching open
+      local depth = 1
+      i = i - 1
+      while i >= 1 and depth > 0 do
+        if tokens[i].type == T.char_class_close then
+          depth = depth + 1
+        elseif tokens[i].type == T.char_class_open then
+          depth = depth - 1
+        end
+        if depth > 0 then
+          i = i - 1
+        end
+      end
+      -- Now at char_class_open
+      if i >= 1 then
+        return M._token_wordness(tokens, i)
+      end
+      return nil
+    else
+      return M._token_wordness(tokens, i)
+    end
+  end
+
+  return nil
+end
+
+--- Find the effective wordness looking forward from a boundary.
+---
+--- Skips over boundaries to find the meaningful successor.
+---
+---@param tokens brook.pattern.Token[]
+---@param boundary_idx integer Index of the \b token
+---@return brook.pattern.Wordness?
+function M._find_next_wordness(tokens, boundary_idx)
+  local i = boundary_idx + 1
+
+  while i <= #tokens do
+    local tok = tokens[i]
+
+    if tok.type == T.escape_boundary then
+      -- Skip past other boundaries
+      i = i + 1
+    elseif tok.type == T.quantifier then
+      -- A quantifier after \b is unusual but skip it
+      i = i + 1
+    elseif tok.type == T.char_class_open then
+      -- Wordness of the class
+      return M._token_wordness(tokens, i)
+    else
+      return M._token_wordness(tokens, i)
+    end
+  end
+
+  return nil
+end
+
+--- Get wordness of a token at a given index.
+---
+--- Structural tokens (groups, alternation, anchors) return non_word.
+--- This matches the behaviour expected by word boundary translation.
+---
+---@param tokens brook.pattern.Token[]
+---@param idx integer Token index
+---@return brook.pattern.Wordness?
+function M._token_wordness(tokens, idx)
+  if idx < 1 or idx > #tokens then
+    return nil
+  end
+
+  local tok = tokens[idx]
+  local tt = tok.type
+
+  if tt == T.literal then
+    return M._char_wordness(tok.value)
+  elseif tt == T.escape_class then
+    return M._escape_class_wordness(tok.value)
+  elseif tt == T.escape_literal then
+    local escaped = tok.value:sub(2)
+    if escaped == 'n' or escaped == 't' or escaped == 'r' then
+      return W.non_word
+    end
+    return M._char_wordness(escaped)
+  elseif tt == T.dot then
+    return W.unknown
+  elseif tt == T.char_class_open then
+    return M._classify_char_class(tokens, idx)
+  elseif tt == T.quantifier then
+    -- Quantifier inherits wordness from its target (previous non-quantifier)
+    local target_idx = idx - 1
+    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
+      target_idx = target_idx - 1
+    end
+    if target_idx >= 1 then
+      return M._token_wordness(tokens, target_idx)
+    end
+    return nil
+  elseif tt == T.group_open or tt == T.group_close then
+    return W.non_word
+  elseif tt == T.alternation then
+    return W.non_word
+  elseif tt == T.anchor then
+    return W.non_word
+  elseif tt == T.escape_boundary then
+    -- Boundaries themselves don't have wordness for adjacency purposes
+    -- When looking past a boundary, continue to next/prev token
+    return nil
+  elseif tt == T.char_class_close then
+    -- Should not be reached directly, but handle it
+    return nil
+  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
+    -- Numeric escapes could be word or non-word
+    return W.unknown
+  elseif tt == T.escape_property then
+    return W.unknown
+  elseif tt == T.escape_backref then
+    return W.unknown
+  elseif tt == T.slash then
+    return W.non_word
+  end
+
+  return W.unknown
+end
+
+--------------------------------------------------------------------------------
+--- Token wordness annotation --------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Assign wordness to a single token.
+---
+--- For most tokens, this is straightforward classification. For quantifiers,
+--- we need to look at the preceding token. For char_class_open, we analyse
+--- the class contents.
+---
+---@param tokens brook.pattern.Token[]
+---@param idx integer
+function M._assign_token_wordness(tokens, idx)
+  local tok = tokens[idx]
+  local tt = tok.type
+
+  if tt == T.literal then
+    tok.wordness = M._char_wordness(tok.value)
+  elseif tt == T.escape_class then
+    tok.wordness = M._escape_class_wordness(tok.value)
+  elseif tt == T.escape_literal then
+    local escaped = tok.value:sub(2)
+    if escaped == 'n' or escaped == 't' or escaped == 'r' then
+      tok.wordness = W.non_word
+    else
+      tok.wordness = M._char_wordness(escaped)
+    end
+  elseif tt == T.dot then
+    tok.wordness = W.unknown
+  elseif tt == T.char_class_open then
+    tok.wordness = M._classify_char_class(tokens, idx)
+  elseif tt == T.quantifier then
+    -- Look backward for the quantified atom
+    local target_idx = idx - 1
+    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
+      target_idx = target_idx - 1
+    end
+    if target_idx >= 1 then
+      -- For char_class, we need the open token
+      if tokens[target_idx].type == T.char_class_close then
+        -- Find matching open
+        local depth = 1
+        local search_idx = target_idx - 1
+        while search_idx >= 1 and depth > 0 do
+          if tokens[search_idx].type == T.char_class_close then
+            depth = depth + 1
+          elseif tokens[search_idx].type == T.char_class_open then
+            depth = depth - 1
+          end
+          if depth > 0 then
+            search_idx = search_idx - 1
+          end
+        end
+        if search_idx >= 1 and tokens[search_idx].wordness then
+          tok.wordness = tokens[search_idx].wordness
+        else
+          tok.wordness = W.unknown
+        end
+      elseif tokens[target_idx].wordness then
+        tok.wordness = tokens[target_idx].wordness
+      else
+        tok.wordness = W.unknown
+      end
+    else
+      tok.wordness = W.unknown
+    end
+  elseif tt == T.group_open or tt == T.group_close then
+    tok.wordness = W.non_word
+  elseif tt == T.alternation then
+    tok.wordness = W.non_word
+  elseif tt == T.anchor then
+    tok.wordness = W.non_word
+  elseif tt == T.slash then
+    tok.wordness = W.non_word
+  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
+    tok.wordness = W.unknown
+  elseif tt == T.escape_property then
+    tok.wordness = W.unknown
+  elseif tt == T.escape_backref then
+    tok.wordness = W.unknown
+  end
+  -- Note: escape_boundary, char_class_close, and cc_* tokens don't get wordness
+end
+
 --------------------------------------------------------------------------------
 --- Wordness classification ----------------------------------------------------
 --------------------------------------------------------------------------------
-
---- Classify wordness of a literal character.
----
----@param char string Single character
----@return brook.pattern.Wordness
-function M._char_wordness(char)
-  if types.word_chars[char] then
-    return W.word
-  end
-  return W.non_word
-end
-
---- Classify wordness of an escape class token (\w, \d, \s, etc).
----
----@param value string The escape sequence (e.g. "\\w")
----@return brook.pattern.Wordness
-function M._escape_class_wordness(value)
-  if types.word_escapes[value] then
-    return W.word
-  elseif types.non_word_escapes[value] then
-    return W.non_word
-  elseif types.unknown_escapes[value] then
-    return W.unknown
-  end
-  -- Default to unknown for unrecognised escapes (\h, \H, \v, \V, etc)
-  return W.unknown
-end
 
 --- Classify wordness of a character class based on its contents.
 ---
@@ -260,231 +460,35 @@ function M._classify_char_class(tokens, open_idx)
   return W.unknown
 end
 
---- Get wordness of a token at a given index.
+--------------------------------------------------------------------------------
+--- Wordness helpers -----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Classify wordness of a literal character.
 ---
---- Structural tokens (groups, alternation, anchors) return non_word.
---- This matches the behaviour expected by word boundary translation.
+---@param char string Single character
+---@return brook.pattern.Wordness
+function M._char_wordness(char)
+  if types.word_chars[char] then
+    return W.word
+  end
+  return W.non_word
+end
+
+--- Classify wordness of an escape class token (\w, \d, \s, etc).
 ---
----@param tokens brook.pattern.Token[]
----@param idx integer Token index
----@return brook.pattern.Wordness?
-function M._token_wordness(tokens, idx)
-  if idx < 1 or idx > #tokens then
-    return nil
+---@param value string The escape sequence (e.g. "\\w")
+---@return brook.pattern.Wordness
+function M._escape_class_wordness(value)
+  if types.word_escapes[value] then
+    return W.word
+  elseif types.non_word_escapes[value] then
+    return W.non_word
+  elseif types.unknown_escapes[value] then
+    return W.unknown
   end
-
-  local tok = tokens[idx]
-  local tt = tok.type
-
-  if tt == T.literal then
-    return M._char_wordness(tok.value)
-  elseif tt == T.escape_class then
-    return M._escape_class_wordness(tok.value)
-  elseif tt == T.escape_literal then
-    local escaped = tok.value:sub(2)
-    if escaped == 'n' or escaped == 't' or escaped == 'r' then
-      return W.non_word
-    end
-    return M._char_wordness(escaped)
-  elseif tt == T.dot then
-    return W.unknown
-  elseif tt == T.char_class_open then
-    return M._classify_char_class(tokens, idx)
-  elseif tt == T.quantifier then
-    -- Quantifier inherits wordness from its target (previous non-quantifier)
-    local target_idx = idx - 1
-    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
-      target_idx = target_idx - 1
-    end
-    if target_idx >= 1 then
-      return M._token_wordness(tokens, target_idx)
-    end
-    return nil
-  elseif tt == T.group_open or tt == T.group_close then
-    return W.non_word
-  elseif tt == T.alternation then
-    return W.non_word
-  elseif tt == T.anchor then
-    return W.non_word
-  elseif tt == T.escape_boundary then
-    -- Boundaries themselves don't have wordness for adjacency purposes
-    -- When looking past a boundary, continue to next/prev token
-    return nil
-  elseif tt == T.char_class_close then
-    -- Should not be reached directly, but handle it
-    return nil
-  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
-    -- Numeric escapes could be word or non-word
-    return W.unknown
-  elseif tt == T.escape_property then
-    return W.unknown
-  elseif tt == T.escape_backref then
-    return W.unknown
-  elseif tt == T.slash then
-    return W.non_word
-  end
-
+  -- Default to unknown for unrecognised escapes (\h, \H, \v, \V, etc)
   return W.unknown
-end
-
---- Find the effective wordness looking backward from a boundary.
----
---- Skips over boundaries and quantifiers to find the meaningful predecessor.
----
----@param tokens brook.pattern.Token[]
----@param boundary_idx integer Index of the \b token
----@return brook.pattern.Wordness?
-function M._find_prev_wordness(tokens, boundary_idx)
-  local i = boundary_idx - 1
-
-  while i >= 1 do
-    local tok = tokens[i]
-
-    if tok.type == T.escape_boundary then
-      -- Skip past other boundaries
-      i = i - 1
-    elseif tok.type == T.quantifier then
-      -- Quantifier: look at what it quantifies
-      i = i - 1
-    elseif tok.type == T.char_class_close then
-      -- Find matching open
-      local depth = 1
-      i = i - 1
-      while i >= 1 and depth > 0 do
-        if tokens[i].type == T.char_class_close then
-          depth = depth + 1
-        elseif tokens[i].type == T.char_class_open then
-          depth = depth - 1
-        end
-        if depth > 0 then
-          i = i - 1
-        end
-      end
-      -- Now at char_class_open
-      if i >= 1 then
-        return M._token_wordness(tokens, i)
-      end
-      return nil
-    else
-      return M._token_wordness(tokens, i)
-    end
-  end
-
-  return nil
-end
-
---- Find the effective wordness looking forward from a boundary.
----
---- Skips over boundaries to find the meaningful successor.
----
----@param tokens brook.pattern.Token[]
----@param boundary_idx integer Index of the \b token
----@return brook.pattern.Wordness?
-function M._find_next_wordness(tokens, boundary_idx)
-  local i = boundary_idx + 1
-
-  while i <= #tokens do
-    local tok = tokens[i]
-
-    if tok.type == T.escape_boundary then
-      -- Skip past other boundaries
-      i = i + 1
-    elseif tok.type == T.quantifier then
-      -- A quantifier after \b is unusual but skip it
-      i = i + 1
-    elseif tok.type == T.char_class_open then
-      -- Wordness of the class
-      return M._token_wordness(tokens, i)
-    else
-      return M._token_wordness(tokens, i)
-    end
-  end
-
-  return nil
-end
-
---------------------------------------------------------------------------------
---- Token wordness annotation --------------------------------------------------
---------------------------------------------------------------------------------
-
---- Assign wordness to a single token.
----
---- For most tokens, this is straightforward classification. For quantifiers,
---- we need to look at the preceding token. For char_class_open, we analyse
---- the class contents.
----
----@param tokens brook.pattern.Token[]
----@param idx integer
-function M._assign_token_wordness(tokens, idx)
-  local tok = tokens[idx]
-  local tt = tok.type
-
-  if tt == T.literal then
-    tok.wordness = M._char_wordness(tok.value)
-  elseif tt == T.escape_class then
-    tok.wordness = M._escape_class_wordness(tok.value)
-  elseif tt == T.escape_literal then
-    local escaped = tok.value:sub(2)
-    if escaped == 'n' or escaped == 't' or escaped == 'r' then
-      tok.wordness = W.non_word
-    else
-      tok.wordness = M._char_wordness(escaped)
-    end
-  elseif tt == T.dot then
-    tok.wordness = W.unknown
-  elseif tt == T.char_class_open then
-    tok.wordness = M._classify_char_class(tokens, idx)
-  elseif tt == T.quantifier then
-    -- Look backward for the quantified atom
-    local target_idx = idx - 1
-    while target_idx >= 1 and tokens[target_idx].type == T.quantifier do
-      target_idx = target_idx - 1
-    end
-    if target_idx >= 1 then
-      -- For char_class, we need the open token
-      if tokens[target_idx].type == T.char_class_close then
-        -- Find matching open
-        local depth = 1
-        local search_idx = target_idx - 1
-        while search_idx >= 1 and depth > 0 do
-          if tokens[search_idx].type == T.char_class_close then
-            depth = depth + 1
-          elseif tokens[search_idx].type == T.char_class_open then
-            depth = depth - 1
-          end
-          if depth > 0 then
-            search_idx = search_idx - 1
-          end
-        end
-        if search_idx >= 1 and tokens[search_idx].wordness then
-          tok.wordness = tokens[search_idx].wordness
-        else
-          tok.wordness = W.unknown
-        end
-      elseif tokens[target_idx].wordness then
-        tok.wordness = tokens[target_idx].wordness
-      else
-        tok.wordness = W.unknown
-      end
-    else
-      tok.wordness = W.unknown
-    end
-  elseif tt == T.group_open or tt == T.group_close then
-    tok.wordness = W.non_word
-  elseif tt == T.alternation then
-    tok.wordness = W.non_word
-  elseif tt == T.anchor then
-    tok.wordness = W.non_word
-  elseif tt == T.slash then
-    tok.wordness = W.non_word
-  elseif tt == T.escape_hex or tt == T.escape_octal or tt == T.escape_unicode then
-    tok.wordness = W.unknown
-  elseif tt == T.escape_property then
-    tok.wordness = W.unknown
-  elseif tt == T.escape_backref then
-    tok.wordness = W.unknown
-  end
-  -- Note: escape_boundary, char_class_close, and cc_* tokens don't get wordness
 end
 
 --------------------------------------------------------------------------------

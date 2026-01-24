@@ -130,39 +130,6 @@ function M.tokenise(input)
 end
 
 --------------------------------------------------------------------------------
---- Helpers --------------------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Check if position is within bounds.
----
----@param input string
----@param pos integer
----@return boolean
-function M._in_bounds(input, pos)
-  return pos <= #input
-end
-
---- Get character at position, or nil if out of bounds.
----
----@param input string
----@param pos integer
----@return string?
-function M._char_at(input, pos)
-  if not M._in_bounds(input, pos) then
-    return nil
-  end
-  return input:sub(pos, pos)
-end
-
---- Check if a character is a digit.
----
----@param c string?
----@return boolean
-function M._is_digit(c)
-  return c ~= nil and c >= '0' and c <= '9'
-end
-
---------------------------------------------------------------------------------
 --- Brace quantifier parsing ---------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -220,25 +187,6 @@ end
 --------------------------------------------------------------------------------
 --- Escape sequence parsing ----------------------------------------------------
 --------------------------------------------------------------------------------
-
---- Check if character is a hex digit.
----
----@param c string?
----@return boolean
-function M._is_hex_digit(c)
-  if c == nil then
-    return false
-  end
-  return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')
-end
-
---- Check if character is an octal digit.
----
----@param c string?
----@return boolean
-function M._is_octal_digit(c)
-  return c ~= nil and c >= '0' and c <= '7'
-end
 
 --- Escape characters that map to literal escapes (control chars and special).
 local literal_escapes = {
@@ -484,38 +432,6 @@ local flag_chars = {
   i = true, m = true, s = true, U = true, u = true, x = true, R = true,
 }
 
---- Check if character is a valid flag character.
----
----@param c string?
----@return boolean
-function M._is_flag_char(c)
-  return c ~= nil and flag_chars[c] == true
-end
-
---- Check if character is valid for group names (alphanumeric or underscore).
----
----@param c string?
----@return boolean
-function M._is_name_char(c)
-  if c == nil then
-    return false
-  end
-  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')
-      or (c >= '0' and c <= '9') or c == '_'
-end
-
---- Check if character is valid as first character of group name.
---- Names must start with letter or underscore, not digit.
----
----@param c string?
----@return boolean
-function M._is_name_start_char(c)
-  if c == nil then
-    return false
-  end
-  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
-end
-
 --- Scan a group opening sequence starting at pos.
 --- Returns the token and the new position.
 ---
@@ -651,6 +567,110 @@ end
 --------------------------------------------------------------------------------
 
 local CC = types.cc_token_type
+
+--- Scan a character class starting at pos (which points to '[').
+--- Returns list of tokens and new position.
+---
+---@param input string
+---@param pos integer
+---@return brook.pattern.Token[] tokens
+---@return integer new_pos
+function M._scan_char_class(input, pos)
+  local tokens = {}
+  local start_pos = pos
+  local depth = 1 -- track nesting
+
+  -- opening bracket
+  local negated = M._char_at(input, pos + 1) == '^'
+  if negated then
+    tokens[#tokens+1] = { type = T.char_class_open, value = '[^', pos = start_pos, negated = true }
+    pos = pos + 2
+  else
+    tokens[#tokens+1] = { type = T.char_class_open, value = '[', pos = start_pos, negated = false }
+    pos = pos + 1
+  end
+
+  -- ] immediately after [ or [^ is a literal
+  local first_char = true
+
+  while M._in_bounds(input, pos) and depth > 0 do
+    local c = M._char_at(input, pos)
+
+    -- ] as first character is literal
+    if c == ']' and first_char then
+      tokens[#tokens+1] = { type = CC.cc_literal, value = ']', pos = pos }
+      pos = pos + 1
+      first_char = false
+
+      -- closing bracket
+    elseif c == ']' then
+      depth = depth - 1
+      if depth == 0 then
+        tokens[#tokens+1] = { type = T.char_class_close, value = ']', pos = pos }
+      else
+        tokens[#tokens+1] = { type = CC.cc_nested_close, value = ']', pos = pos }
+      end
+      pos = pos + 1
+
+      -- escape sequence
+    elseif c == '\\' then
+      local tok, new_pos = M._scan_cc_escape(input, pos)
+      tokens[#tokens+1] = tok
+      pos = new_pos
+      first_char = false
+
+      -- intersection: &&
+    elseif c == '&' and M._char_at(input, pos + 1) == '&' then
+      tokens[#tokens+1] = { type = CC.cc_intersection, value = '&&', pos = pos }
+      pos = pos + 2
+      first_char = false
+
+      -- nested class or POSIX
+    elseif c == '[' then
+      -- try POSIX first
+      local posix_tok, posix_end = M._try_posix_class(input, pos)
+      if posix_tok and posix_end then
+        tokens[#tokens+1] = posix_tok
+        pos = posix_end
+        first_char = false
+      else
+        -- nested class
+        depth = depth + 1
+        local nested_negated = M._char_at(input, pos + 1) == '^'
+        if nested_negated then
+          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[^', pos = pos, negated = true }
+          pos = pos + 2
+        else
+          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[', pos = pos, negated = false }
+          pos = pos + 1
+        end
+        first_char = true -- reset for nested class
+      end
+
+      -- range: check if this is start of a range (char-char)
+    elseif M._char_at(input, pos + 1) == '-' and M._char_at(input, pos + 2) ~= ']' and M._char_at(input, pos + 2) ~= nil then
+      local from_char = c
+      local to_char = M._char_at(input, pos + 2)
+      if to_char and to_char ~= '[' and to_char ~= '\\' then
+        tokens[#tokens+1] = { type = CC.cc_range, value = from_char .. '-' .. to_char, pos = pos, from = from_char, to = to_char }
+        pos = pos + 3
+      else
+        -- not a simple range, treat as literal
+        tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
+        pos = pos + 1
+      end
+      first_char = false
+
+      -- literal
+    else
+      tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
+      pos = pos + 1
+      first_char = false
+    end
+  end
+
+  return tokens, pos
+end
 
 --- Scan an escape sequence inside a character class.
 --- Returns token and new position.
@@ -800,108 +820,88 @@ function M._try_posix_class(input, pos)
   return nil, nil
 end
 
---- Scan a character class starting at pos (which points to '[').
---- Returns list of tokens and new position.
+--------------------------------------------------------------------------------
+--- Helpers --------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Check if position is within bounds.
 ---
 ---@param input string
 ---@param pos integer
----@return brook.pattern.Token[] tokens
----@return integer new_pos
-function M._scan_char_class(input, pos)
-  local tokens = {}
-  local start_pos = pos
-  local depth = 1 -- track nesting
+---@return boolean
+function M._in_bounds(input, pos)
+  return pos <= #input
+end
 
-  -- opening bracket
-  local negated = M._char_at(input, pos + 1) == '^'
-  if negated then
-    tokens[#tokens+1] = { type = T.char_class_open, value = '[^', pos = start_pos, negated = true }
-    pos = pos + 2
-  else
-    tokens[#tokens+1] = { type = T.char_class_open, value = '[', pos = start_pos, negated = false }
-    pos = pos + 1
+--- Get character at position, or nil if out of bounds.
+---
+---@param input string
+---@param pos integer
+---@return string?
+function M._char_at(input, pos)
+  if not M._in_bounds(input, pos) then
+    return nil
   end
+  return input:sub(pos, pos)
+end
 
-  -- ] immediately after [ or [^ is a literal
-  local first_char = true
+--- Check if a character is a digit.
+---
+---@param c string?
+---@return boolean
+function M._is_digit(c)
+  return c ~= nil and c >= '0' and c <= '9'
+end
 
-  while M._in_bounds(input, pos) and depth > 0 do
-    local c = M._char_at(input, pos)
-
-    -- ] as first character is literal
-    if c == ']' and first_char then
-      tokens[#tokens+1] = { type = CC.cc_literal, value = ']', pos = pos }
-      pos = pos + 1
-      first_char = false
-
-      -- closing bracket
-    elseif c == ']' then
-      depth = depth - 1
-      if depth == 0 then
-        tokens[#tokens+1] = { type = T.char_class_close, value = ']', pos = pos }
-      else
-        tokens[#tokens+1] = { type = CC.cc_nested_close, value = ']', pos = pos }
-      end
-      pos = pos + 1
-
-      -- escape sequence
-    elseif c == '\\' then
-      local tok, new_pos = M._scan_cc_escape(input, pos)
-      tokens[#tokens+1] = tok
-      pos = new_pos
-      first_char = false
-
-      -- intersection: &&
-    elseif c == '&' and M._char_at(input, pos + 1) == '&' then
-      tokens[#tokens+1] = { type = CC.cc_intersection, value = '&&', pos = pos }
-      pos = pos + 2
-      first_char = false
-
-      -- nested class or POSIX
-    elseif c == '[' then
-      -- try POSIX first
-      local posix_tok, posix_end = M._try_posix_class(input, pos)
-      if posix_tok and posix_end then
-        tokens[#tokens+1] = posix_tok
-        pos = posix_end
-        first_char = false
-      else
-        -- nested class
-        depth = depth + 1
-        local nested_negated = M._char_at(input, pos + 1) == '^'
-        if nested_negated then
-          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[^', pos = pos, negated = true }
-          pos = pos + 2
-        else
-          tokens[#tokens+1] = { type = CC.cc_nested_open, value = '[', pos = pos, negated = false }
-          pos = pos + 1
-        end
-        first_char = true -- reset for nested class
-      end
-
-      -- range: check if this is start of a range (char-char)
-    elseif M._char_at(input, pos + 1) == '-' and M._char_at(input, pos + 2) ~= ']' and M._char_at(input, pos + 2) ~= nil then
-      local from_char = c
-      local to_char = M._char_at(input, pos + 2)
-      if to_char and to_char ~= '[' and to_char ~= '\\' then
-        tokens[#tokens+1] = { type = CC.cc_range, value = from_char .. '-' .. to_char, pos = pos, from = from_char, to = to_char }
-        pos = pos + 3
-      else
-        -- not a simple range, treat as literal
-        tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
-        pos = pos + 1
-      end
-      first_char = false
-
-      -- literal
-    else
-      tokens[#tokens+1] = { type = CC.cc_literal, value = c, pos = pos }
-      pos = pos + 1
-      first_char = false
-    end
+--- Check if character is a hex digit.
+---
+---@param c string?
+---@return boolean
+function M._is_hex_digit(c)
+  if c == nil then
+    return false
   end
+  return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')
+end
 
-  return tokens, pos
+--- Check if character is an octal digit.
+---
+---@param c string?
+---@return boolean
+function M._is_octal_digit(c)
+  return c ~= nil and c >= '0' and c <= '7'
+end
+
+--- Check if character is a valid flag character.
+---
+---@param c string?
+---@return boolean
+function M._is_flag_char(c)
+  return c ~= nil and flag_chars[c] == true
+end
+
+--- Check if character is valid for group names (alphanumeric or underscore).
+---
+---@param c string?
+---@return boolean
+function M._is_name_char(c)
+  if c == nil then
+    return false
+  end
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')
+      or (c >= '0' and c <= '9') or c == '_'
+end
+
+--- Check if character is valid as first character of group name.
+--- Names must start with letter or underscore, not digit.
+---
+---@param c string?
+---@return boolean
+function M._is_name_start_char(c)
+  if c == nil then
+    return false
+  end
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
 end
 
 return M
