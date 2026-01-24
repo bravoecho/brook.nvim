@@ -74,8 +74,8 @@ function M.posix_unquote(token)
         table.insert(result, next_char)
         i = i + 1
       else
-        -- Unrecognised escapes (including \n) are preserved literally—the shell
-        -- passes "backslash + n" to the command; interpretation is up to
+        -- Unrecognised escapes (including \n) are preserved literally, the
+        -- shell passes "backslash + n" to the command; interpretation is up to
         -- the receiving program.
         table.insert(result, ch)
       end

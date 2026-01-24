@@ -4,7 +4,7 @@
 > quickfix workflow
 
 **brook.nvim** is an asynchronous ripgrep wrapper for Neovim that prioritises
-performance and native navigation. It's not a fuzzy finder – it's a precision
+performance and native navigation. It's not a fuzzy finder, it's a precision
 tool for code exploration and refactoring, the Vim way.
 
 ## Why Brook?
@@ -27,7 +27,7 @@ finders. Brook sits in the sweet spot for power users:
   `:cfdo %s//replacement/gc`, this makes search-and-replace seamless.
 
 * **LSP Complement**: LSPs handle symbol renaming; Brook handles everything
-  else – string constants, CSS classes, complex patterns across the entire
+  else: string constants, CSS classes, complex patterns across the entire
   project with regex precision.
 
 * **Zero Abstraction**: No new syntax. If you know ripgrep, you know Brook.
@@ -122,21 +122,21 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 > [Learn more about the quickfix list](/doc/quickfix_primer.md)
 
 1. **Search**:
-   - `<leader>g` in normal mode – word under cursor
-   - `<leader>g` in visual mode – selection
-   - `<leader>/` in normal mode – open prompt for manual search
-   - `<leader>G` in normal mode – stop current search if any
-   - `<leader>r` in normal mode – repeat the last search
-   - `:Rg your_query` – manual search
-   - `:Rg --hidden "function handle_click"` – with ripgrep flags
-   - `:RgStop` – stop current search if any
-   - `:RgRepeat` – repeat last search
+   - `<leader>g` in normal mode: word under cursor
+   - `<leader>g` in visual mode: selection
+   - `<leader>/` in normal mode: open prompt for manual search
+   - `<leader>G` in normal mode: stop current search if any
+   - `<leader>r` in normal mode: repeat the last search
+   - `:Rg your_query`: manual search
+   - `:Rg --hidden "function handle_click"`: with ripgrep flags
+   - `:RgStop`: stop current search if any
+   - `:RgRepeat`: repeat last search
 
 2. **Explore**: Browse with `:cnext`/`:cprev` (map these to `]q`/`[q`).
 
 3. **Navigate**: Use `n`/`N` to jump between matches within each file.
 
-4. **Refactor**: Search and replace with `:cfdo %s//replacement/gc` – the search
+4. **Refactor**: Search and replace with `:cfdo %s//replacement/gc`: the search
    register is already populated, so empty `//` targets exactly what ripgrep
    found.
 
@@ -145,7 +145,7 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 * **Filter by file type**: `:Rg -t lua config` or `:Rg -T js bug`
 * **Literal search**: `:Rg -F "($[0].item)"` for special characters
 * **Case control**: `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
-* **Stop early**: `<leader>G` or `:RgStop` – results so far remain in quickfix
+* **Stop early**: `<leader>G` or `:RgStop`, results so far remain in quickfix
 * **Unique lines**: Set `output_format = 'unique-lines'` or use `-n` flag
 * **Search path**: Press `<Tab>` in the command to autocomplete relative paths
 * **Report each file only once**: `:Rg mypattern -n -m1`
@@ -190,19 +190,19 @@ exploration across many files:
   are transient by design.
 * **Refactoring**: `:cfdo` commands work naturally on quickfix results.
 * **Scale**: Brook streams directly to quickfix without holding results in
-  memory – tested on codebases exceeding 4 million lines.
+  memory, tested on codebases exceeding 4 million lines.
 
 ---
 
 ## Technical Notes
 
-* **Direct Execution**: Spawns `rg` via `jobstart()` without a shell – safe from
+* **Direct Execution**: Spawns `rg` via `jobstart()` without a shell: safe from
   injection, works everywhere.
 * **Stdin Disabled**: Prevents ripgrep from blocking on empty input.
 * **POSIX Unquoting**: Custom parser handles quoted arguments before passing to
   ripgrep.
-* **Result Limiting**: Caps at `max_results` (default 1000, max 10K) – Neovim's
-  quickfix degrades badly beyond this.
+* **Result Limiting**: Caps at `max_results` (default 1000, max 10K), as
+  Neovim's quickfix degrades badly beyond this.
 * **Long Line Protection**: Uses `--max-columns 300` to prevent memory issues
   from minified files.
 * **Pattern Extraction**: Parses the CLI to separate flags from search patterns.
