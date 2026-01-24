@@ -34,26 +34,11 @@ local unsupported_groups = {
 
 --- Parse and annotate tokens.
 ---
---- Accepts optional warnings and error from the tokeniser. If an error is
---- passed in, returns immediately with that error.
----
 ---@param tokens brook.pattern.Token[]
----@param incoming_warnings? string[] Warnings from tokeniser
----@param incoming_error? string Error from tokeniser
 ---@return brook.pattern.ParseResult
-function M.parse(tokens, incoming_warnings, incoming_error)
+function M.parse(tokens)
   -- Start with incoming warnings
   local warnings = {}
-  if incoming_warnings then
-    for _, w in ipairs(incoming_warnings) do
-      warnings[#warnings + 1] = w
-    end
-  end
-
-  -- If an error was passed in, forward it immediately
-  if incoming_error then
-    return { error = incoming_error, warnings = warnings }
-  end
 
   -- First pass: classify escapes and check for unsupported constructs
   for _, tok in ipairs(tokens) do

@@ -15,10 +15,7 @@ local T = types.token_type
 local CC = types.cc_token_type
 local GK = types.group_kind
 
---- Helper to extract tokens from tokenise result.
-local function tokenise(input)
-  return tokeniser.tokenise(input).tokens
-end
+local tokenise = tokeniser.tokenise
 
 --------------------------------------------------------------------------------
 -- Complex patterns ------------------------------------------------------------

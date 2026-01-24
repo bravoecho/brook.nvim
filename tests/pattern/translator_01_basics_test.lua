@@ -20,6 +20,7 @@ local translate = translator.translate
 local T = types.token_type
 local EC = types.escape_class
 local W = types.wordness
+local GK = types.group_kind
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------
@@ -162,14 +163,41 @@ test('forward: incoming warnings are preserved', function()
   eq(result.warnings[2], 'parser warning 2')
 end)
 
-test('forward: incoming warnings combined with translator warnings', function()
+test('forward: does not duplicate incoming warnings', function()
+  -- It won't emit the '\\A treated as ^' warning, because that is the parser's
+  -- responsibility.
   local result = translate({
     { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
   }, {}, { 'parser warning' })
   eq(result.pattern, '\\v^')
-  eq(#result.warnings, 2)
+  eq(#result.warnings, 1)
   eq(result.warnings[1], 'parser warning')
-  eq(result.warnings[2], '\\A treated as ^')
+end)
+
+test('translate: \\A does not add warning (parser responsibility)', function()
+  local tokens = {
+    { type = T.escape_boundary, value = '\\A', pos = 1, boundary_kind = 'start', escape_class = EC.anchor_start },
+  }
+  local result = translator.translate(tokens, {}, {}, nil)
+  eq(#result.warnings, 0)
+end)
+
+test('translate: \\z does not add warning (parser responsibility)', function()
+  local tokens = {
+    { type = T.escape_boundary, value = '\\z', pos = 1, boundary_kind = 'end', escape_class = EC.anchor_end },
+  }
+  local result = translator.translate(tokens, {}, {}, nil)
+  eq(#result.warnings, 0)
+end)
+
+test('translate: named group does not add warning (parser responsibility)', function()
+  local tokens = {
+    { type = T.group_open,  value = '(?P<name>', pos = 1, kind = GK.named_python, name = 'name' },
+    { type = T.literal,     value = 'x',         pos = 10 },
+    { type = T.group_close, value = ')',         pos = 11 },
+  }
+  local result = translator.translate(tokens, {}, {}, nil)
+  eq(#result.warnings, 0)
 end)
 
 test('forward: incoming error returns early with empty pattern', function()

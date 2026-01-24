@@ -12,10 +12,7 @@ local tokeniser = require('brook.pattern.tokeniser')
 local types = require('brook.pattern.types')
 local T = types.token_type
 
---- Helper to extract tokens from tokenise result.
-local function tokenise(input)
-  return tokeniser.tokenise(input).tokens
-end
+local tokenise = tokeniser.tokenise
 
 --------------------------------------------------------------------------------
 -- Literals --------------------------------------------------------------------
@@ -187,6 +184,13 @@ test('quantifiers: possessive plus', function()
   })
 end)
 
+test('quantifier: possessive ?+', function()
+  deep_eq(tokenise('a?+'), {
+    { type = T.literal,    value = 'a',  pos = 1 },
+    { type = T.quantifier, value = '?+', pos = 2, greedy = true, possessive = true },
+  })
+end)
+
 --------------------------------------------------------------------------------
 -- Quantifiers: braces ---------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -266,23 +270,6 @@ test('quantifiers: brace starting with comma as literals', function()
     { type = T.literal, value = '3', pos = 4 },
     { type = T.literal, value = '}', pos = 5 },
   })
-end)
-
---------------------------------------------------------------------------------
--- Result structure ------------------------------------------------------------
---------------------------------------------------------------------------------
-
-test('result: returns tokens and warnings fields', function()
-  local result = tokeniser.tokenise('abc')
-  h.eq(type(result.tokens), 'table')
-  h.eq(type(result.warnings), 'table')
-  h.eq(#result.tokens, 3)
-  h.eq(#result.warnings, 0)
-end)
-
-test('result: warnings initially empty', function()
-  local result = tokeniser.tokenise('\\d+')
-  h.deep_eq(result.warnings, {})
 end)
 
 --------------------------------------------------------------------------------

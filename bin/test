@@ -42,3 +42,5 @@ run_test 'pattern/translator_05_quantifiers'
 run_test 'pattern/translator_06_groups'
 run_test 'pattern/translator_07_charclass'
 run_test 'pattern/translator_08_complex'
+
+run_test 'pattern/pattern_integration'

@@ -1,7 +1,7 @@
 -- tests/pattern/tokenise_escapes_test.lua
 
 -- Run with:
---   nvim --headless -c "luafile tests/pattern/tokeniser_escapes_test.lua" -c "q"
+--   nvim --headless -u NONE -c "set rtp+=. -c "luafile tests/pattern/tokeniser_03_escapes_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
@@ -12,10 +12,7 @@ local tokeniser = require('brook.pattern.tokeniser')
 local types = require('brook.pattern.types')
 local T = types.token_type
 
---- Helper to extract tokens from tokenise result.
-local function tokenise(input)
-  return tokeniser.tokenise(input).tokens
-end
+local tokenise = tokeniser.tokenise
 
 --------------------------------------------------------------------------------
 -- Escape sequences: boundaries ------------------------------------------------
@@ -194,6 +191,17 @@ end)
 test('escape literal: backslash', function()
   deep_eq(tokenise('\\\\'), {
     { type = T.escape_literal, value = '\\\\', pos = 1 },
+  })
+end)
+
+test('escape literal: backslash between words', function()
+  deep_eq(tokenise('foo\\bar'), {
+    { type = T.literal,         value = 'f',   pos = 1 },
+    { type = T.literal,         value = 'o',   pos = 2 },
+    { type = T.literal,         value = 'o',   pos = 3 },
+    { type = T.escape_boundary, value = '\\b', pos = 4, boundary_kind = 'word' },
+    { type = T.literal,         value = 'a',   pos = 6 },
+    { type = T.literal,         value = 'r',   pos = 7 },
   })
 end)
 

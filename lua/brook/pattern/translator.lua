@@ -48,7 +48,7 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
   local warnings = {}
   if incoming_warnings then
     for _, w in ipairs(incoming_warnings) do
-      warnings[#warnings + 1] = w
+      warnings[#warnings+1] = w
     end
   end
 
@@ -154,9 +154,7 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
         table.insert(parts, '%(')
       elseif token.kind == GK.named_python or token.kind == GK.named_pcre then
         -- Named groups: (?P<name>...) or (?<name>...) => (...)
-        -- Emit warning about losing the name
         table.insert(parts, '(')
-        table.insert(warnings, 'named groups become numbered')
       elseif token.kind == GK.flags then
         -- Flag groups: (?i) or (?i:...)
         -- Pass through unchanged in very magic mode
@@ -227,13 +225,11 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
           table.insert(parts, '%(<|>)')
         end
       elseif token.escape_class == EC.anchor_start then
-        -- \A => ^ with warning
+        -- \A => ^
         table.insert(parts, '^')
-        table.insert(warnings, '\\A treated as ^')
       elseif token.escape_class == EC.anchor_end then
-        -- \z => $ with warning
+        -- \z => $
         table.insert(parts, '$')
-        table.insert(warnings, '\\z treated as $')
       end
     elseif token.type == T.escape_class then
       -- Character class shorthands: \w, \d, \s, \W, \D, \S

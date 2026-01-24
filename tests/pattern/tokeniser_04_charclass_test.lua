@@ -13,10 +13,7 @@ local types = require('brook.pattern.types')
 local T = types.token_type
 local CC = types.cc_token_type
 
---- Helper to extract tokens from tokenise result.
-local function tokenise(input)
-  return tokeniser.tokenise(input).tokens
-end
+local tokenise = tokeniser.tokenise
 
 --------------------------------------------------------------------------------
 -- Character classes: basics ---------------------------------------------------

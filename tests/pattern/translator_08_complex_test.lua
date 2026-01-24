@@ -202,7 +202,8 @@ end)
 --- Pattern with multiple warnings ---------------------------------------------
 --------------------------------------------------------------------------------
 
-test('complex: \\A(?P<n>x)\\z with three warnings', function()
+test('complex: \\A(?P<n>x)\\z with no additional warnings', function()
+  -- The warnings for this case are the parser's responsibility.
   local result = translate({
     { type = T.escape_boundary, value = '\\A',    pos = 1,  escape_class = EC.anchor_start, wordness = W.non_word },
     { type = T.group_open,      value = '(?P<n>', pos = 3,  kind = GK.named_python,         name = 'n',           wordness = W.non_word },
@@ -211,10 +212,7 @@ test('complex: \\A(?P<n>x)\\z with three warnings', function()
     { type = T.escape_boundary, value = '\\z',    pos = 11, escape_class = EC.anchor_end,   wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v^(x)$')
-  eq(#result.warnings, 3)
-  eq(result.warnings[1], '\\A treated as ^')
-  eq(result.warnings[2], 'named groups become numbered')
-  eq(result.warnings[3], '\\z treated as $')
+  eq(#result.warnings, 0)
 end)
 
 --------------------------------------------------------------------------------

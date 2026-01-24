@@ -40,10 +40,9 @@ local special = {
 --- Tokenise a ripgrep regex pattern.
 ---
 ---@param input string The pattern to tokenise
----@return brook.pattern.TokeniseResult
+---@return brook.pattern.Token[] tokens Token list (may be empty)
 function M.tokenise(input)
   local tokens = {}
-  local warnings = {}
   local pos = 1
 
   while M._in_bounds(input, pos) do
@@ -65,7 +64,7 @@ function M.tokenise(input)
       if next_c == '?' then
         token = { type = T.quantifier, value = c .. '?', pos = pos, greedy = false }
         pos = pos + 2
-      elseif next_c == '+' and (c == '*' or c == '+') then
+      elseif next_c == '+' and (c == '*' or c == '+' or c == '?') then
         token = { type = T.quantifier, value = c .. '+', pos = pos, greedy = true, possessive = true }
         pos = pos + 2
       else
@@ -127,10 +126,7 @@ function M.tokenise(input)
     ::continue::
   end
 
-  return {
-    tokens = tokens,
-    warnings = warnings,
-  }
+  return tokens
 end
 
 --------------------------------------------------------------------------------
@@ -560,21 +556,27 @@ function M._scan_group_open(input, pos)
       return { type = T.group_open, value = '(?<=', pos = start_pos, kind = GK.lookbehind_pos }, pos + 4
     elseif c3 == '!' then
       return { type = T.group_open, value = '(?<!', pos = start_pos, kind = GK.lookbehind_neg }, pos + 4
-    elseif M._is_name_start_char(c3) then
-      -- named PCRE: (?<name>
+    else
+      -- named PCRE: (?<name> or invalid (?<> or (?<unterminated
       local name_start = pos + 3
       local i = name_start
+
+      -- scan name characters (may be empty if c3 is > or not a name char)
       while M._is_name_char(M._char_at(input, i)) do
         i = i + 1
       end
-      if M._char_at(input, i) == '>' and i > name_start then
+
+      if M._char_at(input, i) == '>' then
+        -- valid syntax: (?<name> or (?<> (empty name, parser will reject)
         local name = input:sub(name_start, i - 1)
         local value = input:sub(start_pos, i)
         return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_pcre, name = name }, i + 1
+      else
+        -- unterminated: no closing >, return with empty name to signal invalid
+        local value = input:sub(start_pos, i - 1)
+        return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_pcre, name = '' }, i
       end
     end
-    -- invalid (?< sequence: fall through to capturing
-    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
   end
 
   -- atomic: (?>
@@ -584,21 +586,24 @@ function M._scan_group_open(input, pos)
 
   -- named Python: (?P<name>
   if c2 == 'P' and M._char_at(input, pos + 3) == '<' then
-    local c4 = M._char_at(input, pos + 4)
-    if M._is_name_start_char(c4) then
-      local name_start = pos + 4
-      local i = name_start
-      while M._is_name_char(M._char_at(input, i)) do
-        i = i + 1
-      end
-      if M._char_at(input, i) == '>' and i > name_start then
-        local name = input:sub(name_start, i - 1)
-        local value = input:sub(start_pos, i)
-        return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_python, name = name }, i + 1
-      end
+    local name_start = pos + 4
+    local i = name_start
+
+    -- scan name characters (may be empty)
+    while M._is_name_char(M._char_at(input, i)) do
+      i = i + 1
     end
-    -- invalid (?P< sequence: fall through to capturing
-    return { type = T.group_open, value = '(', pos = start_pos, kind = GK.capturing }, pos + 1
+
+    if M._char_at(input, i) == '>' then
+      -- valid syntax: (?P<name> or (?P<> (empty name, parser will reject)
+      local name = input:sub(name_start, i - 1)
+      local value = input:sub(start_pos, i)
+      return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_python, name = name }, i + 1
+    else
+      -- unterminated: no closing >, return with empty name to signal invalid
+      local value = input:sub(start_pos, i - 1)
+      return { type = T.group_open, value = value, pos = start_pos, kind = GK.named_python, name = '' }, i
+    end
   end
 
   -- flags: (?flags) or (?flags:

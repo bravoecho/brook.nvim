@@ -133,27 +133,28 @@ end)
 --- Anchor escapes: \A and \z --------------------------------------------------
 --------------------------------------------------------------------------------
 
-test('boundary: \\A becomes ^ with warning', function()
+test('boundary: \\A becomes ^ with no additional warning', function()
+  -- The warning for this case is the parser's responsibility.
   local result = translate({
     { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
     { type = T.literal,         value = 'a',   pos = 3, wordness = W.word },
   }, {})
   eq(result.pattern, '\\v^a')
-  eq(#result.warnings, 1)
-  eq(result.warnings[1], '\\A treated as ^')
+  eq(#result.warnings, 0)
 end)
 
-test('boundary: \\z becomes $ with warning', function()
+test('boundary: \\z becomes $ with no additional warning', function()
+  -- The warning for this case is the parser's responsibility.
   local result = translate({
     { type = T.literal,         value = 'a',   pos = 1, wordness = W.word },
     { type = T.escape_boundary, value = '\\z', pos = 2, escape_class = EC.anchor_end, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\va$')
-  eq(#result.warnings, 1)
-  eq(result.warnings[1], '\\z treated as $')
+  eq(#result.warnings, 0)
 end)
 
 test('boundary: \\A and \\z together', function()
+  -- The warnings for this case are the parser's responsibility.
   local result = translate({
     { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
     { type = T.literal,         value = 'f',   pos = 3, wordness = W.word },
@@ -162,9 +163,7 @@ test('boundary: \\A and \\z together', function()
     { type = T.escape_boundary, value = '\\z', pos = 6, escape_class = EC.anchor_end,   wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v^foo$')
-  eq(#result.warnings, 2)
-  eq(result.warnings[1], '\\A treated as ^')
-  eq(result.warnings[2], '\\z treated as $')
+  eq(#result.warnings, 0)
 end)
 
 --------------------------------------------------------------------------------

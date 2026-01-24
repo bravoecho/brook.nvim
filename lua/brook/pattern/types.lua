@@ -211,16 +211,6 @@ M.wordness = {
 ---@field class_name? string CC POSIX: class name
 
 --------------------------------------------------------------------------------
---- Tokenise Result ------------------------------------------------------------
---------------------------------------------------------------------------------
-
---- Result of tokenising: tokens with optional warnings/error.
----
----@class brook.pattern.TokeniseResult
----@field tokens brook.pattern.Token[] Token list (may be empty)
----@field warnings string[] Collected warnings (may be empty)
-
---------------------------------------------------------------------------------
 --- Parse Result ---------------------------------------------------------------
 --------------------------------------------------------------------------------
 

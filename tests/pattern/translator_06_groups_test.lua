@@ -86,29 +86,30 @@ end)
 --- Named groups ---------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-test('group: Python named (?P<n>...) becomes numbered with warning', function()
+test('group: Python named (?P<n>...) becomes numbered with no additional warning', function()
+  -- The warning for this case is the parser's responsibility.
   local result = translate({
     { type = T.group_open,  value = '(?P<name>', pos = 1,  kind = GK.named_python, name = 'name', wordness = W.non_word },
     { type = T.literal,     value = 'a',         pos = 10, wordness = W.word },
     { type = T.group_close, value = ')',         pos = 11, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v(a)')
-  eq(#result.warnings, 1)
-  eq(result.warnings[1], 'named groups become numbered')
+  eq(#result.warnings, 0)
 end)
 
-test('group: PCRE named (?<n>...) becomes numbered with warning', function()
+test('group: PCRE named (?<n>...) becomes numbered with no additional warning', function()
+  -- The warning for this case is the parser's responsibility.
   local result = translate({
     { type = T.group_open,  value = '(?<name>', pos = 1,  kind = GK.named_pcre, name = 'name', wordness = W.non_word },
     { type = T.literal,     value = 'a',        pos = 9,  wordness = W.word },
     { type = T.group_close, value = ')',        pos = 10, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v(a)')
-  eq(#result.warnings, 1)
-  eq(result.warnings[1], 'named groups become numbered')
+  eq(#result.warnings, 0)
 end)
 
-test('group: multiple named groups generate multiple warnings', function()
+test('group: multiple named groups generate multiple no additional warnings', function()
+  -- The warnings for this case are the parser's responsibility.
   local result = translate({
     { type = T.group_open,  value = '(?P<first>',  pos = 1,  kind = GK.named_python, name = 'first',  wordness = W.non_word },
     { type = T.literal,     value = 'a',           pos = 11, wordness = W.word },
@@ -118,9 +119,7 @@ test('group: multiple named groups generate multiple warnings', function()
     { type = T.group_close, value = ')',           pos = 25, wordness = W.non_word },
   }, {})
   eq(result.pattern, '\\v(a)(b)')
-  eq(#result.warnings, 2)
-  eq(result.warnings[1], 'named groups become numbered')
-  eq(result.warnings[2], 'named groups become numbered')
+  eq(#result.warnings, 0)
 end)
 
 --------------------------------------------------------------------------------

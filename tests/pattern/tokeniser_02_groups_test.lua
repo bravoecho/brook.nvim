@@ -13,10 +13,7 @@ local types = require('brook.pattern.types')
 local T = types.token_type
 local GK = types.group_kind
 
---- Helper to extract tokens from tokenise result.
-local function tokenise(input)
-  return tokeniser.tokenise(input).tokens
-end
+local tokenise = tokeniser.tokenise
 
 --------------------------------------------------------------------------------
 -- Groups: basic ---------------------------------------------------------------
@@ -108,6 +105,44 @@ test('groups: multiple named mixed styles', function()
     { type = T.group_open,  value = '(?P<bar>', pos = 10, kind = GK.named_python, name = 'bar' },
     { type = T.literal,     value = 'b',        pos = 18 },
     { type = T.group_close, value = ')',        pos = 19 },
+  })
+end)
+
+--------------------------------------------------------------------------------
+-- Groups: invalid named (empty and unterminated) ------------------------------
+--------------------------------------------------------------------------------
+
+test('groups: named Python empty name', function()
+  deep_eq(tokenise('(?P<>foo)'), {
+    { type = T.group_open,  value = '(?P<>', pos = 1, kind = GK.named_python, name = '' },
+    { type = T.literal,     value = 'f',     pos = 6 },
+    { type = T.literal,     value = 'o',     pos = 7 },
+    { type = T.literal,     value = 'o',     pos = 8 },
+    { type = T.group_close, value = ')',     pos = 9 },
+  })
+end)
+
+test('groups: named PCRE empty name', function()
+  deep_eq(tokenise('(?<>foo)'), {
+    { type = T.group_open,  value = '(?<>', pos = 1, kind = GK.named_pcre, name = '' },
+    { type = T.literal,     value = 'f',    pos = 5 },
+    { type = T.literal,     value = 'o',    pos = 6 },
+    { type = T.literal,     value = 'o',    pos = 7 },
+    { type = T.group_close, value = ')',    pos = 8 },
+  })
+end)
+
+test('groups: named Python unterminated', function()
+  deep_eq(tokenise('(?P<namefoo)'), {
+    { type = T.group_open,  value = '(?P<namefoo', pos = 1, kind = GK.named_python, name = '' },
+    { type = T.group_close, value = ')',           pos = 12 },
+  })
+end)
+
+test('groups: named PCRE unterminated', function()
+  deep_eq(tokenise('(?<namefoo)'), {
+    { type = T.group_open,  value = '(?<namefoo', pos = 1, kind = GK.named_pcre, name = '' },
+    { type = T.group_close, value = ')',          pos = 11 },
   })
 end)
 
