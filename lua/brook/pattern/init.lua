@@ -21,6 +21,12 @@ local translator = require('brook.pattern.translator')
 --- Public API -----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
+--- Result of pattern translation.
+---
+---@class brook.pattern.Result
+---@field pattern string|nil The translated Vim regex (nil when unsupported)
+---@field warning string|nil Warning message for adjustments or failures
+
 --- Translate a ripgrep pattern to Vim regex.
 ---
 --- Returns result matching legacy interface with single formatted warning.

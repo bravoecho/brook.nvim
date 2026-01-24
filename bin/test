@@ -15,9 +15,6 @@ run_test() {
 
 run_test 'lib/fifo'
 
-run_test 'pattern_legacy/classify_char_class_wordness'
-run_test 'pattern_legacy/pattern_legacy'
-
 run_test 'args/parser'
 run_test 'args/unquoter'
 run_test 'args/tokeniser'

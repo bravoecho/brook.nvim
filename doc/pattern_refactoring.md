@@ -160,7 +160,7 @@ tokens with derived properties.
 
 **Input:** Annotated token list from Phase 2, plus options (`fixed`, `word`, `case`)
 
-**Output:** `PatternResult { pattern, warning }`
+**Output:** `brook.pattern.Result { pattern, warning }`
 
 **What it does:**
 
@@ -394,7 +394,8 @@ Create `lua/brook/pattern/parse.lua`:
 
 Create `lua/brook/pattern/translate.lua`:
 
-- Single function `translate(parsed: ParsedTokens, opts: PatternOpts): PatternResult`
+- Single function `translate(parsed: ParsedTokens, opts: PatternOpts):
+  brook.pattern.Result`
 - Pure mechanical mapping from annotated tokens to Vim regex
 
 **Deliverable:** Translator function

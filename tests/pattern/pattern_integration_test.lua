@@ -8,7 +8,7 @@ local rg_to_vim = require('brook.pattern').rg_to_vim
 
 ---@param pattern string|nil
 ---@param other? table
----@return brook.PatternResult
+---@return brook.pattern.Result
 local function result(pattern, other)
   local res = { pattern = pattern, warning = nil }
   if other and other.warning then res.warning = other.warning end
