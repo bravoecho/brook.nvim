@@ -178,9 +178,6 @@ function M._exec(ctx)
       and M._parse_line_number
       or M._parse_vimgrep
 
-  -- TODO: move up to the `rg` module.
-  vim.notify('rg ' .. ctx.parsed_args.raw, vim.log.levels.INFO)
-
   -- Run ripgrep
   --------------
   active_rg_job_id = vim.fn.jobstart(M._build_rg_cmd(ctx), {
@@ -647,7 +644,11 @@ function M._update_quickfix(items, ctx, session)
   if current_buffer_size == 0 then
     return
   end
-  vim.fn.setqflist({}, session.qf_operation, { title = 'rg: results', items = items })
+
+  vim.fn.setqflist({}, session.qf_operation, {
+    title = 'rg ' .. ctx.parsed_args.raw,
+    items = items,
+  })
   session.qf_operation = qf_operation.append
   local previous_flushed = session.flushed_results
   session.flushed_results = session.flushed_results + current_buffer_size
@@ -737,11 +738,6 @@ function M._notify_completion(ctx, session)
     return
   end
 
-  if session.exit_code == 0 then
-    vim.notify(string.format('rg: %d matches', session.total_results), vim.log.levels.INFO)
-    return
-  end
-
   if session.exit_code == 1 then
     vim.notify('rg: no matches', vim.log.levels.WARN)
     return
@@ -770,8 +766,10 @@ function M._notify_completion(ctx, session)
     return
   end
 
-  table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
-  vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
+  if session.exit_code ~= 0 then
+    table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
+    vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
+  end
 end
 
 return M
