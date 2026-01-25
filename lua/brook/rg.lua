@@ -135,7 +135,9 @@ function M.raw(cmd_args, cfg)
   --------------------
 
   -- Give precedence to output format specified in the command, if present.
-  cfg.output_format = parsed_args.output_format or cfg.output_format
+  cfg = vim.tbl_extend('force', {}, cfg, {
+    output_format = parsed_args.output_format or cfg.output_format,
+  })
 
   return exec({
     args = rg_args,
