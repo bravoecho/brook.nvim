@@ -201,7 +201,7 @@ function M.setup(cfg)
   -- Visual selection
   -------------------
   if cfg.keymap_visual then
-    vim.keymap.set({ 'x' }, cfg.keymap_cword, function()
+    vim.keymap.set({ 'x' }, cfg.keymap_visual, function()
       local text = util.get_visual_selection()
 
       if text:find('\n') then
