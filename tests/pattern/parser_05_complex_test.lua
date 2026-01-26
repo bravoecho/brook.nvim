@@ -60,10 +60,10 @@ test('complex: [a-zA-Z_][a-zA-Z0-9_]* identifier pattern', function()
     { type = T.quantifier,       value = '*',   pos = 22, greedy = true },
   })
   eq(result.error, nil)
-  -- First class: word (all word chars)
-  eq(result.tokens[1].wordness, W.word)
-  -- Second class: word (all word chars)
-  eq(result.tokens[6].wordness, W.word)
+  -- First class: word (all word chars) - wordness on close token
+  eq(result.tokens[5].wordness, W.word)
+  -- Second class: word (all word chars) - wordness on close token
+  eq(result.tokens[11].wordness, W.word)
   -- Quantifier inherits word
   eq(result.tokens[12].wordness, W.word)
 end)
@@ -229,8 +229,8 @@ test('complex: "([^"]*?)" non-greedy quoted string', function()
     { type = T.literal,          value = '"',  pos = 10 },
   })
   eq(result.error, nil)
-  -- Negated class is unknown
-  eq(result.tokens[3].wordness, W.unknown)
+  -- Negated class is unknown - wordness on close token
+  eq(result.tokens[5].wordness, W.unknown)
   -- Quantifier inherits unknown
   eq(result.tokens[6].wordness, W.unknown)
 end)
@@ -289,8 +289,8 @@ test('complex: character class with ] as first char', function()
     { type = T.char_class_close, value = ']', pos = 4 },
   })
   eq(result.error, nil)
-  -- ] is non_word, a is word: mixed => unknown
-  eq(result.tokens[1].wordness, W.unknown)
+  -- ] is non_word, a is word: mixed => unknown - wordness on close token
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 test('complex: character class with escaped characters', function()
@@ -302,8 +302,8 @@ test('complex: character class with escaped characters', function()
     { type = T.char_class_close,   value = ']',    pos = 8 },
   })
   eq(result.error, nil)
-  -- All escaped chars are non-word
-  eq(result.tokens[1].wordness, W.non_word)
+  -- All escaped chars are non-word - wordness on close token
+  eq(result.tokens[5].wordness, W.non_word)
 end)
 
 test('complex: character class with \\b (literal b in Rust regex)', function()
@@ -313,8 +313,8 @@ test('complex: character class with \\b (literal b in Rust regex)', function()
     { type = T.char_class_close,   value = ']',   pos = 4 },
   })
   eq(result.error, nil)
-  -- \b inside class is literal 'b', which is a word char
-  eq(result.tokens[1].wordness, W.word)
+  -- \b inside class is literal 'b', which is a word char - wordness on close token
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 --------------------------------------------------------------------------------
@@ -328,7 +328,8 @@ test('complex: single character class', function()
     { type = T.char_class_close, value = ']', pos = 3 },
   })
   eq(result.error, nil)
-  eq(result.tokens[1].wordness, W.word)
+  -- wordness on close token
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('complex: single escape', function()

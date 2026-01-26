@@ -364,13 +364,15 @@ end)
 --- Character class wordness: word-only ----------------------------------------
 --------------------------------------------------------------------------------
 
+-- Note: wordness is stored on char_class_close, not char_class_open
+
 test('class wordness: [a-z] is word', function()
   local result = parse({
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [A-Z] is word', function()
@@ -379,7 +381,7 @@ test('class wordness: [A-Z] is word', function()
     { type = CC.cc_range,        value = 'A-Z', pos = 2, from = 'A',     to = 'Z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [0-9] is word', function()
@@ -388,7 +390,7 @@ test('class wordness: [0-9] is word', function()
     { type = CC.cc_range,        value = '0-9', pos = 2, from = '0',     to = '9' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [a-zA-Z0-9_] is word', function()
@@ -400,7 +402,7 @@ test('class wordness: [a-zA-Z0-9_] is word', function()
     { type = CC.cc_literal,      value = '_',   pos = 11 },
     { type = T.char_class_close, value = ']',   pos = 12 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[6].wordness, W.word)
 end)
 
 test('class wordness: [abc] is word', function()
@@ -411,7 +413,7 @@ test('class wordness: [abc] is word', function()
     { type = CC.cc_literal,      value = 'c', pos = 4 },
     { type = T.char_class_close, value = ']', pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[5].wordness, W.word)
 end)
 
 test('class wordness: [\\w] is word', function()
@@ -420,7 +422,7 @@ test('class wordness: [\\w] is word', function()
     { type = CC.cc_escape_class, value = '\\w', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [\\d] is word', function()
@@ -429,7 +431,7 @@ test('class wordness: [\\d] is word', function()
     { type = CC.cc_escape_class, value = '\\d', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [\\b] is word (literal b in Rust regex)', function()
@@ -438,7 +440,7 @@ test('class wordness: [\\b] is word (literal b in Rust regex)', function()
     { type = CC.cc_escape_literal, value = '\\b', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [\\a] is word (escaped word char)', function()
@@ -447,7 +449,7 @@ test('class wordness: [\\a] is word (escaped word char)', function()
     { type = CC.cc_escape_literal, value = '\\a', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [\\5] is word (escaped digit)', function()
@@ -456,7 +458,7 @@ test('class wordness: [\\5] is word (escaped digit)', function()
     { type = CC.cc_escape_literal, value = '\\5', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 test('class wordness: [\\_] is word (escaped underscore)', function()
@@ -465,7 +467,7 @@ test('class wordness: [\\_] is word (escaped underscore)', function()
     { type = CC.cc_escape_literal, value = '\\_', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.word)
+  eq(result.tokens[3].wordness, W.word)
 end)
 
 --------------------------------------------------------------------------------
@@ -480,7 +482,7 @@ test('class wordness: [ \\t\\n] is non_word', function()
     { type = CC.cc_escape_literal, value = '\\n', pos = 5 },
     { type = T.char_class_close,   value = ']',   pos = 7 },
   })
-  eq(result.tokens[1].wordness, W.non_word)
+  eq(result.tokens[5].wordness, W.non_word)
 end)
 
 test('class wordness: [\\s] is non_word', function()
@@ -489,7 +491,7 @@ test('class wordness: [\\s] is non_word', function()
     { type = CC.cc_escape_class, value = '\\s', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.non_word)
+  eq(result.tokens[3].wordness, W.non_word)
 end)
 
 test('class wordness: [\\W] is non_word', function()
@@ -498,7 +500,7 @@ test('class wordness: [\\W] is non_word', function()
     { type = CC.cc_escape_class, value = '\\W', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.non_word)
+  eq(result.tokens[3].wordness, W.non_word)
 end)
 
 test('class wordness: [.!@#] is non_word', function()
@@ -510,7 +512,7 @@ test('class wordness: [.!@#] is non_word', function()
     { type = CC.cc_literal,      value = '#', pos = 5 },
     { type = T.char_class_close, value = ']', pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.non_word)
+  eq(result.tokens[6].wordness, W.non_word)
 end)
 
 --------------------------------------------------------------------------------
@@ -523,7 +525,7 @@ test('class wordness: [^a-z] is unknown (negated)', function()
     { type = CC.cc_range,        value = 'a-z', pos = 3, from = 'a',    to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[3].wordness, W.unknown)
 end)
 
 test('class wordness: [a-z.] is unknown (mixed)', function()
@@ -533,7 +535,7 @@ test('class wordness: [a-z.] is unknown (mixed)', function()
     { type = CC.cc_literal,      value = '.',   pos = 5 },
     { type = T.char_class_close, value = ']',   pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 test('class wordness: [-a-z] is unknown (leading hyphen)', function()
@@ -543,7 +545,7 @@ test('class wordness: [-a-z] is unknown (leading hyphen)', function()
     { type = CC.cc_range,        value = 'a-z', pos = 3, from = 'a',     to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 test('class wordness: [a-z-] is unknown (trailing hyphen)', function()
@@ -553,7 +555,7 @@ test('class wordness: [a-z-] is unknown (trailing hyphen)', function()
     { type = CC.cc_literal,      value = '-',   pos = 5 },
     { type = T.char_class_close, value = ']',   pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 test('class wordness: [A-z] is unknown (range spans word/non-word)', function()
@@ -562,7 +564,7 @@ test('class wordness: [A-z] is unknown (range spans word/non-word)', function()
     { type = CC.cc_range,        value = 'A-z', pos = 2, from = 'A',     to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[3].wordness, W.unknown)
 end)
 
 test('class wordness: [0-Z] is unknown (range digit to letter via gap)', function()
@@ -571,7 +573,7 @@ test('class wordness: [0-Z] is unknown (range digit to letter via gap)', functio
     { type = CC.cc_range,        value = '0-Z', pos = 2, from = '0',     to = 'Z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[3].wordness, W.unknown)
 end)
 
 test('class wordness: [\\S] is unknown', function()
@@ -580,7 +582,7 @@ test('class wordness: [\\S] is unknown', function()
     { type = CC.cc_escape_class, value = '\\S', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[3].wordness, W.unknown)
 end)
 
 test('class wordness: [\\D] is unknown', function()
@@ -589,7 +591,7 @@ test('class wordness: [\\D] is unknown', function()
     { type = CC.cc_escape_class, value = '\\D', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[3].wordness, W.unknown)
 end)
 
 test('class wordness: [\\w\\s] is unknown (mixed word and non-word)', function()
@@ -599,7 +601,7 @@ test('class wordness: [\\w\\s] is unknown (mixed word and non-word)', function()
     { type = CC.cc_escape_class, value = '\\s', pos = 4 },
     { type = T.char_class_close, value = ']',   pos = 6 },
   })
-  eq(result.tokens[1].wordness, W.unknown)
+  eq(result.tokens[4].wordness, W.unknown)
 end)
 
 --------------------------------------------------------------------------------
