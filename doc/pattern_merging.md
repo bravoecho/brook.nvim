@@ -17,11 +17,14 @@ These features are related. The second depends on solving the first cleanly.
 
 ## Key Insight
 
+some ^foobar
+some ^barbaz
+
 Alternation already works. When searching for `foo|bar` with ripgrep, brook
-translates it to `\(foo\|bar\)` for the search register, and `n`/`N` jumps to
+translates it to `\vfoo|bar` for the search register, and `n`/`N` jumps to
 matches of either pattern. Users already have the correct mental model.
 
-The trick is to treat `-e foo -e bar` as equivalent to `foo|bar` at pattern
+The idea is to treat `-e foo -e bar` as equivalent to `foo|bar` at pattern
 construction time, before translation.
 
 ## Feature 1: Multiple `-e` Pattern Merging
@@ -51,6 +54,17 @@ translator remains a pure function from one regex dialect to another.
   ripgrep syntax, so joining with unescaped `|` is safe.
 - Per-pattern flags: ripgrep's `-e` does not support per-pattern flags, so all
   patterns share the same matching semantics. No special handling needed.
+- Word mode: when the `-w`/`--word-regexp` flags are set, each pattern should be
+  surrounded with word boundaries before merging, so `-e 'foo' -e 'bar' -w`
+  should result in `\v<foo>|<bar>`
+- Fixed-string mode: when the `-F`/`--fixed-strings` flags are set, the patterns
+  should be merged using an escaped bar character `\|`,
+  so `-e '^foo' -e '^bar' -F` should result in `\V^foo\|^bar`
+- Word+fixed combined: when both modes are set, the strategies should be
+  combined, using the escapes `\<` and `\>` for the boundaries,
+  so `-e 'foo' -e 'bar' -wF` should result in `\V\<foo\>\|\<bar\>`
+- Case sensitivity: when the case-sensitive/case-insensitive flags are set, the
+  combined pattern will be prepended with the `\c`/`\C` modifiers as usual.
 
 ### Testing
 
