@@ -27,6 +27,8 @@ local translator = require('brook.pattern.translator')
 ---@field pattern string|nil The translated Vim regex (nil when unsupported)
 ---@field warning string|nil Warning message for adjustments or failures
 
+--------------------------------------------------------------------------------
+
 --- Translate a ripgrep pattern to Vim regex.
 ---
 --- Returns result matching legacy interface with single formatted warning.
@@ -34,7 +36,7 @@ local translator = require('brook.pattern.translator')
 ---
 ---@param pattern string The ripgrep search pattern
 ---@param opts? brook.pattern.TranslateOpts Options affecting translation
----@return brook.pattern.TranslateResult
+---@return brook.pattern.Result
 function M.rg_to_vim(pattern, opts)
   opts = opts or {}
 
@@ -85,7 +87,7 @@ end
 ---
 ---@param pattern string The literal search string
 ---@param opts brook.pattern.TranslateOpts Translation options
----@return brook.pattern.TranslateResult
+---@return brook.pattern.Result
 function M._translate_fixed(pattern, opts)
   -- Escape backslashes and forward slashes
   pattern = pattern:gsub('\\', '\\\\'):gsub('/', '\\/')
