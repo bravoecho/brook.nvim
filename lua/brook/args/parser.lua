@@ -25,21 +25,20 @@ local POSITIONAL_SEPARATOR = '--'
 --- first positional argument. This function handles both cases, as well as
 --- stacked short arguments and quoted tokens.
 ---
---- NOTE: Currently only the first pattern is used (even when the original
---- command specified multiple with -e/--regexp). Support to combine multiple
---- patterns in an alternation for more accurate highlighting may be added in
---- the future.
+--- Multiple patterns specified with `-e`/`--regexp` are all collected and
+--- returned in the `patterns` field. Support for merging them into a single
+--- alternation pattern (for search register integration) is handled downstream.
 ---
 --- NOTE: The tokens must be already shell-unquoted (call posix_unquote_all to
 --- pre-process them).
 ---
 ---@param tokens string[]|nil A list of shell-unquoted command-line tokens
 ---@param raw string Original raw command, only to be forwarded
----@return brook.args.ParsedArgs result Parsed arguments, or nil if malformed
+---@return brook.args.ParsedArgs result Parsed arguments
 function M.parse_args(tokens, raw)
   ---@type brook.args.ParsedArgs
   local result = {
-    pattern = nil,
+    patterns = {},
     fixed = false,
     word = false,
     case = nil,
@@ -128,8 +127,8 @@ function M.parse_args(tokens, raw)
     end
   end
 
-  if #(patterns) > 0 then
-    result.pattern = patterns[1]
+  if #patterns > 0 then
+    result.patterns = patterns
     return result
   end
 
@@ -153,12 +152,12 @@ function M.parse_args(tokens, raw)
     elseif token == POSITIONAL_SEPARATOR then
       local pattern = tokens[i + 1]
       if pattern then
-        result.pattern = pattern
+        result.patterns = { pattern }
       end
       return result
     else
       -- return the first positional argument
-      result.pattern = token
+      result.patterns = { token }
       return result
     end
   end

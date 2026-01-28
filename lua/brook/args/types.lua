@@ -8,8 +8,8 @@ local M = {}
 --- Result of parsing ripgrep command-line arguments.
 ---@class brook.args.ParsedArgs
 ---
---- The ripgrep search pattern
----@field pattern string|nil
+--- The ripgrep search patterns (from -e/--regexp options or first positional)
+---@field patterns string[]
 ---
 --- Whether --fixed-strings / -F was specified
 ---@field fixed boolean

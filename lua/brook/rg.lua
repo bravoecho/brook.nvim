@@ -33,7 +33,7 @@ function M.selection(text, cfg)
   return exec({
     args = { '--', text },
     parsed_args = {
-      pattern = text,
+      patterns = { text },
       word = false,
       fixed = true,
       case = nil,
@@ -61,7 +61,7 @@ function M.word(word, cfg)
   return exec({
     args = { '--', word },
     parsed_args = {
-      pattern = word,
+      patterns = { word },
       word = true,
       fixed = true,
       case = nil,

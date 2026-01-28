@@ -29,16 +29,29 @@ local translator = require('brook.pattern.translator')
 
 --------------------------------------------------------------------------------
 
---- Translate a ripgrep pattern to Vim regex.
+--- Translate ripgrep patterns to Vim regex.
+---
+--- Accepts a list of patterns (from multiple -e options or a single positional
+--- argument). Currently uses only the first pattern; future versions will merge
+--- patterns into an alternation.
 ---
 --- Returns result matching legacy interface with single formatted warning.
 --- When translation fails, returns pattern = nil with warning explaining why.
 ---
----@param pattern string The ripgrep search pattern
+---@param patterns string[] The ripgrep search patterns
 ---@param opts? brook.pattern.TranslateOpts Options affecting translation
 ---@return brook.pattern.Result
-function M.rg_to_vim(pattern, opts)
+function M.rg_to_vim(patterns, opts)
   opts = opts or {}
+
+  -- Empty list: nothing to translate
+  if #patterns == 0 then
+    return { pattern = nil, warning = nil }
+  end
+
+  -- TODO: merge multiple patterns into alternation
+  -- For now, use only the first pattern
+  local pattern = patterns[1]
 
   -- Fixed mode: bypass pipeline entirely.
   -- No regex syntax to parse; just escape and wrap.

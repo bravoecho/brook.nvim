@@ -667,7 +667,7 @@ function M._update_quickfix(items, ctx, session)
       end
     end
     if ctx.cfg.set_search_register then
-      M._set_search_register(ctx.parsed_args.pattern, {
+      M._set_search_register(ctx.parsed_args.patterns, {
         word = ctx.parsed_args.word,
         fixed = ctx.parsed_args.fixed,
         case = ctx.parsed_args.case,
@@ -708,14 +708,14 @@ end
 ---
 --- Notifies the user of any pattern translation issues.
 ---
----@param rg_pattern string|nil The ripgrep search pattern
+---@param rg_patterns string[]|nil The ripgrep search pattern
 ---@param pattern_opts brook.pattern.TranslateOpts Options affecting pattern translation
-function M._set_search_register(rg_pattern, pattern_opts)
-  if not rg_pattern then
+function M._set_search_register(rg_patterns, pattern_opts)
+  if not rg_patterns then
     return
   end
 
-  local result = pattern.rg_to_vim(rg_pattern, pattern_opts)
+  local result = pattern.rg_to_vim(rg_patterns, pattern_opts)
 
   if result.warning then
     vim.notify('rg: pattern translation: ' .. result.warning, vim.log.levels.WARN)

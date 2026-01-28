@@ -11,7 +11,6 @@
 local h = require('tests.harness')
 local test = h.test
 local eq = h.eq
-local deep_eq = h.deep_eq
 local types = require('brook.pattern.types')
 
 local parser = require('brook.pattern.parser')
