@@ -331,7 +331,9 @@ M.unknown_escapes = {
 --- Internal result from translator: includes full warnings list.
 ---
 ---@class brook.pattern.TranslatorResult
----@field pattern string Vim regex pattern
+---@field prefix string Mode and case prefix (e.g. \C\v)
+---@field body string Pattern body without prefix
+---@field pattern string Full Vim regex pattern (prefix .. body)
 ---@field error? string Error message, if any
 ---@field warnings? string[] All warnings (may be empty)
 

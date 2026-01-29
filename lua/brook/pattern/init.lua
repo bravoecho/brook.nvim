@@ -116,15 +116,12 @@ function M._translate_and_merge(patterns, opts)
       }
     end
 
-    -- Extract prefix and body from translated pattern
-    local p_prefix, p_body = M._split_prefix(trans_result.pattern)
-
     -- All patterns should have the same prefix (same opts)
     if prefix == nil then
-      prefix = p_prefix
+      prefix = trans_result.prefix
     end
 
-    bodies[#bodies + 1] = p_body
+    bodies[#bodies + 1] = trans_result.body
   end
 
   -- Merge bodies with alternation
@@ -134,31 +131,6 @@ function M._translate_and_merge(patterns, opts)
     pattern = merged,
     warning = M._format_warnings(all_warnings),
   }
-end
-
---- Split a translated pattern into prefix and body.
----
---- Prefix consists of optional case modifier (\c or \C) followed by
---- magic mode (\v, \V, \m, \M). Body is everything after.
----
----@param pattern string Translated Vim regex
----@return string prefix The mode/case prefix
----@return string body The pattern body
-function M._split_prefix(pattern)
-  -- Match optional case modifier + required magic mode
-  local prefix, body = pattern:match('^(\\[cC]?\\[vVmM])(.*)')
-  if prefix then
-    return prefix, body
-  end
-
-  -- Just magic mode, no case modifier
-  prefix, body = pattern:match('^(\\[vVmM])(.*)')
-  if prefix then
-    return prefix, body
-  end
-
-  -- No recognised prefix (shouldn't happen with our translator)
-  return '', pattern
 end
 
 --------------------------------------------------------------------------------

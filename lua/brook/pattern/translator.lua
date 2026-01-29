@@ -36,6 +36,10 @@ local CC = types.cc_token_type
 --- If an error is passed in, the translator returns immediately with that error
 --- and any warnings collected so far.
 ---
+--- Returns prefix and body separately to support pattern merging. The prefix
+--- contains mode and case modifiers (e.g. \C\v), the body contains the pattern.
+--- The pattern field is prefix .. body for backward compatibility.
+---
 ---@param tokens brook.pattern.Token[] Annotated tokens from parser
 ---@param opts brook.pattern.TranslateOpts Translation options
 ---@param incoming_warnings? string[] Warnings from earlier pipeline stages
@@ -55,27 +59,32 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
   -- If an error was passed in, forward it immediately
   if incoming_error then
     return {
+      prefix = '',
+      body = '',
       pattern = '',
       warnings = warnings,
       error = incoming_error,
     }
   end
 
-  local parts = {}
-
-  -- Emit case prefix if specified
+  -- Build prefix: case modifier (if any) + mode
+  local prefix_parts = {}
   if opts.case == 'case-sensitive' then
-    table.insert(parts, '\\C')
+    table.insert(prefix_parts, '\\C')
   elseif opts.case == 'case-insensitive' then
-    table.insert(parts, '\\c')
+    table.insert(prefix_parts, '\\c')
   end
 
-  -- Emit mode prefix
   if opts.fixed then
-    table.insert(parts, '\\V')
+    table.insert(prefix_parts, '\\V')
   else
-    table.insert(parts, '\\v')
+    table.insert(prefix_parts, '\\v')
   end
+
+  local prefix = table.concat(prefix_parts)
+
+  -- Build body
+  local parts = {}
 
   -- Emit word boundary if requested
   if opts.word then
@@ -289,8 +298,12 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
     end
   end
 
+  local body = table.concat(parts)
+
   return {
-    pattern = table.concat(parts),
+    prefix = prefix,
+    body = body,
+    pattern = prefix .. body,
     warnings = warnings,
   }
 end
