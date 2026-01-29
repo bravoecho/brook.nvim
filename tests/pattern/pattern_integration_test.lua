@@ -1,5 +1,5 @@
 -- Run with:
---   nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern_integration_test.lua" -c "q"
+--   nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/pattern_integration_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
@@ -40,7 +40,7 @@ test('fixed: complex path-like pattern', function()
 end)
 
 test('fixed: empty string', function()
-  eq(rg_to_vim({ '' }, { fixed = true }), result('\\V'))
+  eq(rg_to_vim({ '' }, { fixed = true }), result(nil))
 end)
 
 test('fixed: special chars preserved', function()
@@ -1050,7 +1050,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('edge: empty string', function()
-  eq(rg_to_vim({ '' }, {}), result('\\v'))
+  eq(rg_to_vim({ '' }, {}), result(nil))
 end)
 
 test('edge: single backslash at end (malformed)', function()
