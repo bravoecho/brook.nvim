@@ -1,24 +1,14 @@
-# brook.nvim: Pattern Merging and Quickfix Append
+# brook.nvim: Pattern Merging
 
-Design document for two related features: merging multiple `-e` patterns into a
-single search register pattern, and appending search results across multiple
-invocations.
+Design document for merging multiple `-e` patterns into a single search register
+pattern.
 
 ## Problem Statement
 
-Two feature requests have emerged:
-
-1. Support for multiple `-e` options passed to ripgrep, with proper search
-   register integration so `n`/`N` navigation works across all patterns
-2. Append mode: add results from a new search to the existing quickfix list
-   without clearing it (vim-grepper parity)
-
-These features are related. The second depends on solving the first cleanly.
+Support for multiple `-e` options passed to ripgrep, with proper search register
+integration so `n`/`N` navigation works across all patterns.
 
 ## Key Insight
-
-some ^foobar
-some ^barbaz
 
 Alternation already works. When searching for `foo|bar` with ripgrep, brook
 translates it to `\vfoo|bar` for the search register, and `n`/`N` jumps to
@@ -27,7 +17,7 @@ matches of either pattern. Users already have the correct mental model.
 The idea is to treat `-e foo -e bar` as equivalent to `foo|bar` at pattern
 construction time, before translation.
 
-## Feature 1: Multiple `-e` Pattern Merging
+## Multiple `-e` Pattern Merging
 
 ### Approach
 
@@ -38,6 +28,19 @@ construction time, before translation.
 
 Ripgrep still receives the original arguments unchanged: it handles `-e`
 natively. The merging is only for Vim's benefit.
+
+### Positional vs `-e` Patterns
+
+These modes are mutually exclusive. When `-e` is present, ripgrep treats the
+first positional argument as a path, not a pattern:
+
+```
+> rg foo -e bar
+rg: foo: IO error for operation on foo: No such file or directory (os error 2)
+```
+
+Brook should detect `-e` presence and only extract patterns from `-e` arguments
+in that case. No "mixed mode" handling is needed.
 
 ### Implementation Location
 
@@ -56,13 +59,13 @@ translator remains a pure function from one regex dialect to another.
   patterns share the same matching semantics. No special handling needed.
 - Word mode: when the `-w`/`--word-regexp` flags are set, each pattern should be
   surrounded with word boundaries before merging, so `-e 'foo' -e 'bar' -w`
-  should result in `\v<foo>|<bar>`
+  should result in `\v<foo>|<bar>`.
 - Fixed-string mode: when the `-F`/`--fixed-strings` flags are set, the patterns
   should be merged using an escaped bar character `\|`,
-  so `-e '^foo' -e '^bar' -F` should result in `\V^foo\|^bar`
+  so `-e '^foo' -e '^bar' -F` should result in `\V^foo\|^bar`.
 - Word+fixed combined: when both modes are set, the strategies should be
   combined, using the escapes `\<` and `\>` for the boundaries,
-  so `-e 'foo' -e 'bar' -wF` should result in `\V\<foo\>\|\<bar\>`
+  so `-e 'foo' -e 'bar' -wF` should result in `\V\<foo\>\|\<bar\>`.
 - Case sensitivity: when the case-sensitive/case-insensitive flags are set, the
   combined pattern will be prepended with the `\c`/`\C` modifiers as usual.
 
@@ -70,103 +73,42 @@ translator remains a pure function from one regex dialect to another.
 
 - Single `-e`: equivalent to current behaviour
 - Multiple `-e`: verify joined pattern translates correctly
-- Mixed with positional pattern: decide semantics (error? combine?)
 - Anchors in multiple patterns
 - Patterns containing literal pipe characters
 
-## Feature 2: Quickfix Append Mode
+## Rejected: Quickfix Append Mode
 
-### The Provenance Problem
+We considered but rejected a feature to append search results across multiple
+invocations (vim-grepper's `--append` flag).
 
-Neovim does not track why the quickfix list contains what it contains. The list
-could have been modified by LSP, diagnostics, `:cdo`, or manual filtering.
-Blindly appending risks incoherent results.
+### Why It Was Considered
 
-### The Pattern Problem (solved by Feature 1)
+The idea was to accumulate results: run `:Brook foo`, see the results, then run
+`:Brook --append bar` to add matches for `bar` to the existing quickfix list.
 
-If appending results from `foo.*bar` to results from `\bquux\b`, what goes in
-the search register? Options are all bad:
+### Why It Was Rejected
 
-- Overwrite with new pattern: `n` misses items from first search
-- Keep old pattern: `n` misses items from second search
-- Construct alternation from translated patterns: fragile, potentially invalid
+1. Conflicting options across searches: if the first search is case-sensitive
+   and the second is case-insensitive, what should the merged search register
+   contain? Vim's `\c`/`\C` modifiers apply to the entire pattern, not to
+   individual alternation branches. The same problem applies to `--fixed-strings`
+   vs regex mode (though `\V`/`\v` can technically be switched mid-pattern, the
+   semantics become confusing).
 
-Solution: accumulate source patterns in ripgrep syntax, merge them, translate
-the merged result. The translator remains pure.
+2. Mental overhead: the user must remember what's currently accumulated in the
+   quickfix and why. The quickfix title would show only the last search, not the
+   full history.
 
-### Data Model
+3. Fragile state: running a normal `:Brook` search after several appends would
+   silently discard the accumulated results. Easy to do by accident.
 
-Use the quickfix context field to store brook metadata:
+4. Multi-pattern already solves the use case: if you realise you want to search
+   for both `foo` and `bar`, press `<Up>` to recall the last command and edit it
+   to `:Brook -e foo -e bar`. The quickfix title then clearly shows the complete
+   search, and the search register is unambiguous.
 
-```lua
-context = {
-  brook = true,
-  patterns = {
-    {'foo', 'bar'},      -- first search: -e foo -e bar
-    {'baz'},             -- second search (appended): -e baz
-    {'quux', 'xyzzy'},   -- third search (appended): -e quux -e xyzzy
-  },
-}
-```
-
-The nested structure preserves which search contributed which patterns. This
-could support "undo last append" in future, though that may be over-engineering.
-
-### Workflow
-
-1. Normal search (no append flag):
-   - Run ripgrep with the given pattern(s)
-   - Replace quickfix list unconditionally
-   - Set context with `brook = true` and `patterns = {{...}}`
-   - Set search register from translated merged pattern
-
-2. Append search:
-   - Check `getqflist({context = 1})`: if `context.brook` is not true, either
-     refuse or warn (user's quickfix may contain unrelated items)
-   - Run ripgrep with new pattern(s)
-   - Append new results to quickfix list
-   - Append new pattern group to `context.patterns`
-   - Flatten all patterns, join with `|`, translate, set search register
-
-### Search Register Update
-
-On append:
-
-1. Flatten: `{'foo', 'bar', 'baz', 'quux', 'xyzzy'}`
-2. Join: `foo|bar|baz|quux|xyzzy`
-3. Translate: `\(foo\|bar\|baz\|quux\|xyzzy\)`
-4. Set search register
-
-This reuses the exact pipeline from Feature 1.
-
-### API Considerations
-
-- New flag or command variant to trigger append mode (e.g. `:BrookAppend` or
-  `:Brook --append`)
-- Behaviour when context check fails: refuse with error? warn and proceed?
-  make it configurable?
-- Whether to expose "clear append history" as a separate command
-
-## Implementation Order
-
-1. Implement Feature 1 (multiple `-e` merging) first
-   - Self-contained and valuable on its own
-   - Establishes the "join patterns, translate once" pipeline
-   - Can be tested independently
-
-2. Implement Feature 2 (append mode) second
-   - Becomes a thin layer over Feature 1
-   - Adds context management and accumulation logic
-   - Reuses the merging pipeline directly
-
-## Open Questions
-
-- Mixed positional and `-e` patterns: is this an error, or should they combine?
-- Staleness: should context include a timestamp? Would brook ever refuse to
-  append to a "stale" quickfix list? Probably not: user knows best.
-- Provenance check failure: error vs warning vs configurable
-- Maximum pattern accumulation: is there a point where the alternation becomes
-  unwieldy? Probably not a practical concern.
+The command-line history approach is transparent: the quickfix always reflects
+exactly what you asked for, and the title is the authoritative source of truth.
 
 ## References
 

@@ -144,13 +144,15 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 
 * **Filter by file type**: `:Rg -t lua config` or `:Rg -T js bug`
 * **Literal search**: `:Rg -F "($[0].item)"` for special characters
+* **Multiple patterns**: `:Rg -e TODO -e FIXME` searches and navigates both, and
+  combines with other flags like `-w` (whole-word) and `-F` (literal)
 * **Case control**: `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
-* **Stop early**: `<leader>G` or `:RgStop`, results so far remain in quickfix
-* **Unique lines**: Set `output_format = 'unique-lines'` or use `-n` flag
+* **Unique lines**: Use the `-n` flag to set it on a single search
 * **Search path**: Press `<Tab>` in the command to autocomplete relative paths
 * **Report each file only once**: `:Rg mypattern -n -m1`
 * **Open all files with matches**: `:cfdo edit`
 * **Search only the current file**: `:Rg mypattern %`
+* **Stop early**: `<leader>G` or `:RgStop`, results so far remain in quickfix
 * **Customise ripgrep**: Add default options to `~/.ripgreprc`
 
 ### Limitations
@@ -161,10 +163,6 @@ Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list
 * **No PCRE2**: only ripgrep's default regexp engine is supported. Commands
   setting it to PCRE2 will result in an error. This guarantees predictable
   performance and more accurate search pattern translation.
-
-* **Multiple patterns**: With multiple `-e` flags, only the first pattern is
-  used for highlighting and `n`/`N` navigation. The ripgrep search itself works
-  correctly with all patterns.
 
 ---
 

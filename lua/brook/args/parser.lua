@@ -127,6 +127,10 @@ function M.parse_args(tokens, raw)
     end
   end
 
+  -- If there are patterns at this point, they were passed via the
+  -- `-e`/`--regexp` option. When these options are set, the pattern cannot be
+  -- positional, instead even the first positional argument is treated as a path.
+  -- So we can return early with the patterns found.
   if #patterns > 0 then
     result.patterns = patterns
     return result
