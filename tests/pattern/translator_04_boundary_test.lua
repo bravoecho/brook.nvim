@@ -17,6 +17,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local EC = types.escape_class
 local W = types.wordness
@@ -32,7 +39,7 @@ test('boundary: \\b at start with word following becomes <', function()
     { type = T.literal,         value = 'o',   pos = 4, wordness = W.word },
     { type = T.literal,         value = 'o',   pos = 5, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v<foo')
+  eq(pattern(result), '\\v<foo')
 end)
 
 test('boundary: \\b after non-word with word following becomes <', function()
@@ -41,7 +48,7 @@ test('boundary: \\b after non-word with word following becomes <', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.non_word, next_wordness = W.word },
     { type = T.literal,         value = 'a',   pos = 4, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v <a')
+  eq(pattern(result), '\\v <a')
 end)
 
 --------------------------------------------------------------------------------
@@ -55,7 +62,7 @@ test('boundary: \\b at end with word preceding becomes >', function()
     { type = T.literal,         value = 'o',   pos = 3, wordness = W.word },
     { type = T.escape_boundary, value = '\\b', pos = 4, escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil },
   }, {})
-  eq(result.pattern, '\\vfoo>')
+  eq(pattern(result), '\\vfoo>')
 end)
 
 test('boundary: \\b before non-word with word preceding becomes >', function()
@@ -64,7 +71,7 @@ test('boundary: \\b before non-word with word preceding becomes >', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.non_word },
     { type = T.literal,         value = ' ',   pos = 4, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\va> ')
+  eq(pattern(result), '\\va> ')
 end)
 
 --------------------------------------------------------------------------------
@@ -79,7 +86,7 @@ test('boundary: \\bfoo\\b becomes <foo>', function()
     { type = T.literal,         value = 'o',   pos = 5, wordness = W.word },
     { type = T.escape_boundary, value = '\\b', pos = 6, escape_class = EC.boundary, prev_wordness = W.word, next_wordness = nil },
   }, {})
-  eq(result.pattern, '\\v<foo>')
+  eq(pattern(result), '\\v<foo>')
 end)
 
 --------------------------------------------------------------------------------
@@ -90,7 +97,7 @@ test('boundary: \\b alone becomes %(<|>)', function()
   local result = translate({
     { type = T.escape_boundary, value = '\\b', pos = 1, escape_class = EC.boundary, prev_wordness = nil, next_wordness = nil },
   }, {})
-  eq(result.pattern, '\\v%(<|>)')
+  eq(pattern(result), '\\v%(<|>)')
 end)
 
 test('boundary: \\b between word chars becomes %(<|>)', function()
@@ -99,7 +106,7 @@ test('boundary: \\b between word chars becomes %(<|>)', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.word },
     { type = T.literal,         value = 'b',   pos = 4, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va%(<|>)b')
+  eq(pattern(result), '\\va%(<|>)b')
 end)
 
 test('boundary: \\b between non-word chars becomes %(<|>)', function()
@@ -108,7 +115,7 @@ test('boundary: \\b between non-word chars becomes %(<|>)', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.non_word, next_wordness = W.non_word },
     { type = T.literal,         value = '-',   pos = 4, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v.%(<|>)-')
+  eq(pattern(result), '\\v.%(<|>)-')
 end)
 
 test('boundary: \\b with unknown prev becomes %(<|>)', function()
@@ -117,7 +124,7 @@ test('boundary: \\b with unknown prev becomes %(<|>)', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.unknown, next_wordness = W.word },
     { type = T.literal,         value = 'a',   pos = 4, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v.%(<|>)a')
+  eq(pattern(result), '\\v.%(<|>)a')
 end)
 
 test('boundary: \\b with unknown next becomes %(<|>)', function()
@@ -126,7 +133,7 @@ test('boundary: \\b with unknown next becomes %(<|>)', function()
     { type = T.escape_boundary, value = '\\b', pos = 2, escape_class = EC.boundary, prev_wordness = W.word, next_wordness = W.unknown },
     { type = T.dot,             value = '.',   pos = 4, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\va%(<|>).')
+  eq(pattern(result), '\\va%(<|>).')
 end)
 
 --------------------------------------------------------------------------------
@@ -139,7 +146,7 @@ test('boundary: \\A becomes ^ with no additional warning', function()
     { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
     { type = T.literal,         value = 'a',   pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v^a')
+  eq(pattern(result), '\\v^a')
   eq(#result.warnings, 0)
 end)
 
@@ -149,7 +156,7 @@ test('boundary: \\z becomes $ with no additional warning', function()
     { type = T.literal,         value = 'a',   pos = 1, wordness = W.word },
     { type = T.escape_boundary, value = '\\z', pos = 2, escape_class = EC.anchor_end, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\va$')
+  eq(pattern(result), '\\va$')
   eq(#result.warnings, 0)
 end)
 
@@ -162,7 +169,7 @@ test('boundary: \\A and \\z together', function()
     { type = T.literal,         value = 'o',   pos = 5, wordness = W.word },
     { type = T.escape_boundary, value = '\\z', pos = 6, escape_class = EC.anchor_end,   wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v^foo$')
+  eq(pattern(result), '\\v^foo$')
   eq(#result.warnings, 0)
 end)
 

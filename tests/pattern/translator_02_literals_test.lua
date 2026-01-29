@@ -16,6 +16,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local W = types.wordness
 
@@ -27,7 +34,7 @@ test('literal: single letter', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va')
+  eq(pattern(result), '\\va')
 end)
 
 test('literal: multiple letters', function()
@@ -36,7 +43,7 @@ test('literal: multiple letters', function()
     { type = T.literal, value = 'b', pos = 2, wordness = W.word },
     { type = T.literal, value = 'c', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\vabc')
+  eq(pattern(result), '\\vabc')
 end)
 
 test('literal: digits', function()
@@ -45,28 +52,28 @@ test('literal: digits', function()
     { type = T.literal, value = '2', pos = 2, wordness = W.word },
     { type = T.literal, value = '3', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v123')
+  eq(pattern(result), '\\v123')
 end)
 
 test('literal: underscore', function()
   local result = translate({
     { type = T.literal, value = '_', pos = 1, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v_')
+  eq(pattern(result), '\\v_')
 end)
 
 test('literal: space', function()
   local result = translate({
     { type = T.literal, value = ' ', pos = 1, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v ')
+  eq(pattern(result), '\\v ')
 end)
 
 test('literal: hyphen', function()
   local result = translate({
     { type = T.literal, value = '-', pos = 1, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v-')
+  eq(pattern(result), '\\v-')
 end)
 
 --------------------------------------------------------------------------------
@@ -83,7 +90,7 @@ test('vimspecial: equals sign', function()
     { type = T.literal, value = 'a', pos = 6, wordness = W.word },
     { type = T.literal, value = 'r', pos = 7, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\vfoo\\=bar')
+  eq(pattern(result), '\\vfoo\\=bar')
 end)
 
 test('vimspecial: tilde', function()
@@ -92,7 +99,7 @@ test('vimspecial: tilde', function()
     { type = T.literal, value = '~', pos = 2, wordness = W.non_word },
     { type = T.literal, value = 'y', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\vx\\~y')
+  eq(pattern(result), '\\vx\\~y')
 end)
 
 test('vimspecial: at sign', function()
@@ -101,7 +108,7 @@ test('vimspecial: at sign', function()
     { type = T.literal, value = '@', pos = 2, wordness = W.non_word },
     { type = T.literal, value = 'b', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va\\@b')
+  eq(pattern(result), '\\va\\@b')
 end)
 
 test('vimspecial: ampersand', function()
@@ -110,7 +117,7 @@ test('vimspecial: ampersand', function()
     { type = T.literal, value = '&', pos = 2, wordness = W.non_word },
     { type = T.literal, value = 'b', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va\\&b')
+  eq(pattern(result), '\\va\\&b')
 end)
 
 test('vimspecial: less than', function()
@@ -119,7 +126,7 @@ test('vimspecial: less than', function()
     { type = T.literal, value = '<', pos = 2, wordness = W.non_word },
     { type = T.literal, value = 'b', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va\\<b')
+  eq(pattern(result), '\\va\\<b')
 end)
 
 test('vimspecial: greater than', function()
@@ -128,7 +135,7 @@ test('vimspecial: greater than', function()
     { type = T.literal, value = '>', pos = 2, wordness = W.non_word },
     { type = T.literal, value = 'y', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\vx\\>y')
+  eq(pattern(result), '\\vx\\>y')
 end)
 
 test('vimspecial: all special chars together', function()
@@ -140,7 +147,7 @@ test('vimspecial: all special chars together', function()
     { type = T.literal, value = '<', pos = 5, wordness = W.non_word },
     { type = T.literal, value = '>', pos = 6, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\~\\=\\@\\&\\<\\>')
+  eq(pattern(result), '\\v\\~\\=\\@\\&\\<\\>')
 end)
 
 --------------------------------------------------------------------------------
@@ -157,7 +164,7 @@ test('slash: forward slash escaped', function()
     { type = T.literal, value = 'a', pos = 6, wordness = W.word },
     { type = T.literal, value = 'r', pos = 7, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\vfoo\\/bar')
+  eq(pattern(result), '\\vfoo\\/bar')
 end)
 
 test('slash: multiple slashes', function()
@@ -170,7 +177,7 @@ test('slash: multiple slashes', function()
     { type = T.literal, value = 'v', pos = 6, wordness = W.word },
     { type = T.literal, value = '1', pos = 7, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\/api\\/v1')
+  eq(pattern(result), '\\v\\/api\\/v1')
 end)
 
 --------------------------------------------------------------------------------
@@ -181,7 +188,7 @@ test('dot: passes through', function()
   local result = translate({
     { type = T.dot, value = '.', pos = 1, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v.')
+  eq(pattern(result), '\\v.')
 end)
 
 test('dot: in context', function()
@@ -190,7 +197,7 @@ test('dot: in context', function()
     { type = T.dot,     value = '.', pos = 2, wordness = W.unknown },
     { type = T.literal, value = 'b', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va.b')
+  eq(pattern(result), '\\va.b')
 end)
 
 --------------------------------------------------------------------------------
@@ -201,14 +208,14 @@ test('anchor: caret passes through', function()
   local result = translate({
     { type = T.anchor, value = '^', pos = 1, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v^')
+  eq(pattern(result), '\\v^')
 end)
 
 test('anchor: dollar passes through', function()
   local result = translate({
     { type = T.anchor, value = '$', pos = 1, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v$')
+  eq(pattern(result), '\\v$')
 end)
 
 test('anchor: both anchors', function()
@@ -219,7 +226,7 @@ test('anchor: both anchors', function()
     { type = T.literal, value = 'o', pos = 4, wordness = W.word },
     { type = T.anchor,  value = '$', pos = 5, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v^foo$')
+  eq(pattern(result), '\\v^foo$')
 end)
 
 --------------------------------------------------------------------------------
@@ -232,7 +239,7 @@ test('alternation: simple', function()
     { type = T.alternation, value = '|', pos = 2, wordness = W.non_word },
     { type = T.literal,     value = 'b', pos = 3, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va|b')
+  eq(pattern(result), '\\va|b')
 end)
 
 test('alternation: multiple', function()
@@ -243,7 +250,7 @@ test('alternation: multiple', function()
     { type = T.alternation, value = '|', pos = 4, wordness = W.non_word },
     { type = T.literal,     value = 'c', pos = 5, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va|b|c')
+  eq(pattern(result), '\\va|b|c')
 end)
 
 --------------------------------------------------------------------------------

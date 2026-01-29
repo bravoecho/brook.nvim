@@ -16,6 +16,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local EC = types.escape_class
 local W = types.wordness
@@ -28,14 +35,14 @@ test('escape: \\w passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\w', pos = 1, escape_class = EC.shorthand_word, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\w')
+  eq(pattern(result), '\\v\\w')
 end)
 
 test('escape: \\d passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\d', pos = 1, escape_class = EC.shorthand_word, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\d')
+  eq(pattern(result), '\\v\\d')
 end)
 
 --------------------------------------------------------------------------------
@@ -46,14 +53,14 @@ test('escape: \\s passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\s', pos = 1, escape_class = EC.shorthand_nonword, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\s')
+  eq(pattern(result), '\\v\\s')
 end)
 
 test('escape: \\W passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\W', pos = 1, escape_class = EC.shorthand_nonword, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\W')
+  eq(pattern(result), '\\v\\W')
 end)
 
 --------------------------------------------------------------------------------
@@ -64,14 +71,14 @@ test('escape: \\S passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\S', pos = 1, escape_class = EC.shorthand_unknown, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v\\S')
+  eq(pattern(result), '\\v\\S')
 end)
 
 test('escape: \\D passes through', function()
   local result = translate({
     { type = T.escape_class, value = '\\D', pos = 1, escape_class = EC.shorthand_unknown, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v\\D')
+  eq(pattern(result), '\\v\\D')
 end)
 
 --------------------------------------------------------------------------------
@@ -82,119 +89,119 @@ test('escape: \\n passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\n', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\n')
+  eq(pattern(result), '\\v\\n')
 end)
 
 test('escape: \\t passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\t', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\t')
+  eq(pattern(result), '\\v\\t')
 end)
 
 test('escape: \\r passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\r', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\r')
+  eq(pattern(result), '\\v\\r')
 end)
 
 test('escape: \\\\ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\\\', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\\\')
+  eq(pattern(result), '\\v\\\\')
 end)
 
 test('escape: \\. passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\.', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\.')
+  eq(pattern(result), '\\v\\.')
 end)
 
 test('escape: \\* passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\*', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\*')
+  eq(pattern(result), '\\v\\*')
 end)
 
 test('escape: \\+ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\+', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\+')
+  eq(pattern(result), '\\v\\+')
 end)
 
 test('escape: \\? passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\?', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\?')
+  eq(pattern(result), '\\v\\?')
 end)
 
 test('escape: \\( passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\(', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\(')
+  eq(pattern(result), '\\v\\(')
 end)
 
 test('escape: \\) passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\)', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\)')
+  eq(pattern(result), '\\v\\)')
 end)
 
 test('escape: \\[ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\[', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\[')
+  eq(pattern(result), '\\v\\[')
 end)
 
 test('escape: \\] passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\]', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\]')
+  eq(pattern(result), '\\v\\]')
 end)
 
 test('escape: \\{ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\{', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\{')
+  eq(pattern(result), '\\v\\{')
 end)
 
 test('escape: \\} passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\}', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\}')
+  eq(pattern(result), '\\v\\}')
 end)
 
 test('escape: \\| passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\|', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\|')
+  eq(pattern(result), '\\v\\|')
 end)
 
 test('escape: \\^ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\^', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\^')
+  eq(pattern(result), '\\v\\^')
 end)
 
 test('escape: \\$ passes through', function()
   local result = translate({
     { type = T.escape_literal, value = '\\$', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\$')
+  eq(pattern(result), '\\v\\$')
 end)
 
 --------------------------------------------------------------------------------
@@ -205,14 +212,14 @@ test('escape: \\x7F passes through', function()
   local result = translate({
     { type = T.escape_hex, value = '\\x7F', pos = 1, escape_class = EC.escaped_literal, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v\\x7F')
+  eq(pattern(result), '\\v\\x7F')
 end)
 
 test('escape: \\x{0041} passes through', function()
   local result = translate({
     { type = T.escape_hex, value = '\\x{0041}', pos = 1, escape_class = EC.escaped_literal, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\x{0041}')
+  eq(pattern(result), '\\v\\x{0041}')
 end)
 
 --------------------------------------------------------------------------------
@@ -223,14 +230,14 @@ test('escape: \\u0041 passes through', function()
   local result = translate({
     { type = T.escape_unicode, value = '\\u0041', pos = 1, escape_class = EC.escaped_literal, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\u0041')
+  eq(pattern(result), '\\v\\u0041')
 end)
 
 test('escape: \\u{41} passes through', function()
   local result = translate({
     { type = T.escape_unicode, value = '\\u{41}', pos = 1, escape_class = EC.escaped_literal, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\u{41}')
+  eq(pattern(result), '\\v\\u{41}')
 end)
 
 --------------------------------------------------------------------------------
@@ -241,14 +248,14 @@ test('escape: \\0 passes through', function()
   local result = translate({
     { type = T.escape_octal, value = '\\0', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\0')
+  eq(pattern(result), '\\v\\0')
 end)
 
 test('escape: \\123 passes through', function()
   local result = translate({
     { type = T.escape_octal, value = '\\123', pos = 1, escape_class = EC.escaped_literal, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\123')
+  eq(pattern(result), '\\v\\123')
 end)
 
 --------------------------------------------------------------------------------
@@ -260,7 +267,7 @@ test('escape: trailing backslash passes through', function()
     { type = T.literal,        value = 'a',  pos = 1, wordness = W.word },
     { type = T.escape_literal, value = '\\', pos = 2, escape_class = EC.escaped_literal, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\va\\')
+  eq(pattern(result), '\\va\\')
 end)
 
 --------------------------------------------------------------------------------
@@ -272,7 +279,7 @@ test('escape: consecutive escapes', function()
     { type = T.escape_literal, value = '\\\\', pos = 1, escape_class = EC.escaped_literal, wordness = W.non_word },
     { type = T.escape_class,   value = '\\d',  pos = 3, escape_class = EC.shorthand_word,  wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\\\\\d')
+  eq(pattern(result), '\\v\\\\\\d')
 end)
 
 --------------------------------------------------------------------------------

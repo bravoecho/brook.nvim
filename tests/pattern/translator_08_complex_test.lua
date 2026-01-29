@@ -16,6 +16,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local CC = types.cc_token_type
 local GK = types.group_kind
@@ -35,7 +42,7 @@ test('complex: \\w+(.*) function call', function()
     { type = T.quantifier,   value = '*',   pos = 6, greedy = true,                    wordness = W.unknown },
     { type = T.group_close,  value = ')',   pos = 7, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\w+(.*)')
+  eq(pattern(result), '\\v\\w+(.*)')
 end)
 
 --------------------------------------------------------------------------------
@@ -54,7 +61,7 @@ test('complex: [a-z]+@[a-z]+ email-like', function()
     { type = T.char_class_close, value = ']',   pos = 12 },
     { type = T.quantifier,       value = '+',   pos = 13, greedy = true,        wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v[a-z]+\\@[a-z]+')
+  eq(pattern(result), '\\v[a-z]+\\@[a-z]+')
 end)
 
 --------------------------------------------------------------------------------
@@ -74,7 +81,7 @@ test('complex: /api/v[0-9]+ URL path', function()
     { type = T.char_class_close, value = ']',   pos = 11 },
     { type = T.quantifier,       value = '+',   pos = 12, greedy = true,        wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\/api\\/v[0-9]+')
+  eq(pattern(result), '\\v\\/api\\/v[0-9]+')
 end)
 
 --------------------------------------------------------------------------------
@@ -88,7 +95,7 @@ test('complex: \\b\\w{3,5}\\b word with length constraint', function()
     { type = T.quantifier,      value = '{3,5}', pos = 5,  greedy = true,                    wordness = W.word },
     { type = T.escape_boundary, value = '\\b',   pos = 10, escape_class = EC.boundary,       prev_wordness = W.word, next_wordness = nil },
   }, {})
-  eq(result.pattern, '\\v<\\w{3,5}>')
+  eq(pattern(result), '\\v<\\w{3,5}>')
 end)
 
 --------------------------------------------------------------------------------
@@ -98,13 +105,13 @@ end)
 test('complex: "[^"]*?" quoted string', function()
   local result = translate({
     { type = T.literal,          value = '"',  pos = 1, wordness = W.non_word },
-    { type = T.char_class_open,  value = '[^', pos = 2, negated = true,       wordness = W.unknown },
+    { type = T.char_class_open,  value = '[^', pos = 2, wordness = W.unknown, negated = true },
     { type = CC.cc_literal,      value = '"',  pos = 4 },
     { type = T.char_class_close, value = ']',  pos = 5 },
-    { type = T.quantifier,       value = '*?', pos = 6, greedy = false,       wordness = W.unknown },
+    { type = T.quantifier,       value = '*?', pos = 6, wordness = W.unknown, greedy = false },
     { type = T.literal,          value = '"',  pos = 8, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v"[^"]{-}"')
+  eq(pattern(result), '\\v"[^"]{-}"')
 end)
 
 --------------------------------------------------------------------------------
@@ -115,10 +122,10 @@ test('complex: <.*?> non-greedy HTML tag', function()
   local result = translate({
     { type = T.literal,    value = '<',  pos = 1, wordness = W.non_word },
     { type = T.dot,        value = '.',  pos = 2, wordness = W.unknown },
-    { type = T.quantifier, value = '*?', pos = 3, greedy = false,       wordness = W.unknown },
+    { type = T.quantifier, value = '*?', pos = 3, wordness = W.unknown, greedy = false },
     { type = T.literal,    value = '>',  pos = 5, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v\\<.{-}\\>')
+  eq(pattern(result), '\\v\\<.{-}\\>')
 end)
 
 --------------------------------------------------------------------------------
@@ -128,14 +135,14 @@ end)
 test('complex: ^\\s*#.*$ comment line', function()
   local result = translate({
     { type = T.anchor,       value = '^',   pos = 1, wordness = W.non_word },
-    { type = T.escape_class, value = '\\s', pos = 2, escape_class = EC.shorthand_nonword, wordness = W.non_word },
-    { type = T.quantifier,   value = '*',   pos = 4, greedy = true,                       wordness = W.non_word },
+    { type = T.escape_class, value = '\\s', pos = 2, wordness = W.non_word, escape_class = EC.shorthand_nonword },
+    { type = T.quantifier,   value = '*',   pos = 4, wordness = W.non_word, greedy = true },
     { type = T.literal,      value = '#',   pos = 5, wordness = W.non_word },
     { type = T.dot,          value = '.',   pos = 6, wordness = W.unknown },
-    { type = T.quantifier,   value = '*',   pos = 7, greedy = true,                       wordness = W.unknown },
+    { type = T.quantifier,   value = '*',   pos = 7, wordness = W.unknown,  greedy = true },
     { type = T.anchor,       value = '$',   pos = 8, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v^\\s*#.*$')
+  eq(pattern(result), '\\v^\\s*#.*$')
 end)
 
 --------------------------------------------------------------------------------
@@ -157,7 +164,7 @@ test('complex: [a-zA-Z_][a-zA-Z0-9_]* identifier', function()
     { type = T.char_class_close, value = ']',   pos = 21 },
     { type = T.quantifier,       value = '*',   pos = 22, greedy = true,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v[a-zA-Z_][a-zA-Z0-9_]*')
+  eq(pattern(result), '\\v[a-zA-Z_][a-zA-Z0-9_]*')
 end)
 
 --------------------------------------------------------------------------------
@@ -166,7 +173,7 @@ end)
 
 test('complex: (foo|bar|baz) alternation', function()
   local result = translate({
-    { type = T.group_open,  value = '(', pos = 1,  kind = GK.capturing,  wordness = W.non_word },
+    { type = T.group_open,  value = '(', pos = 1,  wordness = W.non_word, kind = GK.capturing },
     { type = T.literal,     value = 'f', pos = 2,  wordness = W.word },
     { type = T.literal,     value = 'o', pos = 3,  wordness = W.word },
     { type = T.literal,     value = 'o', pos = 4,  wordness = W.word },
@@ -180,7 +187,7 @@ test('complex: (foo|bar|baz) alternation', function()
     { type = T.literal,     value = 'z', pos = 12, wordness = W.word },
     { type = T.group_close, value = ')', pos = 13, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(foo|bar|baz)')
+  eq(pattern(result), '\\v(foo|bar|baz)')
 end)
 
 --------------------------------------------------------------------------------
@@ -189,13 +196,13 @@ end)
 
 test('complex: \\d{1,3}\\.\\d{1,3} partial IP', function()
   local result = translate({
-    { type = T.escape_class,   value = '\\d',   pos = 1,  escape_class = EC.shorthand_word,  wordness = W.word },
-    { type = T.quantifier,     value = '{1,3}', pos = 3,  greedy = true,                     wordness = W.word },
-    { type = T.escape_literal, value = '\\.',   pos = 8,  escape_class = EC.escaped_literal, wordness = W.non_word },
-    { type = T.escape_class,   value = '\\d',   pos = 10, escape_class = EC.shorthand_word,  wordness = W.word },
-    { type = T.quantifier,     value = '{1,3}', pos = 12, greedy = true,                     wordness = W.word },
+    { type = T.escape_class,   value = '\\d',   pos = 1,  wordness = W.word,     escape_class = EC.shorthand_word },
+    { type = T.quantifier,     value = '{1,3}', pos = 3,  wordness = W.word,     greedy = true },
+    { type = T.escape_literal, value = '\\.',   pos = 8,  wordness = W.non_word, escape_class = EC.escaped_literal },
+    { type = T.escape_class,   value = '\\d',   pos = 10, wordness = W.word,     escape_class = EC.shorthand_word },
+    { type = T.quantifier,     value = '{1,3}', pos = 12, wordness = W.word,     greedy = true },
   }, {})
-  eq(result.pattern, '\\v\\d{1,3}\\.\\d{1,3}')
+  eq(pattern(result), '\\v\\d{1,3}\\.\\d{1,3}')
 end)
 
 --------------------------------------------------------------------------------
@@ -205,13 +212,13 @@ end)
 test('complex: \\A(?P<n>x)\\z with no additional warnings', function()
   -- The warnings for this case are the parser's responsibility.
   local result = translate({
-    { type = T.escape_boundary, value = '\\A',    pos = 1,  escape_class = EC.anchor_start, wordness = W.non_word },
-    { type = T.group_open,      value = '(?P<n>', pos = 3,  kind = GK.named_python,         name = 'n',           wordness = W.non_word },
+    { type = T.escape_boundary, value = '\\A',    pos = 1,  wordness = W.non_word, escape_class = EC.anchor_start },
+    { type = T.group_open,      value = '(?P<n>', pos = 3,  wordness = W.non_word, kind = GK.named_python,        name = 'n' },
     { type = T.literal,         value = 'x',      pos = 9,  wordness = W.word },
     { type = T.group_close,     value = ')',      pos = 10, wordness = W.non_word },
-    { type = T.escape_boundary, value = '\\z',    pos = 11, escape_class = EC.anchor_end,   wordness = W.non_word },
+    { type = T.escape_boundary, value = '\\z',    pos = 11, wordness = W.non_word, escape_class = EC.anchor_end },
   }, {})
-  eq(result.pattern, '\\v^(x)$')
+  eq(pattern(result), '\\v^(x)$')
   eq(#result.warnings, 0)
 end)
 
@@ -225,7 +232,7 @@ test('complex: +?| literal metacharacters', function()
     { type = T.literal,     value = '?', pos = 2, wordness = W.non_word },
     { type = T.alternation, value = '|', pos = 3, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v+?|')
+  eq(pattern(result), '\\v+?|')
 end)
 
 --------------------------------------------------------------------------------

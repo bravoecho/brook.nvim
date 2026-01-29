@@ -17,6 +17,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local EC = types.escape_class
 local W = types.wordness
@@ -28,13 +35,13 @@ local GK = types.group_kind
 
 test('empty: empty token list produces \\v', function()
   local result = translate({}, {})
-  eq(result.pattern, '\\v')
+  eq(pattern(result), '\\v')
   deep_eq(result.warnings, {})
 end)
 
 test('empty: empty token list with fixed mode produces \\V', function()
   local result = translate({}, { fixed = true })
-  eq(result.pattern, '\\V')
+  eq(pattern(result), '\\V')
   deep_eq(result.warnings, {})
 end)
 
@@ -46,35 +53,35 @@ test('case: case-sensitive prefix', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, { case = 'case-sensitive' })
-  eq(result.pattern, '\\C\\va')
+  eq(pattern(result), '\\C\\va')
 end)
 
 test('case: case-insensitive prefix', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, { case = 'case-insensitive' })
-  eq(result.pattern, '\\c\\va')
+  eq(pattern(result), '\\c\\va')
 end)
 
 test('case: no case option means no case prefix', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va')
+  eq(pattern(result), '\\va')
 end)
 
 test('case: case-sensitive with fixed mode', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, { fixed = true, case = 'case-sensitive' })
-  eq(result.pattern, '\\C\\Va')
+  eq(pattern(result), '\\C\\Va')
 end)
 
 test('case: case-insensitive with fixed mode', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, { fixed = true, case = 'case-insensitive' })
-  eq(result.pattern, '\\c\\Va')
+  eq(pattern(result), '\\c\\Va')
 end)
 
 --------------------------------------------------------------------------------
@@ -87,7 +94,7 @@ test('word: word boundary in regex mode', function()
     { type = T.literal, value = 'o', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
   }, { word = true })
-  eq(result.pattern, '\\v<foo>')
+  eq(pattern(result), '\\v<foo>')
 end)
 
 test('word: word boundary in fixed mode', function()
@@ -96,7 +103,7 @@ test('word: word boundary in fixed mode', function()
     { type = T.literal, value = 'o', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
   }, { fixed = true, word = true })
-  eq(result.pattern, '\\V\\<foo\\>')
+  eq(pattern(result), '\\V\\<foo\\>')
 end)
 
 test('word: word boundary with case-sensitive', function()
@@ -105,7 +112,7 @@ test('word: word boundary with case-sensitive', function()
     { type = T.literal, value = 'o', pos = 2, wordness = W.word },
     { type = T.literal, value = 'o', pos = 3, wordness = W.word },
   }, { word = true, case = 'case-sensitive' })
-  eq(result.pattern, '\\C\\v<foo>')
+  eq(pattern(result), '\\C\\v<foo>')
 end)
 
 --------------------------------------------------------------------------------
@@ -120,7 +127,7 @@ test('fixed: simple literal', function()
     { type = T.literal, value = 'l', pos = 4, wordness = W.word },
     { type = T.literal, value = 'o', pos = 5, wordness = W.word },
   }, { fixed = true })
-  eq(result.pattern, '\\Vhello')
+  eq(pattern(result), '\\Vhello')
 end)
 
 test('fixed: escapes backslashes', function()
@@ -133,7 +140,7 @@ test('fixed: escapes backslashes', function()
     { type = T.literal,        value = 'a',    pos = 7, wordness = W.word },
     { type = T.literal,        value = 'r',    pos = 8, wordness = W.word },
   }, { fixed = true })
-  eq(result.pattern, '\\Vfoo\\\\bar')
+  eq(pattern(result), '\\Vfoo\\\\bar')
 end)
 
 test('fixed: escapes forward slashes', function()
@@ -146,7 +153,7 @@ test('fixed: escapes forward slashes', function()
     { type = T.literal, value = 'a', pos = 6, wordness = W.word },
     { type = T.literal, value = 'r', pos = 7, wordness = W.word },
   }, { fixed = true })
-  eq(result.pattern, '\\Vfoo\\/bar')
+  eq(pattern(result), '\\Vfoo\\/bar')
 end)
 
 --------------------------------------------------------------------------------
@@ -157,7 +164,7 @@ test('forward: incoming warnings are preserved', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {}, { 'parser warning 1', 'parser warning 2' })
-  eq(result.pattern, '\\va')
+  eq(pattern(result), '\\va')
   eq(#result.warnings, 2)
   eq(result.warnings[1], 'parser warning 1')
   eq(result.warnings[2], 'parser warning 2')
@@ -169,7 +176,7 @@ test('forward: does not duplicate incoming warnings', function()
   local result = translate({
     { type = T.escape_boundary, value = '\\A', pos = 1, escape_class = EC.anchor_start, wordness = W.non_word },
   }, {}, { 'parser warning' })
-  eq(result.pattern, '\\v^')
+  eq(pattern(result), '\\v^')
   eq(#result.warnings, 1)
   eq(result.warnings[1], 'parser warning')
 end)
@@ -204,7 +211,7 @@ test('forward: incoming error returns early with empty pattern', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {}, {}, 'parser error')
-  eq(result.pattern, '')
+  eq(pattern(result), '')
   eq(result.error, 'parser error')
 end)
 
@@ -212,7 +219,7 @@ test('forward: incoming error preserves warnings', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {}, { 'warning before error' }, 'parser error')
-  eq(result.pattern, '')
+  eq(pattern(result), '')
   eq(result.error, 'parser error')
   eq(#result.warnings, 1)
   eq(result.warnings[1], 'warning before error')
@@ -222,13 +229,13 @@ test('forward: nil incoming warnings treated as empty', function()
   local result = translate({
     { type = T.literal, value = 'a', pos = 1, wordness = W.word },
   }, {}, nil, nil)
-  eq(result.pattern, '\\va')
+  eq(pattern(result), '\\va')
   deep_eq(result.warnings, {})
 end)
 
 test('forward: empty tokens with error returns early', function()
   local result = translate({}, {}, {}, 'unsupported construct')
-  eq(result.pattern, '')
+  eq(pattern(result), '')
   eq(result.error, 'unsupported construct')
   deep_eq(result.warnings, {})
 end)

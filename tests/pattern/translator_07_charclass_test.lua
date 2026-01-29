@@ -16,6 +16,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local CC = types.cc_token_type
 local W = types.wordness
@@ -32,7 +39,7 @@ test('class: simple [abc]', function()
     { type = CC.cc_literal,      value = 'c', pos = 4 },
     { type = T.char_class_close, value = ']', pos = 5 },
   }, {})
-  eq(result.pattern, '\\v[abc]')
+  eq(pattern(result), '\\v[abc]')
 end)
 
 test('class: negated [^abc]', function()
@@ -43,7 +50,7 @@ test('class: negated [^abc]', function()
     { type = CC.cc_literal,      value = 'c',  pos = 5 },
     { type = T.char_class_close, value = ']',  pos = 6 },
   }, {})
-  eq(result.pattern, '\\v[^abc]')
+  eq(pattern(result), '\\v[^abc]')
 end)
 
 --------------------------------------------------------------------------------
@@ -56,7 +63,7 @@ test('class: range [a-z]', function()
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',      to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
   }, {})
-  eq(result.pattern, '\\v[a-z]')
+  eq(pattern(result), '\\v[a-z]')
 end)
 
 test('class: multiple ranges [a-zA-Z0-9]', function()
@@ -67,7 +74,7 @@ test('class: multiple ranges [a-zA-Z0-9]', function()
     { type = CC.cc_range,        value = '0-9', pos = 8, from = '0',      to = '9' },
     { type = T.char_class_close, value = ']',   pos = 11 },
   }, {})
-  eq(result.pattern, '\\v[a-zA-Z0-9]')
+  eq(pattern(result), '\\v[a-zA-Z0-9]')
 end)
 
 test('class: range with underscore [a-zA-Z0-9_]', function()
@@ -79,7 +86,7 @@ test('class: range with underscore [a-zA-Z0-9_]', function()
     { type = CC.cc_literal,      value = '_',   pos = 11 },
     { type = T.char_class_close, value = ']',   pos = 12 },
   }, {})
-  eq(result.pattern, '\\v[a-zA-Z0-9_]')
+  eq(pattern(result), '\\v[a-zA-Z0-9_]')
 end)
 
 --------------------------------------------------------------------------------
@@ -95,7 +102,7 @@ test('class: ] as first char', function()
     { type = CC.cc_literal,      value = 'c', pos = 5 },
     { type = T.char_class_close, value = ']', pos = 6 },
   }, {})
-  eq(result.pattern, '\\v[]abc]')
+  eq(pattern(result), '\\v[]abc]')
 end)
 
 test('class: vim-special chars do not need escaping inside', function()
@@ -109,7 +116,7 @@ test('class: vim-special chars do not need escaping inside', function()
     { type = CC.cc_literal,      value = '>', pos = 7 },
     { type = T.char_class_close, value = ']', pos = 8 },
   }, {})
-  eq(result.pattern, '\\v[~=@&<>]')
+  eq(pattern(result), '\\v[~=@&<>]')
 end)
 
 test('class: forward slash needs escaping inside', function()
@@ -118,7 +125,7 @@ test('class: forward slash needs escaping inside', function()
     { type = CC.cc_literal,      value = '/', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
   }, {})
-  eq(result.pattern, '\\v[\\/]')
+  eq(pattern(result), '\\v[\\/]')
 end)
 
 test('class: multiple slashes inside', function()
@@ -129,7 +136,7 @@ test('class: multiple slashes inside', function()
     { type = CC.cc_literal,      value = 'b', pos = 4 },
     { type = T.char_class_close, value = ']', pos = 5 },
   }, {})
-  eq(result.pattern, '\\v[a\\/b]')
+  eq(pattern(result), '\\v[a\\/b]')
 end)
 
 --------------------------------------------------------------------------------
@@ -143,7 +150,7 @@ test('class: shorthands [\\d\\w] pass through', function()
     { type = CC.cc_escape_class, value = '\\w', pos = 4 },
     { type = T.char_class_close, value = ']',   pos = 6 },
   }, {})
-  eq(result.pattern, '\\v[\\d\\w]')
+  eq(pattern(result), '\\v[\\d\\w]')
 end)
 
 test('class: escaped literals [\\]\\\\] pass through', function()
@@ -153,7 +160,7 @@ test('class: escaped literals [\\]\\\\] pass through', function()
     { type = CC.cc_escape_literal, value = '\\\\', pos = 4 },
     { type = T.char_class_close,   value = ']',    pos = 6 },
   }, {})
-  eq(result.pattern, '\\v[\\]\\\\]')
+  eq(pattern(result), '\\v[\\]\\\\]')
 end)
 
 test('class: \\b inside is literal b', function()
@@ -162,7 +169,7 @@ test('class: \\b inside is literal b', function()
     { type = CC.cc_escape_literal, value = '\\b', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
   }, {})
-  eq(result.pattern, '\\v[\\b]')
+  eq(pattern(result), '\\v[\\b]')
 end)
 
 test('class: hex escape [\\x41] passes through', function()
@@ -171,7 +178,7 @@ test('class: hex escape [\\x41] passes through', function()
     { type = CC.cc_escape_hex,   value = '\\x41', pos = 2 },
     { type = T.char_class_close, value = ']',     pos = 6 },
   }, {})
-  eq(result.pattern, '\\v[\\x41]')
+  eq(pattern(result), '\\v[\\x41]')
 end)
 
 --------------------------------------------------------------------------------
@@ -184,7 +191,7 @@ test('class: POSIX [:alpha:] passes through', function()
     { type = CC.cc_posix,        value = '[:alpha:]', pos = 2, class_name = 'alpha', negated = false },
     { type = T.char_class_close, value = ']',         pos = 11 },
   }, {})
-  eq(result.pattern, '\\v[[:alpha:]]')
+  eq(pattern(result), '\\v[[:alpha:]]')
 end)
 
 test('class: negated POSIX [:^digit:] passes through', function()
@@ -193,7 +200,7 @@ test('class: negated POSIX [:^digit:] passes through', function()
     { type = CC.cc_posix,        value = '[:^digit:]', pos = 2, class_name = 'digit', negated = true },
     { type = T.char_class_close, value = ']',          pos = 12 },
   }, {})
-  eq(result.pattern, '\\v[[:^digit:]]')
+  eq(pattern(result), '\\v[[:^digit:]]')
 end)
 
 --------------------------------------------------------------------------------
@@ -214,7 +221,7 @@ test('class: intersection [a-z&&[^aeiou]]', function()
     { type = CC.cc_nested_close, value = ']',   pos = 14 },
     { type = T.char_class_close, value = ']',   pos = 15 },
   }, {})
-  eq(result.pattern, '\\v[a-z&&[aeiou]]')
+  eq(pattern(result), '\\v[a-z&&[aeiou]]')
 end)
 
 --------------------------------------------------------------------------------
@@ -228,7 +235,7 @@ test('class: [a-z]+ with quantifier', function()
     { type = T.char_class_close, value = ']',   pos = 5 },
     { type = T.quantifier,       value = '+',   pos = 6, greedy = true,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v[a-z]+')
+  eq(pattern(result), '\\v[a-z]+')
 end)
 
 test('class: [^"]* non-greedy', function()
@@ -238,7 +245,7 @@ test('class: [^"]* non-greedy', function()
     { type = T.char_class_close, value = ']',  pos = 4 },
     { type = T.quantifier,       value = '*?', pos = 5, greedy = false, wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v[^"]{-}')
+  eq(pattern(result), '\\v[^"]{-}')
 end)
 
 --------------------------------------------------------------------------------
@@ -252,7 +259,7 @@ test('class: unclosed bracket (graceful handling)', function()
     { type = CC.cc_literal,     value = 'b', pos = 3 },
     { type = CC.cc_literal,     value = 'c', pos = 4 },
   }, {})
-  eq(result.pattern, '\\v[abc')
+  eq(pattern(result), '\\v[abc')
 end)
 
 test('class: empty class []', function()
@@ -260,7 +267,7 @@ test('class: empty class []', function()
     { type = T.char_class_open,  value = '[', pos = 1, negated = false, wordness = W.unknown },
     { type = T.char_class_close, value = ']', pos = 2 },
   }, {})
-  eq(result.pattern, '\\v[]')
+  eq(pattern(result), '\\v[]')
 end)
 
 --------------------------------------------------------------------------------

@@ -333,7 +333,6 @@ M.unknown_escapes = {
 ---@class brook.pattern.TranslatorResult
 ---@field prefix string Mode and case prefix (e.g. \C\v)
 ---@field body string Pattern body without prefix
----@field pattern string Full Vim regex pattern (prefix .. body)
 ---@field error? string Error message, if any
 ---@field warnings? string[] All warnings (may be empty)
 

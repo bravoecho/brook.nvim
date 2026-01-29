@@ -17,6 +17,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local GK = types.group_kind
 local W = types.wordness
@@ -31,7 +38,7 @@ test('group: capturing ( ... ) passes through', function()
     { type = T.literal,     value = 'a', pos = 2, wordness = W.word },
     { type = T.group_close, value = ')', pos = 3, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(a)')
+  eq(pattern(result), '\\v(a)')
   deep_eq(result.warnings, {})
 end)
 
@@ -43,7 +50,7 @@ test('group: nested capturing groups', function()
     { type = T.group_close, value = ')', pos = 4, wordness = W.non_word },
     { type = T.group_close, value = ')', pos = 5, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v((a))')
+  eq(pattern(result), '\\v((a))')
 end)
 
 --------------------------------------------------------------------------------
@@ -56,7 +63,7 @@ test('group: non-capturing (?:...) becomes %(...)%)', function()
     { type = T.literal,     value = 'a',   pos = 4, wordness = W.word },
     { type = T.group_close, value = ')',   pos = 5, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v%(a)')
+  eq(pattern(result), '\\v%(a)')
   deep_eq(result.warnings, {})
 end)
 
@@ -68,7 +75,7 @@ test('group: nested non-capturing groups', function()
     { type = T.group_close, value = ')',   pos = 8, wordness = W.non_word },
     { type = T.group_close, value = ')',   pos = 9, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v%(%(a))')
+  eq(pattern(result), '\\v%(%(a))')
 end)
 
 test('group: mixed capturing and non-capturing', function()
@@ -79,7 +86,7 @@ test('group: mixed capturing and non-capturing', function()
     { type = T.group_close, value = ')',   pos = 6, wordness = W.non_word },
     { type = T.group_close, value = ')',   pos = 7, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(%(a))')
+  eq(pattern(result), '\\v(%(a))')
 end)
 
 --------------------------------------------------------------------------------
@@ -93,7 +100,7 @@ test('group: Python named (?P<n>...) becomes numbered with no additional warning
     { type = T.literal,     value = 'a',         pos = 10, wordness = W.word },
     { type = T.group_close, value = ')',         pos = 11, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(a)')
+  eq(pattern(result), '\\v(a)')
   eq(#result.warnings, 0)
 end)
 
@@ -104,7 +111,7 @@ test('group: PCRE named (?<n>...) becomes numbered with no additional warning', 
     { type = T.literal,     value = 'a',        pos = 9,  wordness = W.word },
     { type = T.group_close, value = ')',        pos = 10, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(a)')
+  eq(pattern(result), '\\v(a)')
   eq(#result.warnings, 0)
 end)
 
@@ -118,7 +125,7 @@ test('group: multiple named groups generate multiple no additional warnings', fu
     { type = T.literal,     value = 'b',           pos = 24, wordness = W.word },
     { type = T.group_close, value = ')',           pos = 25, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(a)(b)')
+  eq(pattern(result), '\\v(a)(b)')
   eq(#result.warnings, 0)
 end)
 
@@ -131,7 +138,7 @@ test('group: standalone flag group (?i)', function()
     { type = T.group_open, value = '(?i)', pos = 1, kind = GK.flags,  flags = 'i', scoped = false, wordness = W.non_word },
     { type = T.literal,    value = 'a',    pos = 5, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v(?i)a')
+  eq(pattern(result), '\\v(?i)a')
 end)
 
 test('group: scoped flag group (?i:...)', function()
@@ -140,7 +147,7 @@ test('group: scoped flag group (?i:...)', function()
     { type = T.literal,     value = 'a',    pos = 5, wordness = W.word },
     { type = T.group_close, value = ')',    pos = 6, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(?i:a)')
+  eq(pattern(result), '\\v(?i:a)')
 end)
 
 --------------------------------------------------------------------------------
@@ -155,7 +162,7 @@ test('group: alternation inside capturing', function()
     { type = T.literal,     value = 'b', pos = 4, wordness = W.word },
     { type = T.group_close, value = ')', pos = 5, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(a|b)')
+  eq(pattern(result), '\\v(a|b)')
 end)
 
 test('group: alternation inside non-capturing', function()
@@ -168,7 +175,7 @@ test('group: alternation inside non-capturing', function()
     { type = T.literal,     value = 'c',   pos = 8, wordness = W.word },
     { type = T.group_close, value = ')',   pos = 9, wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v%(a|b|c)')
+  eq(pattern(result), '\\v%(a|b|c)')
 end)
 
 --------------------------------------------------------------------------------
@@ -183,7 +190,7 @@ test('group: quantifier after group', function()
     { type = T.group_close, value = ')', pos = 4, wordness = W.non_word },
     { type = T.quantifier,  value = '+', pos = 5, greedy = true,        wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v(ab)+')
+  eq(pattern(result), '\\v(ab)+')
 end)
 
 test('group: non-greedy quantifier after group', function()
@@ -193,7 +200,7 @@ test('group: non-greedy quantifier after group', function()
     { type = T.group_close, value = ')',   pos = 5, wordness = W.non_word },
     { type = T.quantifier,  value = '*?',  pos = 6, greedy = false,          wordness = W.non_word },
   }, {})
-  eq(result.pattern, '\\v%(a){-}')
+  eq(pattern(result), '\\v%(a){-}')
 end)
 
 --------------------------------------------------------------------------------
@@ -207,7 +214,7 @@ test('group: unclosed group (graceful handling)', function()
     { type = T.literal,    value = 'o', pos = 3, wordness = W.word },
     { type = T.literal,    value = 'o', pos = 4, wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v(foo')
+  eq(pattern(result), '\\v(foo')
 end)
 
 --------------------------------------------------------------------------------

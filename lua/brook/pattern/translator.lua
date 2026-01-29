@@ -38,7 +38,7 @@ local CC = types.cc_token_type
 ---
 --- Returns prefix and body separately to support pattern merging. The prefix
 --- contains mode and case modifiers (e.g. \C\v), the body contains the pattern.
---- The pattern field is prefix .. body for backward compatibility.
+--- Callers should concatenate prefix .. body to get the full pattern.
 ---
 ---@param tokens brook.pattern.Token[] Annotated tokens from parser
 ---@param opts brook.pattern.TranslateOpts Translation options
@@ -61,7 +61,6 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
     return {
       prefix = '',
       body = '',
-      pattern = '',
       warnings = warnings,
       error = incoming_error,
     }
@@ -303,7 +302,6 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
   return {
     prefix = prefix,
     body = body,
-    pattern = prefix .. body,
     warnings = warnings,
   }
 end

@@ -15,6 +15,13 @@ local translator = require('brook.pattern.translator')
 
 local translate = translator.translate
 
+--- Helper to get full pattern from translator result.
+---@param result brook.pattern.TranslatorResult
+---@return string
+local function pattern(result)
+  return result.prefix .. result.body
+end
+
 local T = types.token_type
 local EC = types.escape_class
 local W = types.wordness
@@ -28,7 +35,7 @@ test('quantifier: * passes through', function()
     { type = T.literal,    value = 'a', pos = 1, wordness = W.word },
     { type = T.quantifier, value = '*', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va*')
+  eq(pattern(result), '\\va*')
 end)
 
 test('quantifier: + passes through', function()
@@ -36,7 +43,7 @@ test('quantifier: + passes through', function()
     { type = T.literal,    value = 'a', pos = 1, wordness = W.word },
     { type = T.quantifier, value = '+', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va+')
+  eq(pattern(result), '\\va+')
 end)
 
 test('quantifier: ? passes through', function()
@@ -44,7 +51,7 @@ test('quantifier: ? passes through', function()
     { type = T.literal,    value = 'a', pos = 1, wordness = W.word },
     { type = T.quantifier, value = '?', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va?')
+  eq(pattern(result), '\\va?')
 end)
 
 test('quantifier: {n} passes through', function()
@@ -52,7 +59,7 @@ test('quantifier: {n} passes through', function()
     { type = T.literal,    value = 'a',   pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{3}', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{3}')
+  eq(pattern(result), '\\va{3}')
 end)
 
 test('quantifier: {n,} passes through', function()
@@ -60,7 +67,7 @@ test('quantifier: {n,} passes through', function()
     { type = T.literal,    value = 'a',    pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{2,}', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{2,}')
+  eq(pattern(result), '\\va{2,}')
 end)
 
 test('quantifier: {n,m} passes through', function()
@@ -68,7 +75,7 @@ test('quantifier: {n,m} passes through', function()
     { type = T.literal,    value = 'a',     pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{2,5}', pos = 2, greedy = true,    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{2,5}')
+  eq(pattern(result), '\\va{2,5}')
 end)
 
 --------------------------------------------------------------------------------
@@ -80,7 +87,7 @@ test('quantifier: *? becomes {-}', function()
     { type = T.literal,    value = 'a',  pos = 1, wordness = W.word },
     { type = T.quantifier, value = '*?', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-}')
+  eq(pattern(result), '\\va{-}')
 end)
 
 test('quantifier: +? becomes {-1,}', function()
@@ -88,7 +95,7 @@ test('quantifier: +? becomes {-1,}', function()
     { type = T.literal,    value = 'a',  pos = 1, wordness = W.word },
     { type = T.quantifier, value = '+?', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-1,}')
+  eq(pattern(result), '\\va{-1,}')
 end)
 
 test('quantifier: ?? becomes {-0,1}', function()
@@ -96,7 +103,7 @@ test('quantifier: ?? becomes {-0,1}', function()
     { type = T.literal,    value = 'a',  pos = 1, wordness = W.word },
     { type = T.quantifier, value = '??', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-0,1}')
+  eq(pattern(result), '\\va{-0,1}')
 end)
 
 test('quantifier: {n}? becomes {-n}', function()
@@ -104,7 +111,7 @@ test('quantifier: {n}? becomes {-n}', function()
     { type = T.literal,    value = 'a',    pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{3}?', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-3}')
+  eq(pattern(result), '\\va{-3}')
 end)
 
 test('quantifier: {n,}? becomes {-n,}', function()
@@ -112,7 +119,7 @@ test('quantifier: {n,}? becomes {-n,}', function()
     { type = T.literal,    value = 'a',     pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{2,}?', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-2,}')
+  eq(pattern(result), '\\va{-2,}')
 end)
 
 test('quantifier: {n,m}? becomes {-n,m}', function()
@@ -120,7 +127,7 @@ test('quantifier: {n,m}? becomes {-n,m}', function()
     { type = T.literal,    value = 'a',      pos = 1, wordness = W.word },
     { type = T.quantifier, value = '{2,5}?', pos = 2, greedy = false,   wordness = W.word },
   }, {})
-  eq(result.pattern, '\\va{-2,5}')
+  eq(pattern(result), '\\va{-2,5}')
 end)
 
 --------------------------------------------------------------------------------
@@ -132,7 +139,7 @@ test('quantifier: after dot', function()
     { type = T.dot,        value = '.', pos = 1, wordness = W.unknown },
     { type = T.quantifier, value = '*', pos = 2, greedy = true,       wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v.*')
+  eq(pattern(result), '\\v.*')
 end)
 
 test('quantifier: after escape class', function()
@@ -140,7 +147,7 @@ test('quantifier: after escape class', function()
     { type = T.escape_class, value = '\\w', pos = 1, escape_class = EC.shorthand_word, wordness = W.word },
     { type = T.quantifier,   value = '+',   pos = 3, greedy = true,                    wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\w+')
+  eq(pattern(result), '\\v\\w+')
 end)
 
 test('quantifier: non-greedy after dot', function()
@@ -148,7 +155,7 @@ test('quantifier: non-greedy after dot', function()
     { type = T.dot,        value = '.',  pos = 1, wordness = W.unknown },
     { type = T.quantifier, value = '*?', pos = 2, greedy = false,      wordness = W.unknown },
   }, {})
-  eq(result.pattern, '\\v.{-}')
+  eq(pattern(result), '\\v.{-}')
 end)
 
 --------------------------------------------------------------------------------
@@ -163,7 +170,7 @@ test('quantifier: IP-like pattern', function()
     { type = T.escape_class,   value = '\\d',   pos = 10, escape_class = EC.shorthand_word,  wordness = W.word },
     { type = T.quantifier,     value = '{1,3}', pos = 12, greedy = true,                     wordness = W.word },
   }, {})
-  eq(result.pattern, '\\v\\d{1,3}\\.\\d{1,3}')
+  eq(pattern(result), '\\v\\d{1,3}\\.\\d{1,3}')
 end)
 
 --------------------------------------------------------------------------------
