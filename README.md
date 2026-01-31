@@ -1,38 +1,66 @@
-# brook.nvim
+# brook.nvim – Ripgrep that feels like Vim
 
-> The ripgrep wrapper Neovim deserves: fast, shell-safe, and built for the
-> quickfix workflow
+**brook.nvim** brings seamless ripgrep search to Neovim. It's not a fuzzy
+finder, it's a precision tool for code exploration and refactoring.
 
-**brook.nvim** is an asynchronous ripgrep wrapper for Neovim that prioritises
-performance and native navigation. It's not a fuzzy finder, it's a precision
-tool for code exploration and refactoring, the Vim way.
+---
 
-## Why Brook?
+## Usage
 
-Most Neovim users choose between legacy Vimscript plugins or modern fuzzy
-finders. Brook sits in the sweet spot for power users:
+### Workflow
 
-* **Fast & Asynchronous**: Results stream to the quickfix list as ripgrep emits
-  them, with cooperative scheduling to keep the UI responsive even in large
-  monorepos.
+Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list.
 
-* **Shell-Agnostic & Safe**: Brook bypasses the shell entirely, so it won't
-  break due to escaping quirks. If it works with `rg`, it works with `:Rg`.
+> [!TIP]
+> [Learn more about the quickfix list](/doc/quickfix_primer.md)
 
-* **Quickfix-Centric**: Embraces the built-in quickfix list for persistent
-  results that integrate with native navigation and batch operations.
+1. **Search**
+   - `<leader>g` – search word under cursor (normal mode) or selection (visual mode)
+   - `<leader>/` – open prompt for manual search
+   - `<leader>G` – stop current search if any
+   - `<leader>r` – repeat last search
+   - `:Rg your_query` – manual search
+   - `:Rg --hidden "function handle_click"` – with ripgrep flags
+   - `:RgStop` – stop current search if any
+   - `:RgRepeat` – repeat last search
 
-* **Native Search Integration**: Brook translates ripgrep patterns to Vim's
-  search register, enabling highlighting and `n`/`N` navigation. Combined with
-  `:cfdo %s//replacement/gc`, this makes search-and-replace seamless.
+2. **Explore** – Browse with `:cnext`/`:cprev` (map these to `]q`/`[q`).
 
-* **LSP Complement**: LSPs handle symbol renaming; Brook handles everything
-  else: string constants, CSS classes, complex patterns across the entire
-  project with regex precision.
+3. **Navigate** – Use `n`/`N` to jump between matches within each file.
 
-* **Zero Abstraction**: No new syntax. If you know ripgrep, you know Brook.
+4. **Refactor** – Search and replace with `:cfdo %s//replacement/gc`: the search
+   register is already populated, so empty `//` targets exactly what ripgrep
+   found.
 
-* **Neovim-Native**: Built for Neovim 0.7+ in Lua.
+### Pro Tips
+
+* **Filter by file type** – `:Rg -t lua config` or `:Rg -T js bug`
+* **Literal search** – `:Rg -F "($[0].item)"` for special characters
+* **Multiple patterns** – `:Rg -e TODO -e FIXME` searches and navigates both, and
+  combines with other flags like `-w` (whole-word) and `-F` (literal)
+* **Case control** – `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
+* **Unique lines** – Use the `-n` flag to set it on a single search
+* **Search path** – Press `<Tab>` in the command to autocomplete relative paths
+* **Report each file only once** – `:Rg mypattern -n -m1`
+* **Open all files with matches** – `:cfdo edit`
+* **Search only the current file** – `:Rg mypattern %`
+* **Stop early** – `<leader>G` or `:RgStop`, results so far remain in quickfix
+* **Recall previous searches**: Word and selection searches are added to command
+  history, so you can press `:` then arrow-up (or `q:`) to recall, edit, and
+  re-run them
+* **Customise ripgrep** – Add default options to `~/.ripgreprc` and specify
+  which paths to exclude in `~/.rgignore`
+
+### Constraints
+
+Brook follows ripgrep's defaults in two important ways:
+
+* **Multiline search** – Brook aborts with a warning if you use `-U` or search
+  a multiline selection. The quickfix format is inherently line-based.
+
+* **PCRE2** – only ripgrep's default regexp engine is supported. Commands
+  setting it to PCRE2 will result in an error. This guarantees predictable
+  performance and more accurate search pattern translation.
 
 ---
 
@@ -44,7 +72,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 {
   'bravoecho/brook.nvim',
   dependencies = {
-    -- Optional, highly recommended for result context and preview.
+    -- Optional but recommended for context preview and result filtering.
     -- See: https://github.com/kevinhwang91/nvim-bqf
     { 'kevinhwang91/nvim-bqf', optional = true },
   },
@@ -112,122 +140,84 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ---
 
-## Usage
+## Why Brook?
 
-### Workflow
+Most Neovim users choose between legacy Vimscript plugins, find-and-replace
+dashboards with their own UI, or modern fuzzy finders.
 
-Brook is designed for a "Search-Navigate-Edit" loop powered by the quickfix list.
+Brook sits in the sweet spot for power users:
 
-> [!TIP]
-> [Learn more about the quickfix list](/doc/quickfix_primer.md)
+* **Fast & Asynchronous** – Results stream to the quickfix list using carefully
+  tuned cooperative scheduling, to keep the UI responsive even in the most
+  extreme scenarios.
 
-1. **Search**:
-   - `<leader>g` in normal mode: word under cursor
-   - `<leader>g` in visual mode: selection
-   - `<leader>/` in normal mode: open prompt for manual search
-   - `<leader>G` in normal mode: stop current search if any
-   - `<leader>r` in normal mode: repeat the last search
-   - `:Rg your_query`: manual search
-   - `:Rg --hidden "function handle_click"`: with ripgrep flags
-   - `:RgStop`: stop current search if any
-   - `:RgRepeat`: repeat last search
+* **Shell-Agnostic & Safe** – Brook is immune to shell injection, and it won't
+  break due to escaping quirks. If it works with `rg`, it works with `:Rg`.
 
-2. **Explore**: Browse with `:cnext`/`:cprev` (map these to `]q`/`[q`).
+* **Quickfix-Centric** – Embraces the built-in [quickfix list](/doc/quickfix_primer.md)
+  for persistent results that integrate with native navigation and batch
+  operations.
 
-3. **Navigate**: Use `n`/`N` to jump between matches within each file.
+* **Native Search Integration** – Brook translates ripgrep patterns to Vim's
+  search register, enabling highlighting and `n`/`N` navigation. Combined with
+  `:cfdo %s//replacement/gc`, this makes search-and-replace seamless.
 
-4. **Refactor**: Search and replace with `:cfdo %s//replacement/gc`: the search
-   register is already populated, so empty `//` targets exactly what ripgrep
-   found.
+* **LSP Complement** – LSPs handle symbol renaming; Brook handles everything
+  else: string constants, CSS classes, complex patterns across the entire
+  project with regex precision.
 
-### Tips
+* **Zero Abstraction** – If you know Vim and Ripgrep, you know Brook.
+  No screenshots required.
 
-* **Filter by file type**: `:Rg -t lua config` or `:Rg -T js bug`
-* **Literal search**: `:Rg -F "($[0].item)"` for special characters
-* **Multiple patterns**: `:Rg -e TODO -e FIXME` searches and navigates both, and
-  combines with other flags like `-w` (whole-word) and `-F` (literal)
-* **Case control**: `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
-* **Unique lines**: Use the `-n` flag to set it on a single search
-* **Search path**: Press `<Tab>` in the command to autocomplete relative paths
-* **Report each file only once**: `:Rg mypattern -n -m1`
-* **Open all files with matches**: `:cfdo edit`
-* **Search only the current file**: `:Rg mypattern %`
-* **Stop early**: `<leader>G` or `:RgStop`, results so far remain in quickfix
-* **Customise ripgrep**: Add default options to `~/.ripgreprc`
-
-### Limitations
-
-* **No multiline search**: Brook aborts with a warning if you use `-U` or search
-  a multiline selection. The quickfix format is inherently line-based.
-
-* **No PCRE2**: only ripgrep's default regexp engine is supported. Commands
-  setting it to PCRE2 will result in an error. This guarantees predictable
-  performance and more accurate search pattern translation.
+* **Neovim-Native** – Built for Neovim 0.7+ in Lua.
 
 ---
 
-## Comparisons
+## Comparisons with other plugins
 
-### vs. vim-grepper
+### Brook vs. find-and-replace dashboards
 
-[vim-grepper](https://github.com/mhinz/vim-grepper) is the classic choice for
-Vim. Brook is built from the ground up for Neovim:
+Modern Neovim search plugins often present a self‑contained interface:
+a dedicated buffer, custom navigation keys, inline previews, live updates, and
+replace actions tightly coupled to their own UI.
 
-* **Shell independence**: Direct `rg` execution avoids escaping issues with Fish
-  and other non-POSIX shells.
-* **Lua-native**: Leverages Neovim's async API for responsive streaming.
-* **Stability**: Like vim-grepper, provides focused features and is built on
-  stable APIs.
+Brook takes the opposite approach. It acknowledges that Vim already *is* the
+interface, and that power comes from reuse and composition.
 
-### vs. Telescope / fzf-lua
+| UI‑Driven Plugins        | Brook                             |
+| ------------------------ | --------------------------------- |
+| Custom buffers and views | Native quickfix list              |
+| Live, reactive queries   | Explicit, snapshot‑based searches |
+| UI mediates all actions  | Vim commands operate directly     |
+| Discoverability first    | Composability first               |
+| Steep learning curve     | Plug-and-Play                     |
+| Depend on a plugin       | Master Vim (see "Pro Tips")       |
+| Centralised workflows    | User‑defined workflows            |
 
-Fuzzy finders excel at locating a single resource. Brook is built for code
-exploration across many files:
+### Brook vs. fuzzy finders
 
-* **Persistence**: The quickfix list stays open while you work; fuzzy finders
-  are transient by design.
-* **Refactoring**: `:cfdo` commands work naturally on quickfix results.
-* **Scale**: Brook streams directly to quickfix without holding results in
-  memory, tested on codebases exceeding 4 million lines.
+Fuzzy finders excel at locating a single file or symbol quickly. Brook is
+designed for *systematic exploration*:
 
----
+* persistent result sets
+* ordered navigation
+* batch edits across files
 
-## Technical Notes
+The quickfix list remains available after the search window closes, and its
+contents can be reused by any other command. Brook does not replace fuzzy
+finders; it complements them.
 
-* **Direct Execution**: Spawns `rg` via `jobstart()` without a shell: safe from
-  injection, works everywhere.
-* **Stdin Disabled**: Prevents ripgrep from blocking on empty input.
-* **POSIX Unquoting**: Custom parser handles quoted arguments before passing to
-  ripgrep.
-* **Result Limiting**: Caps at `max_results` (default 1000, max 10K), as
-  Neovim's quickfix degrades badly beyond this.
-* **Long Line Protection**: Uses `--max-columns 300` to prevent memory issues
-  from minified files.
-* **Pattern Extraction**: Parses the CLI to separate flags from search patterns.
-* **Regex Translation**: Converts patterns to Vim's "very magic" mode;
-  translates case flags (`-s`/`-i`) to `\C`/`\c`. See [pattern translation
-  spec](/doc/pattern_spec.md).
-* **Streaming**: Results flow to quickfix as ripgrep emits them.
-* **Three-Phase Batching**: (1) Fill visible window fast, (2) throttled batches
-  during search, (3) rapid drain after exit.
-* **Lazy Translation**: Pattern translation only happens if results are found.
+### Brook vs. traditional grep wrappers
 
-```
-   Command --> Tokenise --> Unquote --> Parse --> Spawn rg
-                                                     |
-                                    +----------------+
-                                    |
-                                    v
-                              Stream results
-                                    |
-                      +-------------+-------------+
-                      |                           |
-                      v                           v
-              Translate pattern             Batch & flush
-                      |                           |
-                      v                           v
-               Search register                 Quickfix
-```
+Compared to traditional, pre-Neovim grep plugins, Brook preserves the model and
+modernises the execution:
+
+* native Lua APIs
+* highly optimised multi-stage buffered streaming to the quickfix
+* shell‑independent argument handling
+* advanced pattern translation for search register integration
+
+The result is familiar behaviour with contemporary performance characteristics.
 
 ## License
 
