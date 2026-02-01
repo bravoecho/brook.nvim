@@ -43,7 +43,7 @@ function M.selection(text, cfg)
       output_format = nil,
       multiline = false,
       pcre2 = false,
-      raw = 'rg -F ' .. text,
+      raw = '-F ' .. text,
     },
     cfg = cfg,
   })
@@ -74,7 +74,7 @@ function M.word(word, cfg)
       output_format = nil,
       multiline = false,
       pcre2 = false,
-      raw = 'rg -w ' .. word,
+      raw = '-w ' .. word,
     },
     cfg = cfg,
   })
