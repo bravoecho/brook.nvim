@@ -30,6 +30,9 @@ local M = {}
 ---@param cfg brook.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.selection(text, cfg)
+  local history_cmd = 'Rg -F ' .. M._quote_for_history(text)
+  M._add_to_history(history_cmd)
+
   return exec({
     args = { '--', text },
     parsed_args = {
@@ -58,6 +61,9 @@ end
 ---@param cfg brook.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.word(word, cfg)
+  local history_cmd = 'Rg -w ' .. M._quote_for_history(word)
+  M._add_to_history(history_cmd)
+
   return exec({
     args = { '--', word },
     parsed_args = {
@@ -156,6 +162,36 @@ function M.repeat_last()
     return nil
   end
   return exec(last_ctx)
+end
+
+--------------------------------------------------------------------------------
+--- Helpers --------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Quotes a string for use in command history.
+---
+--- Uses double quotes so the tokeniser preserves the text as a single token.
+--- Internal double quotes and backslashes are escaped.
+---
+---@param s string The string to quote
+---@return string
+function M._quote_for_history(s)
+  local needs_quoting = s:find('[%s\\"\']')
+  if not needs_quoting then
+    return s
+  end
+  local escaped = s:gsub('[\\"]', '\\%0')
+  return '"' .. escaped .. '"'
+end
+
+--- Adds an entry to Neovim's command-line history.
+---
+--- This allows word and selection searches to be recalled and edited via
+--- command history (arrow keys or q:), just like manually typed :Rg commands.
+---
+---@param cmd string The command string (without leading colon)
+function M._add_to_history(cmd)
+  vim.fn.histadd('cmd', cmd)
 end
 
 return M
