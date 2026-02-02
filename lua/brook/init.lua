@@ -110,6 +110,7 @@ function M.setup(cfg)
   local exec_cfg = {
     max_results = cfg.max_results,
     max_batch_size = cfg.max_batch_size,
+    batch_jitter = 0.1,
     flush_throttle_ms = cfg.flush_throttle_ms,
     qf_open = cfg.qf_open,
     qf_auto_resize = cfg.qf_auto_resize,

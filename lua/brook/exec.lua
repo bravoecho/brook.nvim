@@ -68,6 +68,12 @@ function M.last_search_context()
 end
 
 --------------------------------------------------------------------------------
+--- PRNG seeding for batch size jitter -----------------------------------------
+--------------------------------------------------------------------------------
+
+math.randomseed(vim.loop.now())
+
+--------------------------------------------------------------------------------
 --- Enums ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -125,6 +131,18 @@ local qf_operation = {
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
 ---@field exit_code number|nil
+
+--------------------------------------------------------------------------------
+--- Batch size jitter ----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+---@param base_size integer Base batch size
+---@param amplitude number Jitter amplitude (e.g. 0.1 for +/- 10%)
+---@return integer jittered_size Batch size with random variation applied
+function M._with_jitter(base_size, amplitude)
+  local multiplier = (1 - amplitude) + math.random() * (2 * amplitude)
+  return math.floor(base_size * multiplier + 0.5)
+end
 
 --------------------------------------------------------------------------------
 --- Entry Point ----------------------------------------------------------------
@@ -519,7 +537,8 @@ function M._flush_phase2(ctx, session)
     return
   end
 
-  M._update_quickfix(session.queue.pull(ctx.cfg.max_batch_size), ctx, session)
+  local batch_size = M._with_jitter(ctx.cfg.max_batch_size, ctx.cfg.batch_jitter)
+  M._update_quickfix(session.queue.pull(batch_size), ctx, session)
 
   -- Wait until quickfix is updated before unlocking next flush.
   phase2_scheduled = false
@@ -597,7 +616,8 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._flush_phase3(ctx, session)
-  M._update_quickfix(session.queue.pull(ctx.cfg.phase3_batch_size), ctx, session)
+  local batch_size = M._with_jitter(ctx.cfg.phase3_batch_size, ctx.cfg.batch_jitter)
+  M._update_quickfix(session.queue.pull(batch_size), ctx, session)
 
   if session.queue.is_empty() then
     session.current_phase = phases.done

@@ -62,6 +62,11 @@
 --- Maximum number of results to buffer before flushing (default: 100)
 ---@field max_batch_size integer
 ---
+--- A decimal number, like 0.1, to add some jitter to the batch size, to make
+--- the result stream look more organic (visible by the user via the quickfix
+--- window counter in its statuline)
+---@field batch_jitter number
+---
 --- A short time, in milliseconds, to give Neovim the opportunity to redraw
 --- between batches (default: 10)
 ---@field flush_throttle_ms integer
