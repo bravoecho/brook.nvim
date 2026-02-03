@@ -8,7 +8,7 @@
 ---
 ---@module 'brook.rg'
 
-local exec_module = require('brook.exec')
+local exec_module = require('brook.rg.exec')
 local exec = exec_module._exec
 local tokenise = require('brook.args.tokeniser').tokenise
 local posix_unquote_all = require('brook.args.unquoter').posix_unquote_all
@@ -27,7 +27,7 @@ local M = {}
 --- quotes included.
 ---
 ---@param text string The literal text to search for
----@param cfg brook.ExecConfig Plugin options
+---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.selection(text, cfg)
   local history_cmd = 'Rg -F ' .. M._quote_for_history(text)
@@ -58,7 +58,7 @@ end
 --- is already a plain string without any shell quoting.
 ---
 ---@param word string The word to search for (typically from <cword>)
----@param cfg brook.ExecConfig Plugin options
+---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.word(word, cfg)
   local history_cmd = 'Rg -w ' .. M._quote_for_history(word)
@@ -94,7 +94,7 @@ end
 --- syntax involved.
 ---
 ---@param cmd_args string The raw command-line arguments
----@param cfg brook.ExecConfig Plugin options
+---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.raw(cmd_args, cfg)
   -- 1. Tokenise

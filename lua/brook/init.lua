@@ -106,7 +106,7 @@ function M.setup(cfg)
   --- Command configuration ----------------------------------------------------
   ------------------------------------------------------------------------------
 
-  ---@type brook.ExecConfig
+  ---@type brook.rg.ExecConfig
   local exec_cfg = {
     max_results = cfg.max_results,
     max_batch_size = cfg.max_batch_size,

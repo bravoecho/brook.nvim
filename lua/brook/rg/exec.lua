@@ -28,7 +28,7 @@
 --- See the phases enum and individual phase functions for implementation
 --- details.
 ---
----@module 'brook.exec'
+---@module 'brook.rg.exec'
 
 local pattern = require('brook.pattern')
 local fifo = require('brook.lib.fifo')
@@ -114,7 +114,7 @@ local qf_operation = {
 ---@class brook.SearchContext
 ---@field args string[] Shell-unquoted command tokens to be passed to `rg`
 ---@field parsed_args brook.args.ParsedArgs Subset of command arguments needed to integrate the command correctly
----@field cfg brook.ExecConfig Control how search is performed and results displayed
+---@field cfg brook.rg.ExecConfig Control how search is performed and results displayed
 
 --------------------------------------------------------------------------------
 
