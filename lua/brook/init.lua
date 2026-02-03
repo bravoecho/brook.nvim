@@ -102,6 +102,24 @@ function M.setup(cfg)
     return
   end
 
+  -- Validate max_batch_size
+  --------------------------
+  local valid_max_batch_size = types.validations.max_batch_size
+  if type(cfg.max_batch_size) ~= 'number'
+      or cfg.max_batch_size < valid_max_batch_size.min
+      or cfg.max_batch_size > valid_max_batch_size.max
+  then
+    vim.notify(
+      string.format(
+        'brook.nvim: max_batch_size range: %d-%d',
+        valid_max_batch_size.min,
+        valid_max_batch_size.max
+      ),
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
   ------------------------------------------------------------------------------
   --- Command configuration ----------------------------------------------------
   ------------------------------------------------------------------------------
@@ -117,8 +135,8 @@ function M.setup(cfg)
     qf_win_height = cfg.qf_win_height,
     output_format = cfg.output_format,
     set_search_register = cfg.set_search_register,
-    phase3_batch_size = cfg.max_batch_size * 10,
-    phase3_throttle_ms = 1,
+    phase3_batch_size = cfg.max_batch_size * 15,
+    phase3_throttle_ms = 5,
     max_preview_chars = cfg.max_preview_chars,
   }
 

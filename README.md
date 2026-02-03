@@ -101,11 +101,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap_repeat = '<leader>r',
 
     -- Result limits
-    max_results = 1000,      -- 1-10,000
+    max_results = 1000,      -- 500-100,000
     max_preview_chars = 200, -- 100-500
 
     -- Performance tuning
-    max_batch_size = 100,    -- results per quickfix update (>200 not recommended)
+    max_batch_size = 100,    -- results per quickfix update, 10-200
     flush_throttle_ms = 10,  -- delay between updates (0 to disable)
 
     -- Quickfix window

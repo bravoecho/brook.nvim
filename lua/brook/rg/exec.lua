@@ -20,7 +20,7 @@
 ---
 --- Other key features:
 ---
----   * capped results (configurable up to 10,000) to prevent memory bloat
+---   * capped results (configurable up to 100,000) to prevent memory bloat
 ---     and editor slowdown
 ---
 ---   * bypasss shell for compatibility and security
