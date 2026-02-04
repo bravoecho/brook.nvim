@@ -37,7 +37,7 @@ list has persisted for decades because it solves a simple problem well: given a
 list of locations, navigate and act on them.
 
 > [!TIP]
-> [Learn more about the quickfix list](/doc/quickfix_primer.md)
+> [Learn more about the quickfix list](/docs/quickfix_primer.md)
 
 **Native search integration** – Ripgrep patterns are translated into Neovim's
 search register, enabling highlighting and `n` / `N` navigation within buffers,
