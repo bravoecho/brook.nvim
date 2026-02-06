@@ -48,6 +48,14 @@
 --- navigation and hlsearch (default: true)
 ---@field set_search_register? boolean
 ---
+--- Larger batches after ripgrep has finished (default: 5x max_batch_size)
+--- (most users should not modify this).
+---@field drain_phase_max_batch_size? number
+---
+--- Less throttling after ripgrep has finished (default: 1/2 of flush_throttle_ms)
+--- (most users should not modify this).
+---@field drain_phase_flush_throttle_ms? number
+---
 --- Maximum number of characters to use for a result preview
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number

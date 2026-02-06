@@ -47,6 +47,14 @@ function M.setup(cfg)
   ---@type brook.UserConfig
   cfg = vim.tbl_deep_extend('force', defaults, cfg or {})
 
+  if not cfg.drain_phase_max_batch_size then
+    cfg.drain_phase_max_batch_size = cfg.max_batch_size * 5
+  end
+
+  if not cfg.drain_phase_flush_throttle_ms then
+    cfg.drain_phase_flush_throttle_ms = math.floor(cfg.flush_throttle_ms / 2)
+  end
+
   ------------------------------------------------------------------------------
   --- Validations --------------------------------------------------------------
   ------------------------------------------------------------------------------
@@ -135,8 +143,8 @@ function M.setup(cfg)
     qf_win_height = cfg.qf_win_height,
     output_format = cfg.output_format,
     set_search_register = cfg.set_search_register,
-    drain_phase_max_batch_size = cfg.max_batch_size * 15,
-    drain_phase_flush_throttle_ms = 5,
+    drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
+    drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
   }
 

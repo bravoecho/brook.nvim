@@ -106,8 +106,14 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     max_preview_chars = 200,  -- 100-500
 
     -- Performance tuning
+    -- (larger batches and lower throttling increase speed but can cause UI stutter)
     max_batch_size    = 100, -- results per quickfix update, 10-200
     flush_throttle_ms = 10,  -- delay between updates (0 to disable)
+
+    -- Advanced performance tuning
+    -- (for ultra-large number of results, emitted by ripgrep at exceptionally high rate)
+    drain_phase_max_batch_size    = 500, -- defaults to 5x max_batch_size
+    drain_phase_flush_throttle_ms = 5,   -- defaults to 1/2 of flush_throttle_ms
 
     -- Quickfix window
     qf_open        = true,
