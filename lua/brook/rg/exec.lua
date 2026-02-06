@@ -616,7 +616,7 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._flush_phase3(ctx, session)
-  local batch_size = M._with_jitter(ctx.cfg.phase3_batch_size, ctx.cfg.batch_jitter)
+  local batch_size = M._with_jitter(ctx.cfg.drain_phase_max_batch_size, ctx.cfg.batch_jitter)
   M._update_quickfix(session.queue.pull(batch_size), ctx, session)
 
   if session.queue.is_empty() then
@@ -627,7 +627,7 @@ function M._flush_phase3(ctx, session)
 
   phase3_timer = vim.defer_fn(function()
     M._flush_phase3(ctx, session)
-  end, ctx.cfg.phase3_throttle_ms)
+  end, ctx.cfg.drain_phase_flush_throttle_ms)
 end
 
 --- Starts phase 3: cancels phase 2 and begins fast drain.

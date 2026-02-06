@@ -135,8 +135,8 @@ function M.setup(cfg)
     qf_win_height = cfg.qf_win_height,
     output_format = cfg.output_format,
     set_search_register = cfg.set_search_register,
-    phase3_batch_size = cfg.max_batch_size * 15,
-    phase3_throttle_ms = 5,
+    drain_phase_max_batch_size = cfg.max_batch_size * 15,
+    drain_phase_flush_throttle_ms = 5,
     max_preview_chars = cfg.max_preview_chars,
   }
 

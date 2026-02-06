@@ -39,10 +39,10 @@
 ---@field set_search_register boolean
 ---
 --- Larger batches after ripgrep has finished (default: 10x max_batch_size)
----@field phase3_batch_size number
+---@field drain_phase_max_batch_size number
 ---
 --- Less throttling after ripgrep has finished (default: 1)
----@field phase3_throttle_ms number
+---@field drain_phase_flush_throttle_ms number
 ---
 --- Maximum number of characters to use for a result preview, to prevent
 --- excessive memory use (default: 200, range: 100-500)
