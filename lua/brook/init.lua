@@ -258,6 +258,8 @@ function M.setup(cfg)
       if cancel_fn then
         cancel_fn()
         cancel_fn = nil
+      else
+        vim.notify('rg: no search in progress', vim.log.levels.WARN)
       end
     end, { desc = keymap_desc.stop })
   end
