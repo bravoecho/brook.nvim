@@ -131,6 +131,20 @@ local qf_operation = {
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
 ---@field exit_code number|nil
+---@field bench brook.BenchData|nil Benchmarking data (present when benchmarking is enabled)
+
+--- Benchmarking data collected during execution.
+---
+---@class brook.BenchData
+---@field raw string Search command
+---@field t_start number hrtime at jobstart (nanoseconds)
+---@field t_rg_exit number|nil hrtime at on_exit callback
+---@field t_done number|nil hrtime at final flush completion
+---@field setqflist_calls number Number of vim.fn.setqflist() invocations
+---@field setqflist_ns number Cumulative nanoseconds spent inside setqflist()
+---@field phase1_items number Items flushed during phase 1
+---@field phase2_items number Items flushed during phase 2
+---@field phase3_items number Items flushed during phase 3
 
 --------------------------------------------------------------------------------
 --- Batch size jitter ----------------------------------------------------------
@@ -190,6 +204,17 @@ function M._exec(ctx)
     stdout_buffer = '',
     stderr_lines = {},
     exit_code = nil,
+    bench = {
+      raw = ctx.parsed_args.raw,
+      t_start = vim.loop.hrtime(),
+      t_rg_exit = nil,
+      t_done = nil,
+      setqflist_calls = 0,
+      setqflist_ns = 0,
+      phase1_items = 0,
+      phase2_items = 0,
+      phase3_items = 0,
+    },
   }
 
   local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
@@ -437,6 +462,12 @@ end
 function M._on_exit(exit_code, ctx, session)
   -- Capture exit state for notify_completion (called at end of phase 3).
   session.exit_code = exit_code
+
+  -- BENCH: record ripgrep completion time
+  if session.bench then
+    session.bench.t_rg_exit = vim.loop.hrtime()
+  end
+
   if session.current_phase == phases.phase_1 then
     -- Handle edge case where ripgrep exited before the quickfix window was
     -- fully populated. Flush synchronously to ensure results are visible.
@@ -622,6 +653,10 @@ function M._flush_phase3(ctx, session)
   if session.queue.is_empty() then
     session.current_phase = phases.done
     M._notify_completion(ctx, session)
+    -- BENCH: always emit, even if exit_code hasn't arrived yet
+    if session.bench and not session.bench.t_done then
+      M._emit_bench_summary(session)
+    end
     return
   end
 
@@ -665,10 +700,24 @@ function M._update_quickfix(items, ctx, session)
     return
   end
 
+  -- BENCH: time the setqflist call
+  local t0 = session.bench and vim.loop.hrtime() or nil
   vim.fn.setqflist({}, session.qf_operation, {
     title = 'rg ' .. ctx.parsed_args.raw,
     items = items,
   })
+  if session.bench and t0 then
+    session.bench.setqflist_ns = session.bench.setqflist_ns + (vim.loop.hrtime() - t0)
+    session.bench.setqflist_calls = session.bench.setqflist_calls + 1
+
+    if session.current_phase == phases.phase_1 then
+      session.bench.phase1_items = session.bench.phase1_items + current_buffer_size
+    elseif session.current_phase == phases.phase_2 then
+      session.bench.phase2_items = session.bench.phase2_items + current_buffer_size
+    elseif session.current_phase == phases.phase_3 then
+      session.bench.phase3_items = session.bench.phase3_items + current_buffer_size
+    end
+  end
   session.qf_operation = qf_operation.append
   local previous_flushed = session.flushed_results
   session.flushed_results = session.flushed_results + current_buffer_size
@@ -789,6 +838,49 @@ function M._notify_completion(ctx, session)
   if session.exit_code ~= 0 then
     table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
     vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
+  end
+
+  -- BENCH: emit timing summary
+  M._emit_bench_summary(session)
+end
+
+--- Formats and prints benchmarking data to :messages.
+---@param session brook.ExecSession
+function M._emit_bench_summary(session)
+  local b = session.bench
+  if not b then
+    return
+  end
+
+  b.t_done = vim.loop.hrtime()
+
+  local function ms(ns)
+    return string.format('%.1f ms', ns / 1e6)
+  end
+
+  local total_ns = b.t_done - b.t_start
+  local rg_ns = b.t_rg_exit and (b.t_rg_exit - b.t_start) or 0
+  local drain_ns = b.t_rg_exit and (b.t_done - b.t_rg_exit) or 0
+
+  local lines = {
+    '',
+    '── brook.nvim bench ──────────────────────────────────',
+    '  total wall time:        ' .. ms(total_ns),
+    '  ripgrep (start→exit):   ' .. ms(rg_ns),
+    '  drain (exit→done):      ' .. ms(drain_ns),
+    '  setqflist() cumulative: ' .. ms(b.setqflist_ns)
+    .. '  (' .. b.setqflist_calls .. ' calls)',
+    '  items by phase:         '
+    .. 'P1=' .. b.phase1_items
+    .. '  P2=' .. b.phase2_items
+    .. '  P3=' .. b.phase3_items
+    .. '  total=' .. session.flushed_results,
+    '──────────────────────────────────────────────────────',
+  }
+
+  -- Print to :messages so it doesn't interfere with vim.notify
+  for _, line in ipairs(lines) do
+    print(line)
   end
 end
 
