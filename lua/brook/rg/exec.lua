@@ -143,6 +143,8 @@ local qf_operation = {
 ---@field t_done number|nil hrtime at final flush completion
 ---@field setqflist_calls number Number of vim.fn.setqflist() invocations
 ---@field setqflist_ns number Cumulative nanoseconds spent inside setqflist()
+---@field wipe_ns number Nanoseconds spent wiping unlisted buffers
+---@field wipe_count number Number of buffers wiped
 ---@field phase1_items number Items flushed during phase 1
 ---@field phase2_items number Items flushed during phase 2
 ---@field phase3_items number Items flushed during phase 3
@@ -189,6 +191,15 @@ function M._exec(ctx)
     active_rg_job_id = nil
   end
 
+  -- Wipe unlisted buffers and capture timing for bench output.
+  local wipe_ns = 0
+  local wipe_count = 0
+  if ctx.cfg.wipe_unlisted_buffers then
+    local t0 = vim.loop.hrtime()
+    wipe_count = M._wipe_unlisted_buffers()
+    wipe_ns = vim.loop.hrtime() - t0
+  end
+
   -- Initialise session
   ---------------------
   ---@type brook.ExecSession
@@ -213,6 +224,8 @@ function M._exec(ctx)
       t_done = nil,
       setqflist_calls = 0,
       setqflist_ns = 0,
+      wipe_ns = wipe_ns,
+      wipe_count = wipe_count,
       phase1_items = 0,
       phase2_items = 0,
       phase3_items = 0,
@@ -462,6 +475,39 @@ function M._resolve_bufnr(filename, cache)
     cache[filename] = bufnr
   end
   return bufnr
+end
+
+--- Wipes unlisted buffers accumulated by previous searches.
+---
+--- Each `setqflist()` call with filename fields causes Neovim to create
+--- unlisted buffers via `buflist_add()`. These persist after the quickfix
+--- list is freed, causing the buffer list to grow indefinitely. Since
+--- `setqflist()` and `bufadd()` resolve filenames via a linear scan of
+--- the buffer list, accumulated buffers degrade subsequent searches.
+---
+--- Only deletes buffers that are:
+---
+---   * not listed (not opened by the user)
+---   * not displayed in any window
+---   * not modified
+---
+---@return number wiped Number of buffers deleted
+function M._wipe_unlisted_buffers()
+  local wiped = 0
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf)
+        and not vim.bo[buf].buflisted
+        and not vim.bo[buf].modified
+        and vim.fn.bufwinid(buf) == -1
+    then
+      -- pcall guards against buffers that become invalid between the
+      -- nvim_list_bufs() snapshot and the delete call.
+      if pcall(vim.api.nvim_buf_delete, buf, { force = true }) then
+        wiped = wiped + 1
+      end
+    end
+  end
+  return wiped
 end
 
 -- stderr is buffered (see jobstart options below), so this callback
@@ -891,11 +937,14 @@ function M._emit_bench_summary(session)
   local lines = {
     '',
     '── brook.nvim bench ──────────────────────────────────',
-    '  total wall time:        ' .. ms(total_ns),
+    '  search command:             ' .. ':Rg ' .. b.raw,
+    '  total wall time:            ' .. ms(total_ns),
     '  ripgrep (start --> exit):   ' .. ms(rg_ns),
     '  drain (exit --> done):      ' .. ms(drain_ns),
-    '  setqflist() cumulative: ' .. ms(b.setqflist_ns)
+    '  setqflist() cumulative:     ' .. ms(b.setqflist_ns)
     .. '  (' .. b.setqflist_calls .. ' calls)',
+    '  buf wipe:                   ' .. ms(b.wipe_ns)
+    .. '  (' .. b.wipe_count .. ' bufs)',
     '  items by phase:         '
     .. 'P1=' .. b.phase1_items
     .. '  P2=' .. b.phase2_items

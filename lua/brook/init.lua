@@ -146,6 +146,7 @@ function M.setup(cfg)
     drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
+    wipe_unlisted_buffers = true,
   }
 
   ---@type function|nil Function to be used to cancel any current job

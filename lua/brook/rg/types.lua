@@ -47,5 +47,9 @@
 --- Maximum number of characters to use for a result preview, to prevent
 --- excessive memory use (default: 200, range: 100-500)
 ---@field max_preview_chars number
+---
+--- Whether each search should wipe out buffers created just for the purpose of
+--- adding the corresponding file to the quickfix list.
+---@field wipe_unlisted_buffers boolean
 
 --------------------------------------------------------------------------------
