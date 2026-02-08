@@ -1,9 +1,9 @@
-# `setqflist()` performance degradation
+# `setqflist()` performance optimisations
 
 ## Status
 
-Proposed — not yet scheduled. This document captures the investigation and
-proposed solution so that implementation can begin without re-discovery.
+Implemented (Parts 1–3). Bench instrumentation still present in `exec.lua` —
+strip or gate behind a flag before release.
 
 ## Summary
 
@@ -14,9 +14,15 @@ inside `setqflist()`, where n is the total number of buffers. Each search
 creates thousands of unlisted buffers as a side effect, and these accumulate
 across searches, making every subsequent call slower.
 
-The proposed mitigation is a session-local filename-to-bufnr cache that resolves
-each unique filename exactly once, combined with an optional unlisted-buffer
-wipe between searches to prevent cumulative growth.
+Three mitigations were implemented: a session-local filename-to-bufnr cache
+that resolves each unique filename exactly once, an optional unlisted-buffer
+wipe between searches to prevent cumulative growth, and a deferred-parsing
+redesign that moves per-line work out of the `on_stdout` producer to eliminate
+main-loop starvation.
+
+All benchmarks were run against a large multi-repo corpus (`~/ws/large-repos`,
+containing repositories at the scale of Firefox, Linux, and LLVM) with
+`max_results = 100,000`.
 
 ---
 
@@ -62,16 +68,14 @@ Across 10 consecutive runs of the same search (`:Rg data -w`, 100,000 results),
 `setqflist()` cumulative time accounted for **98–99%** of total wall time in
 every run. The per-call average degraded as follows:
 
-| Run | Items   | setqflist() total | Per call avg | Buffer count (approx) |
-|-----|---------|-------------------|--------------|-----------------------|
-| 1   | 100,000 | 814 ms            | 7 ms         | ~4,000                |
-| 2   | 100,000 | 6,482 ms          | 34 ms        | ~8,000                |
-| 3   | 100,000 | 7,842 ms          | 39 ms        | ~12,000               |
-| 4   | 100,000 | 9,544 ms          | 34 ms        | ~16,000               |
-| 5   | 100,000 | 12,730 ms         | 60 ms        | ~20,000               |
-| 6   | 100,000 | 13,319 ms         | 61 ms        | ~20,000 (saturated)   |
-| 7   | 100,000 | 13,868 ms         | 65 ms        | ~20,000 (saturated)   |
-| 8   | 46,684  | 33,491 ms         | 241 ms       | ~30,000 (new pattern) |
+- Run 1: 100K items, 814ms total, 7ms/call, ~4K buffers
+- Run 2: 100K items, 6,482ms total, 34ms/call, ~8K buffers
+- Run 3: 100K items, 7,842ms total, 39ms/call, ~12K buffers
+- Run 4: 100K items, 9,544ms total, 34ms/call, ~16K buffers
+- Run 5: 100K items, 12,730ms total, 60ms/call, ~20K buffers
+- Run 6: 100K items, 13,319ms total, 61ms/call, ~20K buffers (saturated)
+- Run 7: 100K items, 13,868ms total, 65ms/call, ~20K buffers (saturated)
+- Run 8: 46K items, 33,491ms total, 241ms/call, ~30K buffers (new pattern)
 
 Runs 5–7 show the per-call cost plateauing at ~60–65ms. This is because the
 same search pattern (`data -w`) produces matches in the same set of ~4,000
@@ -123,25 +127,25 @@ reported by users.
 
 ---
 
-## Proposed Solution
+## Implemented Solution
 
-The mitigation has two independent parts that can be implemented separately.
+Three changes were implemented, each building on the previous.
 
 ### Part 1: Session-local filename-to-bufnr cache
 
 **Goal:** Reduce the number of `buflist_findname_stat()` calls from
 O(total_matches) to O(unique_files) per search.
 
-**Mechanism:** Maintain a Lua hash table that maps filenames to buffer numbers,
-populated lazily as results are parsed. Pass `bufnr` instead of `filename` to
-`setqflist()`, bypassing Neovim's internal filename resolution entirely.
+**Mechanism:** A Lua hash table (`session.bufnr_cache`) maps filenames to
+buffer numbers, populated lazily as results are parsed. `vim.fn.bufadd()` is
+called once per unique filename, and the resulting `bufnr` is passed to
+`setqflist()` instead of `filename`. Neovim resolves `bufnr` in O(1) (direct
+array index into the buffer table) rather than O(n) (linear scan by filename).
 
-**Where to implement:** The cache lives on the `session` object (so it is
-scoped to a single search and garbage-collected afterwards). The parse functions
-(`_parse_vimgrep` and `_parse_line_number`) gain access to the cache and
-resolve filenames before constructing the quickfix entry.
-
-**Implementation sketch:**
+**Implementation:** `_resolve_bufnr(filename, cache)` wraps the lookup-or-add
+logic. The resolution happens after parsing, keeping the parse functions
+(`_parse_vimgrep`, `_parse_line_number`) pure. The cache lives on the session
+object and is garbage-collected when the search completes.
 
 ```lua
 -- In the session initialiser inside _exec():
@@ -152,8 +156,9 @@ local session = {
 ```
 
 ```lua
--- New helper function: resolve filename to buffer number, caching the result.
--- vim.fn.bufadd() creates the buffer if it doesn't exist, or returns the
+-- Resolve filename to buffer number, caching the result.
+--
+-- `vim.fn.bufadd()` creates the buffer if it doesn't exist, or returns the
 -- existing bufnr if it does. We call it once per unique filename rather than
 -- letting setqflist() call buflist_findname_stat() once per match.
 ---@param filename string
@@ -170,56 +175,31 @@ end
 ```
 
 ```lua
--- In _parse_vimgrep (and similarly in _parse_line_number):
--- Before (current):
-function M._parse_vimgrep(result)
-    -- ... parsing logic ...
-    return {
-        filename = filename,
-        lnum = tonumber(lnum),
-        col = tonumber(col),
-        text = text,
-    }
-end
-
--- After (proposed):
--- Note: the signature changes to accept the cache. The caller (_on_stdout)
--- passes session.bufnr_cache. This is a breaking change to the parse_line
--- function signature, which is selected dynamically in _exec().
-function M._parse_vimgrep(result, bufnr_cache)
-    -- ... parsing logic ...
-    return {
-        bufnr = M._resolve_bufnr(filename, bufnr_cache),
-        lnum = tonumber(lnum),
-        col = tonumber(col),
-        text = text,
-    }
+-- In _on_stdout, after parsing:
+local entry = parse_line(line)
+if entry then
+    -- Resolve filename --> bufnr before enqueueing
+    entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+    entry.filename = nil
+    session.queue.push(entry)
+    session.total_results = session.total_results + 1
 end
 ```
-
-```lua
--- In _on_stdout, the parse_line call becomes:
-local entry = parse_line(line, session.bufnr_cache)
-```
-
-**Expected impact:** With 100,000 matches across ~4,000 unique files, this
-reduces the number of buffer list lookups from 100,000 to 4,000 per search — a
-25x reduction. Each individual `setqflist()` call receives items with `bufnr`
-fields, which Neovim resolves in O(1) (direct array index into the buffer
-table) rather than O(n) (linear scan by filename).
-
-**Limitation:** `vim.fn.bufadd()` itself performs a buffer list lookup, so the
-4,000 calls to `bufadd()` still pay the O(n) cost. However, 4,000 × n is
-dramatically better than 100,000 × n. Additionally, if `bufadd()` is called
-from Lua in the same main-loop tick as the `on_stdout` callback, it runs
-synchronously and does not introduce scheduling overhead.
 
 **Note on `bufadd()`:** This function is called from a `vim.schedule_wrap`
 context (the `on_stdout` callback), which means it runs on the main loop and
-can safely call Vimscript functions. It does **not** need to be wrapped in
-`vim.schedule()` again.
+can safely call Vimscript functions. It does not need to be wrapped in
+`vim.schedule()` again. `bufadd()` itself performs a buffer list lookup, so the
+4,000 calls to `bufadd()` still pay the O(n) cost. However, 4,000 × n is
+dramatically better than 100,000 × n.
 
-### Part 2: Unlisted buffer cleanup between searches
+**Measured impact:** `setqflist()` cumulative time on the first run dropped
+from 814ms to 202ms. Per-call cost dropped from 7ms to ~2ms. However,
+cumulative degradation across runs persisted (202, 478, 741, 1,052ms) because
+`bufadd()` itself does an O(n) buffer list scan, and the buffer list grows
+with each search.
+
+### Part 2: Unlisted buffer wipe between searches
 
 **Goal:** Prevent cumulative buffer list growth across searches, so the tenth
 search is as fast as the first.
@@ -228,9 +208,8 @@ search is as fast as the first.
 unlisted buffers that are not visible in any window and are not modified.
 
 **Where to implement:** Early in `_exec()`, after cancelling previous
-scheduling but before initialising the new session.
-
-**Implementation sketch:**
+scheduling but before initialising the new session. Gated behind
+`ctx.cfg.wipe_unlisted_buffers` (defaults to `false`).
 
 ```lua
 -- In _exec(), after M._cancel_phase3_scheduling() and before session init:
@@ -261,9 +240,11 @@ for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 end
 ```
 
-**Expected impact:** The buffer list is reset to approximately its pre-search
-size before each new search, preventing the cumulative O(n) degradation. After
-this cleanup, only user-opened buffers and actively displayed buffers remain.
+**Measured impact:** `setqflist()` cumulative time became flat across runs
+(~420–460ms). The wipe itself costs ~350–400ms at ~12,000 buffers, which is a
+worthwhile trade at 100K results. At normal `max_results = 1000`, the wipe
+would be near-instant and the degradation it prevents would be imperceptible —
+hence the default-off flag.
 
 **Risk:** This deletes **all** invisible unlisted buffers, not only those
 created by `setqflist()`. Other plugins may create unlisted buffers for their
@@ -274,18 +255,89 @@ conflicts arise, a more targeted approach would be to tag brook-created buffers
 with a buffer-local variable and only delete those, but this adds complexity
 for a problem that may never materialise.
 
-**Performance of the cleanup itself:** Iterating 20,000 buffers and calling
-`nvim_buf_delete()` on each takes measurable time. In testing, this should be
-profiled to ensure it doesn't introduce its own latency. If it's too slow, it
-could be deferred to a `vim.schedule()` callback or batched, though this would
-complicate the control flow.
+**Observation:** For repeated different-pattern searches (e.g. alternating
+`data -w` and `report -w`), the wipe deletes buffers that `bufadd()` will
+immediately recreate. This is a known inefficiency; a more targeted approach
+(tagging brook-created buffers) could address it if it becomes a real problem.
 
-**Configuration:** This behaviour could be gated behind a config option (e.g.
-`wipe_unlisted_buffers = true`) to allow users to disable it if it interferes
-with their workflow. However, given that the default `max_results` is 1,000 and
-the buffer accumulation is barely noticeable at that scale, it may be more
-pragmatic to only perform the cleanup when `max_results` exceeds a threshold
-(e.g. 5,000).
+### Part 3: Deferred parsing (producer-consumer redesign)
+
+**Problem.** With Parts 1 and 2 in place, `setqflist()` was no longer the
+bottleneck. Benchmarking revealed that `ripgrep (start --> exit)` wall time
+was 4,500–5,400ms for a search where raw ripgrep completes in ~100ms.
+The `on_stdout` callback was doing too much work per invocation: parsing every
+line, calling `bufadd()` for each match, and checking queue length — all
+synchronously on the main loop. With batches of 700–2,800 lines, each callback
+blocked the main loop for tens of milliseconds, starving redraws and causing
+visible stutter during phase 2.
+
+**Key insight.** Phase 3 never stuttered because ripgrep had exited and the
+consumer had the main loop to itself. The fix was to make phase 2 behave like
+phase 3 by moving all per-line work out of the producer.
+
+**Solution.** `_on_stdout` was stripped down to buffer stitching, raw line
+enqueueing (strings, not parsed entries), result counting, and limit checking.
+A new `_parse_batch(n, session)` function pulls raw lines from the queue,
+parses them, resolves bufnr, and returns `vim.quickfix.entry[]`. All three
+flush functions call `_parse_batch` instead of `queue.pull` directly.
+
+**Implementation details:**
+
+- The queue now holds raw strings instead of parsed entries
+- `session.parse_line` stores the parser function (moved from a local in
+  `_exec` to a session field) so the consumer can access it
+- The mid-loop `_request_flush` trigger (fired when
+  `queue.len() >= max_batch_size`) was removed — with a lightweight producer,
+  the single `_request_flush` at the end of each callback is sufficient
+- `_parse_batch` returns fewer entries than requested if some lines fail to
+  parse (the count mismatch is harmless)
+
+**Measured impact.** `ripgrep (start --> exit)` dropped from ~4,500–5,400ms to
+~1,100–1,500ms. The callback count increased from ~150 to ~4,000–7,000
+(the main loop cycles faster, so libuv dispatches more frequent, smaller
+batches). Total wall time remained similar (~5–6s) because the parsing work
+moved to the drain phase, but the UI is now responsive throughout — the work
+happens in bounded batches with idle gaps.
+
+The ultra-fast first run (~700ms) observed before Part 3 disappeared. This is
+expected: previously, run 1 benefited from eager parsing in `on_stdout` with a
+clean buffer list, leaving the drain with nothing to do. Now the producer is
+always fast and the consumer always does the heavy lifting — consistent
+behaviour regardless of session state.
+
+---
+
+## Benchmark Summary
+
+All runs use `:Rg data -w` at 100,000 results unless noted.
+
+### Before any changes (baseline)
+
+- Run 1: 814ms setqflist, 7ms/call
+- Run 5: 12,730ms setqflist, 60ms/call
+- Run 8 (different pattern): 33,491ms setqflist, 241ms/call
+
+### After Part 1 only (bufnr cache)
+
+- Run 1: 202ms setqflist, ~720ms wall
+- Run 4 (different pattern): 1,052ms setqflist, ~11,773ms wall
+- Cumulative degradation still present
+
+### After Parts 1+2 (bufnr cache + buffer wipe)
+
+- setqflist: flat at ~420–460ms across runs
+- Wipe cost: ~350–400ms per search (~12K buffers)
+- Wall time: ~5,000–6,000ms
+- Bottleneck shifted to `ripgrep (start --> exit)`: 4,500–5,400ms
+
+### After Parts 1+2+3 (+ deferred parsing)
+
+- setqflist: flat at ~225–255ms (further improvement)
+- `ripgrep (start --> exit)`: 1,100–1,500ms (down from 4,500–5,400ms)
+- Drain: 3,500–4,700ms (where parsing now happens)
+- Wall time: ~4,700–6,200ms (similar total, work redistributed)
+- on_stdout: ~4,000–7,000 callbacks, ~25 lines/callback avg
+- Phase 2 visibly smoother
 
 ---
 
@@ -338,18 +390,13 @@ minimal even if the benefit at normal scale is small.
 ### Interaction with the parse function signature
 
 Currently, `_parse_vimgrep` and `_parse_line_number` are pure functions that
-take a string and return a quickfix entry. Part 1 requires them to also accept
-the bufnr cache, making them impure (they mutate the cache as a side effect
-and call `vim.fn.bufadd()` which is a Vimscript function with its own side
-effects).
-
-An alternative design would be to keep the parse functions pure and perform the
-bufnr resolution in `_on_stdout` after parsing:
+take a string and return a quickfix entry. Part 1 requires bufnr resolution,
+but we chose to keep the parse functions pure and perform the resolution after
+parsing (in `_on_stdout` originally, then in `_parse_batch` after Part 3):
 
 ```lua
 local entry = parse_line(line)
 if entry then
-    -- Resolve filename --> bufnr before enqueueing
     entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
     entry.filename = nil
     session.queue.push(entry)
@@ -360,6 +407,226 @@ end
 This is slightly less efficient (it creates the `filename` field and then
 replaces it) but preserves the parse functions' purity and avoids changing
 their signature. The efficiency difference is negligible.
+
+---
+
+## Remaining Observations
+
+### Phase 3 stutter on `report -w`
+
+Some stutter was observed during phase 3 of `:Rg report -w` searches. Two
+contributing factors:
+
+- **Memory pressure.** Neovim was at ~480MB RAM by this point. Each `bufadd()`
+  and `setqflist()` call allocates.
+- **Higher unique file count.** `report -w` matches ~12,500 unique files vs
+  ~4,000 for `data -w`, tripling the bufnr cache misses and `bufadd()` calls.
+  `setqflist()` confirms this: ~720ms for `report` vs ~240ms for `data`.
+
+### Wipe cost for alternating patterns
+
+When alternating between search patterns, the wipe deletes buffers that the
+next search will recreate via `bufadd()`. At ~12K buffers, this costs ~350ms
+of wasted work. A more targeted approach (tagging brook-created buffers with a
+buffer-local variable) could avoid this, at the cost of added complexity.
+
+### Callback volume
+
+The deferred-parsing version produces 4,000–7,000 `on_stdout` callbacks per
+search. Each callback is lightweight (buffer stitching + table inserts), but
+the sheer volume of `vim.schedule_wrap` dispatches has its own overhead. This
+is not currently a problem, but worth monitoring.
+
+---
+
+## Alternative Approaches Not Taken
+
+### Chunked processing within `on_stdout`
+
+Rather than moving all parsing to the consumer, `on_stdout` could process
+lines in bounded chunks (e.g. 100 at a time), yielding back to the main loop
+between chunks via `vim.schedule`. This would keep parsing in the producer but
+prevent any single callback from monopolising the main loop.
+
+The tradeoff is complexity: `on_stdout` would need to manage partial
+processing state (where it left off in the `data` array) across multiple
+scheduled continuations, while new `on_stdout` callbacks could arrive in the
+gaps. The deferred-parsing approach avoids this entirely by making `on_stdout`
+trivially fast.
+
+### Coroutine-based cooperative yielding
+
+Lua coroutines could wrap the parsing loop in `on_stdout`, yielding after every
+N lines and resuming on the next main-loop tick. This is a more idiomatic Lua
+approach to cooperative multitasking and would avoid the state management
+complexity of the chunked approach.
+
+The concern is that coroutines interact subtly with `vim.schedule` and Neovim's
+event loop — resuming a coroutine from a scheduled callback is possible but
+adds a layer of indirection that could make the control flow harder to reason
+about. It also doesn't change the fundamental insight that the producer
+shouldn't be doing expensive work.
+
+### Batch `bufadd()` at flush time only
+
+Instead of resolving bufnr per-line in `_parse_batch`, collect all unique
+filenames in the batch first, resolve them in a single pass, then build the
+quickfix entries. This would allow potential future optimisation (e.g. a
+hypothetical batch `bufadd()` API) and makes the cache-miss pattern more
+visible. The current per-line approach is simpler and the performance
+difference is negligible, but this could be revisited if `bufadd()` cost
+becomes dominant.
+
+### Intermediate transformer (third actor)
+
+After the deferred-parsing redesign, the producer has one responsibility
+(collect raw lines) while the consumer has two (transform and render). A
+natural question is whether a third actor could handle transformation
+separately, perhaps "in the background".
+
+In Neovim's single-threaded environment, a separate transformer would still
+run on the same main loop. A two-queue pipeline (raw lines, parsed entries,
+quickfix) would add a scheduling layer without reducing total work, and would
+introduce latency: the flush must wait for the transformer to produce enough
+entries before it can run. The current design where `_parse_batch` does both
+transform and render in one step is optimal for a single-threaded environment
+— it minimises main-loop ticks needed to go from raw line to visible quickfix
+entry.
+
+The one genuine concurrency option is `vim.loop.new_work()` (libuv thread
+pool), which can run Lua off the main thread. Parsing (`string:find()`,
+`string:sub()`) could happen there, but `bufadd()` must run on the main thread
+(it's a Vimscript function that touches Neovim internals). Since parsing is
+cheap compared to `bufadd()`, this would add significant complexity for
+marginal gain. Discarded.
+
+---
+
+## Future Work
+
+### Ripgrep JSON output
+
+The ripgrep documentation specifically advises programmatic clients not to use
+`--vimgrep` and to prefer `--json` instead. This is worth investigating as a
+potential improvement to the parsing phase.
+
+**Current approach (`--vimgrep`).** The `--vimgrep` flag produces
+colon-delimited lines (`file:line:col:text`). The parser uses
+`result:find(':(%d+):(%d+):')` to locate the line:col boundary and
+`string:sub()` to extract components. This works but is a heuristic —
+filenames containing colons in specific patterns could theoretically confuse
+it.
+
+**What `--json` offers.** The `--json` flag emits one JSON object per line
+with structured fields: filename, line number, column number, match text,
+byte offsets, and submatches, all unambiguously separated. Potential benefits:
+
+- **No colon ambiguity.** Eliminates an entire class of edge-case bugs around
+  filenames with colons.
+- **Richer data.** Byte offsets, submatches, and normalised paths could enable
+  features like precise match highlighting in the quickfix preview.
+- **`vim.json.decode` is C-backed.** It calls `cjson` under the hood, which
+  may be faster than Lua pattern matching for structured data. Whether the
+  difference is measurable at per-line scale is an empirical question.
+
+Potential costs:
+
+- **More verbose output.** JSON lines carry field names and structural
+  characters, increasing pipe throughput. At 100K lines, the extra bytes
+  could slow down the producer if the pipe becomes a bottleneck.
+- **Higher memory churn.** `vim.json.decode` constructs a nested table per
+  line, which must then be flattened into a quickfix entry. The current parser
+  constructs a single flat table with four fields.
+
+**Architectural fit.** The queue currently holds raw `--vimgrep` lines. With
+JSON, there are two options:
+
+- **Decode in `_parse_batch`** (same pattern as now): queue holds raw JSON
+  strings, consumer decodes and transforms. Clean separation, no producer
+  changes beyond the ripgrep flags.
+- **Decode in `on_stdout`**: since `vim.json.decode` is a single C call
+  rather than multiple Lua string operations, the per-line cost in the
+  producer would be low. This adds some work back to `on_stdout` but avoids
+  storing large JSON strings in the queue.
+
+**Recommendation.** Benchmark the same search with `--json`, decoding in
+`_parse_batch`, and compare total wall time and `setqflist()` cost against
+the current `--vimgrep` path. If performance is comparable or better, the
+correctness and extensibility benefits make JSON a clear win.
+
+### Unify phase 2 and phase 3
+
+With deferred parsing (Part 3), the producer no longer competes meaningfully
+for the main loop. The original reason for distinct phase 2 and phase 3
+strategies — different contention characteristics — has largely disappeared.
+Both phases now do the same thing: pull raw lines, parse, resolve bufnr, flush
+to quickfix, reschedule. The only difference is batch size and throttle
+interval.
+
+**Current structure:**
+
+- Phase 2: smaller batches (`max_batch_size`), longer throttle
+  (`flush_throttle_ms`), own timer (`phase2_timer`) and schedule guard
+  (`phase2_scheduled`).
+- Phase 3: larger batches (`drain_phase_max_batch_size`), shorter throttle
+  (`drain_phase_flush_throttle_ms`), own timer (`phase3_timer`).
+- Transition: `_start_phase3` cancels phase 2 scheduling, sets the phase
+  enum, and kicks off the first phase 3 flush.
+
+This requires two timers, two cancel functions, phase transition logic, and a
+phase enum value that is only meaningful for choosing batch parameters.
+
+**Proposed design.** A single consumer phase that adjusts its parameters based
+on whether ripgrep has exited:
+
+```lua
+function M._flush_phase2(ctx, session)
+  if session.current_phase ~= phases.phase_2 or session.queue.is_empty() then
+    return
+  end
+
+  local draining = session.exit_code ~= nil
+  local base_batch = draining
+      and ctx.cfg.drain_phase_max_batch_size
+      or ctx.cfg.max_batch_size
+  local throttle = draining
+      and ctx.cfg.drain_phase_flush_throttle_ms
+      or ctx.cfg.flush_throttle_ms
+
+  local batch_size = M._with_jitter(base_batch, ctx.cfg.batch_jitter)
+  M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
+
+  if session.queue.is_empty() and draining then
+    session.current_phase = phases.done
+    M._notify_completion(ctx, session)
+    return
+  end
+
+  -- Reschedule (single timer, single guard)
+  ...
+end
+```
+
+The `on_exit` handler sets `exit_code` and, if phase 2 is already running,
+does nothing else — the next flush iteration will pick up the drain parameters
+automatically. If ripgrep exits during phase 1, the existing phase 1 / phase 2
+transition still applies; phase 2 will see `exit_code` immediately and use
+drain parameters from the start.
+
+**What this eliminates:**
+
+- `phase3_timer` and `_cancel_phase3_scheduling()`
+- `_flush_phase3()` and `_start_phase3()`
+- The `phase_3` enum value
+- The phase 2 / phase 3 transition in `_on_exit`
+
+**Edge case to test.** Ripgrep exits before phase 1 completes. Currently
+`_on_exit` flushes phase 1 synchronously, then starts phase 3. With a unified
+phase 2, the sequence would be: `_on_exit` sets `exit_code`, flushes phase 1
+synchronously, phase 1 transitions to phase 2, and phase 2 sees `exit_code`
+is set and uses drain parameters immediately. This should work but needs
+careful testing, as the timing of `on_exit` relative to `on_stdout` callbacks
+can vary.
 
 ---
 
@@ -383,6 +650,18 @@ roughly constant (not growing by thousands per search).
 `:copen`, jumping to entries) still works correctly when entries use `bufnr`
 instead of `filename`. Verify that nvim-bqf's preview functionality is not
 broken by the unlisted buffer cleanup.
+
+---
+
+## Files Modified
+
+- `lua/brook/rg/exec.lua` — all three parts implemented here
+- `lua/brook/rg/types.lua` — added `wipe_unlisted_buffers` field to
+  `brook.rg.ExecConfig`
+
+The bench instrumentation (`brook.BenchData` fields and `_emit_bench_summary`)
+is included in the current state of `exec.lua`. It should be stripped or gated
+behind a flag before release.
 
 ---
 
