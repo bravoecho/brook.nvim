@@ -128,6 +128,7 @@ local qf_operation = {
 ---@field did_resize boolean Whether the quickfix window has rearched its target height
 ---@field current_phase brook.ExecPhase
 ---@field queue brook.Fifo FIFO queue between rg and quickfix, decouples producer (rg's stdout) from consumer (quickfix)
+---@field bufnr_cache table<string, number> filename/bufnr cache, avoids repeated O(n) buffer list scans in setqflist()
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
 ---@field exit_code number|nil
@@ -201,6 +202,7 @@ function M._exec(ctx)
     did_resize = false,
     current_phase = phases.phase_1,
     queue = fifo.new(),
+    bufnr_cache = {},
     stdout_buffer = '',
     stderr_lines = {},
     exit_code = nil,
@@ -372,6 +374,11 @@ function M._on_stdout(data, ctx, session, parse_line)
 
     local entry = parse_line(line)
     if entry then
+      -- Resolve filename to bufnr before enqueueing. This bypasses
+      -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
+      -- which Neovim can resolve in O(1).
+      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      entry.filename = nil
       session.queue.push(entry)
       session.total_results = session.total_results + 1
     end
@@ -436,6 +443,25 @@ function M._parse_line_number(result)
     col = 1, -- Default to column 1 when no column info available
     text = text,
   }
+end
+
+--- Resolves a filename to a buffer number, caching the result.
+---
+--- `vim.fn.bufadd()` creates the buffer if absent, or returns the existing
+--- bufnr. We call it once per unique filename rather than letting
+--- `setqflist()` call `buflist_findname_stat()` once per match — turning
+--- O(total_matches × buffer_count) into O(unique_files × buffer_count).
+---
+---@param filename string
+---@param cache table<string, number>
+---@return number bufnr
+function M._resolve_bufnr(filename, cache)
+  local bufnr = cache[filename]
+  if not bufnr then
+    bufnr = vim.fn.bufadd(filename)
+    cache[filename] = bufnr
+  end
+  return bufnr
 end
 
 -- stderr is buffered (see jobstart options below), so this callback
@@ -866,8 +892,8 @@ function M._emit_bench_summary(session)
     '',
     '── brook.nvim bench ──────────────────────────────────',
     '  total wall time:        ' .. ms(total_ns),
-    '  ripgrep (start→exit):   ' .. ms(rg_ns),
-    '  drain (exit→done):      ' .. ms(drain_ns),
+    '  ripgrep (start --> exit):   ' .. ms(rg_ns),
+    '  drain (exit --> done):      ' .. ms(drain_ns),
     '  setqflist() cumulative: ' .. ms(b.setqflist_ns)
     .. '  (' .. b.setqflist_calls .. ' calls)',
     '  items by phase:         '
