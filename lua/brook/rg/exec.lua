@@ -145,6 +145,9 @@ local qf_operation = {
 ---@field setqflist_ns number Cumulative nanoseconds spent inside setqflist()
 ---@field wipe_ns number Nanoseconds spent wiping unlisted buffers
 ---@field wipe_count number Number of buffers wiped
+---@field stdout_callbacks number Number of on_stdout invocations
+---@field stdout_lines number Total lines processed across all callbacks
+---@field stdout_max_batch number Largest single data array after buffer stitching
 ---@field phase1_items number Items flushed during phase 1
 ---@field phase2_items number Items flushed during phase 2
 ---@field phase3_items number Items flushed during phase 3
@@ -226,6 +229,9 @@ function M._exec(ctx)
       setqflist_ns = 0,
       wipe_ns = wipe_ns,
       wipe_count = wipe_count,
+      stdout_callbacks = 0,
+      stdout_lines = 0,
+      stdout_max_batch = 0,
       phase1_items = 0,
       phase2_items = 0,
       phase3_items = 0,
@@ -370,6 +376,16 @@ function M._on_stdout(data, ctx, session, parse_line)
   -- will be completed and processed when the next stdout event arrives.
   if #data == 0 then
     return
+  end
+
+  -- BENCH: track on_stdout callback volume
+  if session.bench then
+    local n = #data
+    session.bench.stdout_callbacks = session.bench.stdout_callbacks + 1
+    session.bench.stdout_lines = session.bench.stdout_lines + n
+    if n > session.bench.stdout_max_batch then
+      session.bench.stdout_max_batch = n
+    end
   end
 
   for _, line in ipairs(data) do
@@ -945,6 +961,10 @@ function M._emit_bench_summary(session)
     .. '  (' .. b.setqflist_calls .. ' calls)',
     '  buf wipe:                   ' .. ms(b.wipe_ns)
     .. '  (' .. b.wipe_count .. ' bufs)',
+    '  on_stdout:                  '
+    .. b.stdout_callbacks .. ' callbacks'
+    .. '  ' .. b.stdout_lines .. ' lines'
+    .. '  max_batch=' .. b.stdout_max_batch,
     '  items by phase:         '
     .. 'P1=' .. b.phase1_items
     .. '  P2=' .. b.phase2_items
