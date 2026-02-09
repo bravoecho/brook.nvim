@@ -13,9 +13,10 @@
 ---   * decouples producer (ripgrep's stdout) and consumer (quickfix rendering)
 ---     by interposing a queue, so that both can work at their optimal pace
 ---
----   * orchestrates quickfix updates in two phases
+---   * orchestrates quickfix updates in different stages
 ---     1. first paint
----     2. streaming and drain (parameters adjust when ripgrep exits)
+---     2. steady streaming (ripgrep still running)
+---     3. turbo-drain (ripgrep has finished)
 ---
 --- Other key features:
 ---
@@ -24,7 +25,7 @@
 ---
 ---   * bypasss shell for compatibility and security
 ---
---- See the phases enum and individual phase functions for implementation
+--- See the `state` enum and individual flush functions for implementation
 --- details.
 ---
 ---@module 'brook.rg.exec'
@@ -48,10 +49,10 @@ local active_rg_job_id = nil
 
 --- Also used to guard the throttling use case (flush_throttle_ms > 0).
 ---@type uv.uv_timer_t|nil
-local phase2_timer = nil
+local flush_timer = nil
 
 --- Used to guard the schedule-chaining use case (flush_throttle_ms == 0)
-local phase2_scheduled = false
+local flush_scheduled = false
 
 --- Store the last context to support "repeat last search"
 ---@type brook.SearchContext|nil
@@ -72,20 +73,27 @@ math.randomseed(vim.loop.now())
 --- Enums ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Two-phase consumer strategy to avoid redraw starvation.
+--- Three-stage consumer strategy to avoid redraw starvation.
 ---
----@enum brook.ExecPhase
-local phases = {
+---@enum brook.ExecState
+local state = {
   --- First paint: flush just enough to fill the visible quickfix window.
   --- Runs synchronously when invoked by the producer, then returns to let
   --- the main loop redraw. Never self-schedules.
-  phase_1 = 'phase-1',
+  first_paint = 'first-paint',
 
-  --- Streaming and drain: flush queued items in bounded batches. Parameters
-  --- adjust automatically when ripgrep exits (larger batches, shorter
-  --- throttle) to drain the queue quickly while still yielding for redraws.
-  phase_2 = 'phase-2',
+  --- Streaming: flush queued items in bounded batches while ripgrep runs.
+  --- Each batch schedules at most one successor, yielding to the main loop
+  --- between updates.
+  streaming = 'streaming',
 
+  --- Post-exit drain: ripgrep has finished but items remain queued. Uses
+  --- shorter intervals and larger batches than the 'streaming', to drain quickly
+  --- while still yielding for redraws.
+  draining = 'draining',
+
+  --- Done means that not only has the ripgrep command exited, but the queue has
+  --- also been drained and the rendering of results completed.
   done = 'done',
 }
 
@@ -110,19 +118,20 @@ local qf_operation = {
 
 ---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
+---@field max_batch_size number Batch size for streaming or draining
+---@field flush_throttle_ms number Delay between flushes for streaming or draining
 ---@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
 ---@field total_results number Number of raw lines enqueued from ripgrep (producer-side)
 ---@field flushed_results number Number of entries actually pushed into quickfix (consumer-side, UI)
 ---@field stopped_at_limit boolean
 ---@field stopped_by_user boolean
 ---@field did_resize boolean Whether the quickfix window has rearched its target height
----@field current_phase brook.ExecPhase
+---@field current_state brook.ExecState
 ---@field queue brook.Fifo FIFO queue of raw result lines, decouples producer (rg's stdout) from consumer (quickfix)
 ---@field parse_line fun(line: string): vim.quickfix.entry|nil Parser for the current output format
 ---@field bufnr_cache table<string, number> filename/bufnr cache, avoids repeated O(n) buffer list scans in setqflist()
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
----@field exited boolean Whether ripgrep has exited (drives drain-mode parameters)
 ---@field exit_code number|nil
 ---@field bench brook.BenchData|nil Benchmarking data (present when benchmarking is enabled)
 
@@ -140,9 +149,9 @@ local qf_operation = {
 ---@field stdout_callbacks number Number of on_stdout invocations
 ---@field stdout_lines number Total lines processed across all callbacks
 ---@field stdout_max_batch number Largest single data array after buffer stitching
----@field phase1_items number Items flushed during phase 1
----@field phase2_items number Items flushed during phase 2 (streaming)
----@field drain_items number Items flushed during phase 2 (drain, after rg exit)
+---@field first_paint_items number Items flushed during the first paint
+---@field streamed_items number Items flushed during streaming
+---@field drained_items number Items flushed during draining
 
 --------------------------------------------------------------------------------
 --- Batch size jitter ----------------------------------------------------------
@@ -178,7 +187,7 @@ function M._exec(ctx)
 
   -- Cleanup previous search
   --------------------------
-  M._cancel_phase2_scheduling()
+  M._cancel_flush_scheduling()
 
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
@@ -203,18 +212,19 @@ function M._exec(ctx)
   ---@type brook.ExecSession
   local session = {
     is_first_batch = true,
+    max_batch_size = ctx.cfg.max_batch_size,
+    flush_throttle_ms = ctx.cfg.flush_throttle_ms,
     qf_operation = qf_operation.replace,
     total_results = 0,
     flushed_results = 0,
     stopped_at_limit = false,
     stopped_by_user = false,
     did_resize = false,
-    current_phase = phases.phase_1,
+    current_state = state.first_paint,
     queue = fifo.new(),
     bufnr_cache = {},
     stdout_buffer = '',
     stderr_lines = {},
-    exited = false,
     exit_code = nil,
     parse_line = parse_line,
     bench = {
@@ -229,9 +239,9 @@ function M._exec(ctx)
       stdout_callbacks = 0,
       stdout_lines = 0,
       stdout_max_batch = 0,
-      phase1_items = 0,
-      phase2_items = 0,
-      drain_items = 0,
+      first_paint_items = 0,
+      streamed_items = 0,
+      drained_items = 0,
     },
   }
 
@@ -316,7 +326,7 @@ end
 ---@return function
 function M._user_cancel_function(job_id, session)
   return function()
-    M._cancel_phase2_scheduling()
+    M._cancel_flush_scheduling()
 
     if job_id and job_id == active_rg_job_id then
       session.stopped_by_user = true
@@ -337,7 +347,7 @@ end
 ---
 --- Parsing and bufnr resolution are deferred to the consumer (flush
 --- functions), so that the main loop is not blocked by per-line work.
---- This keeps phase 2 responsive even when ripgrep produces results
+--- This keeps streaming responsive even when ripgrep produces results
 --- faster than Neovim can render them.
 ---
 ---@param data string[] stdout segments yielded by the on_stdout callback. See :h channel-lines
@@ -519,6 +529,8 @@ end
 ---   * not displayed in any window
 ---   * not modified
 ---
+--- TODO: Only remove buffers if they were the result of a search.
+---
 ---@return number wiped Number of buffers deleted
 function M._wipe_unlisted_buffers()
   local wiped = 0
@@ -560,50 +572,21 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._on_exit(exit_code, ctx, session)
+  -- Capture exit state for notify_completion (called at end of the draining stage).
   session.exit_code = exit_code
-  session.exited = true
 
   -- BENCH: record ripgrep completion time
   if session.bench then
     session.bench.t_rg_exit = vim.loop.hrtime()
   end
 
-  if session.current_phase == phases.phase_1 then
-    -- Ripgrep exited before the quickfix window was fully populated.
-    -- Flush synchronously to ensure results are visible.
-    M._flush_phase1(ctx, session)
-
-    -- If phase 1 didn't transition (fewer results than window height),
-    -- move to done directly.
-    if session.current_phase == phases.phase_1 then
-      session.current_phase = phases.done
-      M._notify_completion(ctx, session)
-      if session.bench and not session.bench.t_done then
-        M._emit_bench_summary(session)
-      end
-      return
-    end
+  if session.current_state == state.first_paint then
+    -- Handle edge case where ripgrep exited before the quickfix window was
+    -- fully populated. Flush synchronously to ensure results are visible.
+    M._flush_first_paint(ctx, session)
   end
 
-  -- If phase 2 is already running, the next flush iteration picks up
-  -- drain parameters automatically via the exited flag. But if the queue
-  -- has items and no flush is currently scheduled (e.g. rg exited between
-  -- schedule ticks), kick one off.
-  if session.current_phase == phases.phase_2 then
-    if session.queue.is_empty() then
-      -- Nothing left to drain; complete immediately.
-      session.current_phase = phases.done
-      M._notify_completion(ctx, session)
-      if session.bench and not session.bench.t_done then
-        M._emit_bench_summary(session)
-      end
-    else
-      -- Cancel any pending streaming-phase timer so the next schedule uses
-      -- drain parameters immediately.
-      M._cancel_phase2_scheduling()
-      M._schedule_flush_phase2(ctx, session)
-    end
-  end
+  M._start_draining(ctx, session)
 end
 
 --------------------------------------------------------------------------------
@@ -612,27 +595,28 @@ end
 
 --- request_flush will either
 ---
----   - flush synchronously (phase 1)...
----   - ...or schedule a flush (phase 2)
+---   - flush synchronously (first paint)...
+---   - ...or schedule a flush (streaming and draining)
 ---
---- Since it may run synchronously (depending on phase) it must be called from
---- a scheduled context (Neovim's main loop).
+--- Since it may run synchronously (depending on the pipeline stage) it must
+--- be called from a scheduled context (Neovim's main loop).
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._request_flush(ctx, session)
-  if session.current_phase == phases.phase_1 then
-    M._flush_phase1(ctx, session)
-  elseif session.current_phase == phases.phase_2 then
-    M._schedule_flush_phase2(ctx, session)
+  if session.current_state == state.first_paint then
+    M._flush_first_paint(ctx, session)
+  elseif session.current_state == state.streaming
+      or session.current_state == state.draining then
+    M._schedule_flush(ctx, session)
   end
 end
 
 --------------------------------------------------------------------------------
---- Consumer: Phase 1 (First Paint) --------------------------------------------
+--- Consumer: First Paint ------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Phase-1 consumer: perform the first meaningful "paint".
+--- First-paint consumer: perform the first meaningful "paint".
 ---
 ---   * Flushes *at most* the number of items needed to reach the visible
 ---     quickfix window height (above the fold).
@@ -641,21 +625,23 @@ end
 ---     run synchronously and return control to the main loop so Neovim can
 ---     become idle and redraw.
 ---
----   * Owns the phase transition: when the visible region is filled, it moves
----     the consumer into phase2 (throughput mode).
+---   * Owns the state transition: when the visible region is filled, it moves
+---     the consumer into streaming mode.
 ---
---- See also the `phases` enum.
+--- See also the `state` enum.
+---
+--- TODO: if ctx.cfg.qf_open is false, the pipeline should skip this and go straight into streaming
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
-function M._flush_phase1(ctx, session)
-  if session.current_phase ~= phases.phase_1 or session.queue.is_empty() then
+function M._flush_first_paint(ctx, session)
+  if session.current_state ~= state.first_paint or session.queue.is_empty() then
     return
   end
 
   local remaining_visible_slots = M._remaining_visible_slots(ctx, session)
   if remaining_visible_slots == 0 then
-    M._start_phase2(ctx, session)
+    M._start_streaming(ctx, session)
     return
   end
 
@@ -663,10 +649,10 @@ function M._flush_phase1(ctx, session)
   -- fold.
   M._update_quickfix(M._parse_batch(remaining_visible_slots, session), ctx, session)
 
-  -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
+  -- If first paint has finished, kick off streaming anyway, no need to wait for
   -- the next `on_stdout` run.
   if M._remaining_visible_slots(ctx, session) == 0 then
-    M._start_phase2(ctx, session)
+    M._start_streaming(ctx, session)
   end
 end
 
@@ -677,109 +663,117 @@ function M._remaining_visible_slots(ctx, session)
 end
 
 --------------------------------------------------------------------------------
---- Consumer: Phase 2 (Streaming / Drain) --------------------------------------
+--- Consumer: Streaming --------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Phase 2 consumer: flush queued items in bounded batches.
+--- Streaming consumer: flush after first paint. It runs while ripgrep is still
+--- returning results (state == streaming), and after it's exited
+--- (state == draining). The difference is only in the values for batch size
+--- and throttle.
 ---
---- When ripgrep is still running, uses streaming parameters (smaller batches,
---- longer throttle). Once ripgrep has exited, switches to drain parameters
---- (larger batches, shorter throttle) to clear the queue quickly.
+---   * Pulls batches of results from the queue and renders them.
 ---
----   * Triggered by phase 1 transition or by `_on_exit`.
+---   * Is triggered at the end of the first paint
 ---
----   * Reschedules itself until the queue is drained and ripgrep has exited.
+---   * Reschedules itself if there are pending entries in the queue.
 ---
----   * Notifies user of completion once done.
----
---- See also the `phases` enum.
+--- See also the `state` enum.
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
-function M._flush_phase2(ctx, session)
-  if session.current_phase ~= phases.phase_2 or session.queue.is_empty() then
+function M._flush_streaming(ctx, session)
+  if session.current_state == state.done then
     return
   end
 
-  local draining = session.exited
-  local base_batch = draining
-      and ctx.cfg.drain_phase_max_batch_size
-      or ctx.cfg.max_batch_size
+  if session.queue.is_empty() and session.current_state == state.draining then
+    M._notify_completion(ctx, session)
+    return
+  elseif session.queue.is_empty() then
+    return
+  end
 
-  local batch_size = M._with_jitter(base_batch, ctx.cfg.batch_jitter)
+  local batch_size = M._with_jitter(session.max_batch_size, ctx.cfg.batch_jitter)
   M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
 
   -- Wait until quickfix is updated before unlocking next flush.
-  phase2_scheduled = false
+  flush_scheduled = false
 
-  if session.queue.is_empty() and draining then
-    session.current_phase = phases.done
+  if session.queue.is_empty() and session.current_state == state.draining then
     M._notify_completion(ctx, session)
-    if session.bench and not session.bench.t_done then
-      M._emit_bench_summary(session)
-    end
     return
   end
 
   if not session.queue.is_empty() then
-    M._schedule_flush_phase2(ctx, session)
+    M._schedule_flush(ctx, session)
   end
 end
 
---- Schedules the next flush in phase 2.
+--- Schedules the next flush for the streaming and draining modes.
 ---
 --- Guards against multiple concurrent schedules: in timer mode, the timer
---- itself is the guard; in schedule mode, phase2_scheduled prevents duplicates.
+--- itself is the guard; in schedule mode, flush_scheduled prevents duplicates.
 ---
---- The throttle interval adjusts when ripgrep exits: drain mode uses
---- `drain_phase_flush_throttle_ms` for faster queue clearing.
----
---- Called both by the producer (to trigger phase-2 work) and by flush_phase2
---- itself (to schedule the next batch).
+--- Called both by the producer (to trigger streaming work) and by
+--- _flush_streaming itself (to schedule the next batch).
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
-function M._schedule_flush_phase2(ctx, session)
-  local throttle = session.exited
-      and ctx.cfg.drain_phase_flush_throttle_ms
-      or ctx.cfg.flush_throttle_ms
-
-  if throttle > 0 then
+function M._schedule_flush(ctx, session)
+  if session.flush_throttle_ms > 0 then
     -- In timer/throttle mode the timer itself is the guard.
-    if phase2_timer then
+    -- ensure at most one timer is present at any given time
+    if flush_timer then
       return
     end
 
-    phase2_timer = vim.defer_fn(function()
-      phase2_timer = nil
-      M._flush_phase2(ctx, session)
-    end, throttle)
+    flush_timer = vim.defer_fn(function()
+      -- timer has triggered, can be removed
+      flush_timer = nil
+      M._flush_streaming(ctx, session)
+    end, session.flush_throttle_ms)
   else
     -- In schedule mode: a separate guard is needed to prevent multiple schedules.
-    if phase2_scheduled then
+    if flush_scheduled then
       return
     end
-    phase2_scheduled = true
+    flush_scheduled = true
     vim.schedule(function()
-      M._flush_phase2(ctx, session)
+      M._flush_streaming(ctx, session)
     end)
   end
 end
 
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
-function M._start_phase2(ctx, session)
-  session.current_phase = phases.phase_2
-  M._schedule_flush_phase2(ctx, session)
+function M._start_streaming(ctx, session)
+  session.current_state = state.streaming
+  M._schedule_flush(ctx, session)
 end
 
 --- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
-function M._cancel_phase2_scheduling()
-  if phase2_timer then
-    phase2_timer:stop()
-    phase2_timer = nil
+function M._cancel_flush_scheduling()
+  if flush_timer then
+    flush_timer:stop()
+    flush_timer = nil
   end
-  phase2_scheduled = false
+  flush_scheduled = false
+end
+
+--------------------------------------------------------------------------------
+--- Consumer: Post-exit Drain --------------------------------------------------
+--------------------------------------------------------------------------------
+
+--- Starts draining: cancels streaming and begins fast drain.
+---@param ctx brook.SearchContext
+---@param session brook.ExecSession
+function M._start_draining(ctx, session)
+  M._cancel_flush_scheduling()
+  session.current_state = state.draining
+  session.max_batch_size = ctx.cfg.drain_phase_max_batch_size
+  session.flush_throttle_ms = ctx.cfg.drain_phase_flush_throttle_ms
+
+  M._flush_streaming(ctx, session)
 end
 
 --------------------------------------------------------------------------------
@@ -810,12 +804,12 @@ function M._update_quickfix(items, ctx, session)
     session.bench.setqflist_ns = session.bench.setqflist_ns + (vim.loop.hrtime() - t0)
     session.bench.setqflist_calls = session.bench.setqflist_calls + 1
 
-    if session.current_phase == phases.phase_1 then
-      session.bench.phase1_items = session.bench.phase1_items + current_buffer_size
-    elseif session.exited then
-      session.bench.drain_items = session.bench.drain_items + current_buffer_size
+    if session.current_state == state.first_paint then
+      session.bench.first_paint_items = session.bench.first_paint_items + current_buffer_size
+    elseif session.current_state == state.streaming then
+      session.bench.streamed_items = session.bench.streamed_items + current_buffer_size
     else
-      session.bench.phase2_items = session.bench.phase2_items + current_buffer_size
+      session.bench.drained_items = session.bench.drained_items + current_buffer_size
     end
   end
   session.qf_operation = qf_operation.append
@@ -903,8 +897,16 @@ end
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._notify_completion(ctx, session)
-  if not session.exited then
+  -- TODO: review and reconsider defensive checks for conditions that cannot happen
+  if not session.exit_code then
     return
+  end
+
+  session.current_state = state.done
+
+  -- BENCH: emit timing summary
+  if ctx.cfg._benchmark then
+    M._emit_bench_summary(session)
   end
 
   if session.exit_code == 1 then
@@ -939,9 +941,6 @@ function M._notify_completion(ctx, session)
     table.insert(session.stderr_lines, 'rg: exited with code ' .. session.exit_code)
     vim.notify(table.concat(session.stderr_lines, '\n'), vim.log.levels.ERROR)
   end
-
-  -- BENCH: emit timing summary
-  M._emit_bench_summary(session)
 end
 
 --- Formats and prints benchmarking data to :messages.
@@ -977,10 +976,10 @@ function M._emit_bench_summary(session)
     .. b.stdout_callbacks .. ' callbacks'
     .. '  ' .. b.stdout_lines .. ' lines'
     .. '  max_batch=' .. b.stdout_max_batch,
-    '  items by phase:         '
-    .. 'P1=' .. b.phase1_items
-    .. '  P2=' .. b.phase2_items
-    .. '  drain=' .. b.drain_items
+    '  items by stage:             '
+    .. 'first-paint=' .. b.first_paint_items
+    .. '  streamed=' .. b.streamed_items
+    .. '  drained=' .. b.drained_items
     .. '  total=' .. session.flushed_results,
     '──────────────────────────────────────────────────────',
   }

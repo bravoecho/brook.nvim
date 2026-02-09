@@ -51,5 +51,7 @@
 --- Whether each search should wipe out buffers created just for the purpose of
 --- adding the corresponding file to the quickfix list.
 ---@field wipe_unlisted_buffers boolean
+---
+---@field _benchmark boolean
 
 --------------------------------------------------------------------------------
