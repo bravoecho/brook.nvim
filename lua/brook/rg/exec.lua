@@ -13,10 +13,10 @@
 ---   * decouples producer (ripgrep's stdout) and consumer (quickfix rendering)
 ---     by interposing a queue, so that both can work at their optimal pace
 ---
----   * orchestrates quickfix updates in different phases
----     1. first paint
----     2. steady streaming (ripgrep still running)
----     3. turbo-drain (ripgrep has finished)
+---   * orchestrates quickfix updates in two phases:
+---     1. first paint (fill visible quickfix window)
+---     2. streaming with automatic drain (bounded batches, adjusts
+---        parameters when ripgrep exits)
 ---
 --- Other key features:
 ---
@@ -47,16 +47,13 @@ local M = {}
 ---@type number|nil Vim job id returned by vim.fn.jobstart()
 local active_rg_job_id = nil
 
+--- Consumer timer for phase 2 (covers both streaming and drain).
 --- Also used to guard the throttling use case (flush_throttle_ms > 0).
 ---@type uv.uv_timer_t|nil
-local phase2_timer = nil
+local consumer_timer = nil
 
---- Used to guard the schedule-chaining use case (flush_throttle_ms == 0)
-local phase2_scheduled = false
-
---- Timer for phase 3 (post-exit drain).
----@type uv.uv_timer_t|nil
-local phase3_timer = nil
+--- Used to guard the schedule-chaining use case (flush_throttle_ms == 0).
+local consumer_scheduled = false
 
 --- Store the last context to support "repeat last search"
 ---@type brook.SearchContext|nil
@@ -77,7 +74,7 @@ math.randomseed(vim.loop.now())
 --- Enums ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Three-phase consumer strategy to avoid redraw starvation.
+--- Two-phase consumer strategy to avoid redraw starvation.
 ---
 ---@enum brook.ExecPhase
 local phases = {
@@ -86,15 +83,11 @@ local phases = {
   --- the main loop redraw. Never self-schedules.
   phase_1 = 'phase-1',
 
-  --- Streaming: flush queued items in bounded batches while ripgrep runs.
-  --- Each batch schedules at most one successor, yielding to the main loop
-  --- between updates.
+  --- Streaming and drain: flush queued items in bounded batches. When
+  --- ripgrep is still running, uses smaller batches and longer throttle.
+  --- Once ripgrep exits (`session.exit_code` is set), switches to larger
+  --- batches and shorter throttle to drain quickly.
   phase_2 = 'phase-2',
-
-  --- Post-exit drain: ripgrep has finished but items remain queued. Uses
-  --- shorter intervals and larger batches than phase 2 to drain quickly
-  --- while still yielding for redraws.
-  phase_3 = 'phase-3',
 
   done = 'done',
 }
@@ -151,7 +144,7 @@ local qf_operation = {
 ---@field stdout_max_batch number Largest single data array after buffer stitching
 ---@field phase1_items number Items flushed during phase 1
 ---@field phase2_items number Items flushed during phase 2
----@field phase3_items number Items flushed during phase 3
+---@field phase3_items number Items flushed during drain (phase 2 after ripgrep exit)
 
 --------------------------------------------------------------------------------
 --- Batch size jitter ----------------------------------------------------------
@@ -187,8 +180,7 @@ function M._exec(ctx)
 
   -- Cleanup previous search
   --------------------------
-  M._cancel_phase2_scheduling()
-  M._cancel_phase3_scheduling()
+  M._cancel_consumer_scheduling()
 
   if active_rg_job_id then
     vim.fn.jobstop(active_rg_job_id)
@@ -325,8 +317,7 @@ end
 ---@return function
 function M._user_cancel_function(job_id, session)
   return function()
-    M._cancel_phase2_scheduling()
-    M._cancel_phase3_scheduling()
+    M._cancel_consumer_scheduling()
 
     if job_id and job_id == active_rg_job_id then
       session.stopped_by_user = true
@@ -566,11 +557,16 @@ end
 --- on_exit is a final trigger for consumers: it ensures anything still in
 --- the stdout buffer/queue becomes visible even if rg stops suddenly.
 ---
+--- With the unified consumer, `_on_exit` just records the exit state.
+--- The next `_flush_phase2` iteration will see `exit_code` is set and
+--- switch to drain parameters automatically. If ripgrep exits during
+--- phase 1, the synchronous flush completes phase 1, transitions to
+--- phase 2, and phase 2 picks up drain parameters immediately.
+---
 ---@param exit_code number
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._on_exit(exit_code, ctx, session)
-  -- Capture exit state for notify_completion (called at end of phase 3).
   session.exit_code = exit_code
 
   -- BENCH: record ripgrep completion time
@@ -579,12 +575,24 @@ function M._on_exit(exit_code, ctx, session)
   end
 
   if session.current_phase == phases.phase_1 then
-    -- Handle edge case where ripgrep exited before the quickfix window was
-    -- fully populated. Flush synchronously to ensure results are visible.
+    -- Ripgrep exited before the quickfix window was fully populated.
+    -- Flush synchronously so results are visible, then let phase 1
+    -- transition to phase 2 normally.
     M._flush_phase1(ctx, session)
   end
 
-  M._start_phase3(ctx, session)
+  -- If still in phase 1 after the flush (e.g. zero results), transition
+  -- to phase 2 so the drain/completion logic can run.
+  if session.current_phase == phases.phase_1 then
+    session.current_phase = phases.phase_2
+  end
+
+  -- Kick phase 2 to ensure it drains any remaining items and emits
+  -- completion. If the queue is empty, _flush_phase2 will transition
+  -- to done immediately.
+  if session.current_phase == phases.phase_2 then
+    M._schedule_flush_phase2(ctx, session)
+  end
 end
 
 --------------------------------------------------------------------------------
@@ -658,14 +666,16 @@ function M._remaining_visible_slots(ctx, session)
 end
 
 --------------------------------------------------------------------------------
---- Consumer: Phase 2 (Streaming) ----------------------------------------------
+--- Consumer: Phase 2 (Streaming + Drain) --------------------------------------
 --------------------------------------------------------------------------------
 
---- Phase 2 consumer: flush while ripgrep is still running.
+--- Phase 2 consumer: unified streaming and drain.
 ---
----   * Pulls batches of results from the queue and renders them.
+--- When `session.exit_code` is nil, ripgrep is still running: use smaller
+--- batches and longer throttle to stay responsive. Once ripgrep exits,
+--- switch to larger batches and shorter throttle to drain quickly.
 ---
----   * Is triggered by phase 1.
+---   * Is triggered by phase 1 and by `_on_exit`.
 ---
 ---   * Reschedules itself if there are pending entries in the queue.
 ---
@@ -675,14 +685,30 @@ end
 ---@param session brook.ExecSession
 function M._flush_phase2(ctx, session)
   if session.current_phase ~= phases.phase_2 or session.queue.is_empty() then
+    -- Queue exhausted while draining: we're done.
+    if session.current_phase == phases.phase_2 and session.exit_code ~= nil then
+      session.current_phase = phases.done
+      M._notify_completion(ctx, session)
+    end
     return
   end
 
-  local batch_size = M._with_jitter(ctx.cfg.max_batch_size, ctx.cfg.batch_jitter)
+  local draining = session.exit_code ~= nil
+  local base_batch = draining
+      and ctx.cfg.drain_phase_max_batch_size
+      or ctx.cfg.max_batch_size
+  local batch_size = M._with_jitter(base_batch, ctx.cfg.batch_jitter)
+
   M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
 
   -- Wait until quickfix is updated before unlocking next flush.
-  phase2_scheduled = false
+  consumer_scheduled = false
+
+  if session.queue.is_empty() and draining then
+    session.current_phase = phases.done
+    M._notify_completion(ctx, session)
+    return
+  end
 
   if not session.queue.is_empty() then
     M._schedule_flush_phase2(ctx, session)
@@ -691,33 +717,40 @@ end
 
 --- Schedules the next flush in phase 2.
 ---
+--- Selects the throttle interval based on whether ripgrep has exited.
 --- Guards against multiple concurrent schedules: in timer mode, the timer
---- itself is the guard; in schedule mode, phase2_scheduled prevents duplicates.
+--- itself is the guard; in schedule mode, consumer_scheduled prevents
+--- duplicates.
 ---
---- Called both by the producer (to trigger phase-2 work) and by flush_phase2
---- itself (to schedule the next batch).
+--- Called by the producer (to trigger phase-2 work), by `_flush_phase2`
+--- itself (to schedule the next batch), and by `_on_exit` (to ensure
+--- drain starts if phase 2 was idle).
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
 function M._schedule_flush_phase2(ctx, session)
-  if ctx.cfg.flush_throttle_ms > 0 then
-    -- In timer/throttle mode the timer itself is the guard.
-    -- ensure at most one timer is present at any given time
-    if phase2_timer then
+  local draining = session.exit_code ~= nil
+  local throttle = draining
+      and ctx.cfg.drain_phase_flush_throttle_ms
+      or ctx.cfg.flush_throttle_ms
+
+  if throttle > 0 then
+    -- In timer/throttle mode the timer itself is the guard, to ensure at most
+    -- one timer is present at any given time.
+    if consumer_timer then
       return
     end
 
-    phase2_timer = vim.defer_fn(function()
-      -- timer has triggered, can be removed
-      phase2_timer = nil
+    consumer_timer = vim.defer_fn(function()
+      consumer_timer = nil
       M._flush_phase2(ctx, session)
-    end, ctx.cfg.flush_throttle_ms)
+    end, throttle)
   else
     -- In schedule mode: a separate guard is needed to prevent multiple schedules.
-    if phase2_scheduled then
+    if consumer_scheduled then
       return
     end
-    phase2_scheduled = true
+    consumer_scheduled = true
     vim.schedule(function()
       M._flush_phase2(ctx, session)
     end)
@@ -731,65 +764,13 @@ function M._start_phase2(ctx, session)
   M._schedule_flush_phase2(ctx, session)
 end
 
---- Cancels flush scheduling, both in timer/throttling mode and in schedule mode.
-function M._cancel_phase2_scheduling()
-  if phase2_timer then
-    phase2_timer:stop()
-    phase2_timer = nil
+--- Cancels consumer scheduling, both in timer/throttling mode and in schedule mode.
+function M._cancel_consumer_scheduling()
+  if consumer_timer then
+    consumer_timer:stop()
+    consumer_timer = nil
   end
-  phase2_scheduled = false
-end
-
---------------------------------------------------------------------------------
---- Consumer: Phase 3 (Post-exit Drain) ----------------------------------------
---------------------------------------------------------------------------------
-
---- Phase-3 consumer: drains the queue quickly after ripgrep has exited.
----
----   * Triggered by `on_exit`.
----
----   * Self-reschedules until the queue is drained.
----
----   * Notifies user of completion.
----
---- See also the `phases` enum.
----
----@param ctx brook.SearchContext
----@param session brook.ExecSession
-function M._flush_phase3(ctx, session)
-  local batch_size = M._with_jitter(ctx.cfg.drain_phase_max_batch_size, ctx.cfg.batch_jitter)
-  M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
-
-  if session.queue.is_empty() then
-    session.current_phase = phases.done
-    M._notify_completion(ctx, session)
-    -- BENCH: always emit, even if exit_code hasn't arrived yet
-    if session.bench and not session.bench.t_done then
-      M._emit_bench_summary(session)
-    end
-    return
-  end
-
-  phase3_timer = vim.defer_fn(function()
-    M._flush_phase3(ctx, session)
-  end, ctx.cfg.drain_phase_flush_throttle_ms)
-end
-
---- Starts phase 3: cancels phase 2 and begins fast drain.
----@param ctx brook.SearchContext
----@param session brook.ExecSession
-function M._start_phase3(ctx, session)
-  M._cancel_phase2_scheduling()
-  session.current_phase = phases.phase_3
-  M._flush_phase3(ctx, session)
-end
-
---- Cancels phase 3 scheduling.
-function M._cancel_phase3_scheduling()
-  if phase3_timer then
-    phase3_timer:stop()
-    phase3_timer = nil
-  end
+  consumer_scheduled = false
 end
 
 --------------------------------------------------------------------------------
@@ -822,9 +803,9 @@ function M._update_quickfix(items, ctx, session)
 
     if session.current_phase == phases.phase_1 then
       session.bench.phase1_items = session.bench.phase1_items + current_buffer_size
-    elseif session.current_phase == phases.phase_2 then
+    elseif session.current_phase == phases.phase_2 and session.exit_code == nil then
       session.bench.phase2_items = session.bench.phase2_items + current_buffer_size
-    elseif session.current_phase == phases.phase_3 then
+    elseif session.current_phase == phases.phase_2 and session.exit_code ~= nil then
       session.bench.phase3_items = session.bench.phase3_items + current_buffer_size
     end
   end
@@ -990,7 +971,7 @@ function M._emit_bench_summary(session)
     '  items by phase:         '
     .. 'P1=' .. b.phase1_items
     .. '  P2=' .. b.phase2_items
-    .. '  P3=' .. b.phase3_items
+    .. '  drain=' .. b.phase3_items
     .. '  total=' .. session.flushed_results,
     '──────────────────────────────────────────────────────',
   }
