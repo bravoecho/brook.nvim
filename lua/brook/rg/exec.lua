@@ -121,13 +121,14 @@ local qf_operation = {
 ---@class brook.ExecSession State of a search command execution
 ---@field is_first_batch boolean
 ---@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
----@field total_results number Number of matches parsed from ripgrep (producer-side)
+---@field total_results number Number of raw lines enqueued from ripgrep (producer-side)
 ---@field flushed_results number Number of entries actually pushed into quickfix (consumer-side, UI)
 ---@field stopped_at_limit boolean
 ---@field stopped_by_user boolean
 ---@field did_resize boolean Whether the quickfix window has rearched its target height
 ---@field current_phase brook.ExecPhase
----@field queue brook.Fifo FIFO queue between rg and quickfix, decouples producer (rg's stdout) from consumer (quickfix)
+---@field queue brook.Fifo FIFO queue of raw result lines, decouples producer (rg's stdout) from consumer (quickfix)
+---@field parse_line fun(line: string): vim.quickfix.entry|nil Parser for the current output format
 ---@field bufnr_cache table<string, number> filename/bufnr cache, avoids repeated O(n) buffer list scans in setqflist()
 ---@field stdout_buffer string Last segment of the previous stdout batch. See :h channel-lines
 ---@field stderr_lines string[]
@@ -205,6 +206,10 @@ function M._exec(ctx)
 
   -- Initialise session
   ---------------------
+  local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
+      and M._parse_line_number
+      or M._parse_vimgrep
+
   ---@type brook.ExecSession
   local session = {
     is_first_batch = true,
@@ -220,6 +225,7 @@ function M._exec(ctx)
     stdout_buffer = '',
     stderr_lines = {},
     exit_code = nil,
+    parse_line = parse_line,
     bench = {
       raw = ctx.parsed_args.raw,
       t_start = vim.loop.hrtime(),
@@ -238,10 +244,6 @@ function M._exec(ctx)
     },
   }
 
-  local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
-      and M._parse_line_number
-      or M._parse_vimgrep
-
   -- Run ripgrep
   --------------
   active_rg_job_id = vim.fn.jobstart(M._build_rg_cmd(ctx), {
@@ -250,7 +252,7 @@ function M._exec(ctx)
     stdin = 'null',
 
     on_stdout = vim.schedule_wrap(function(_, data, _)
-      M._on_stdout(data, ctx, session, parse_line)
+      M._on_stdout(data, ctx, session)
     end),
 
     -- Buffer stderr to receive all error output in a single callback.
@@ -339,14 +341,19 @@ end
 --------------------------------------------------------------------------------
 
 --- The stdout handler callback:
----   * parses and enqueues results
+---   * stitches partial segments from the channel
+---   * enqueues raw result lines (no parsing, no bufadd)
 ---   * triggers the consumer
 ---
----@param data string[] stdout segments yielded by the on_stdout callaback. See :h channel-lines
+--- Parsing and bufnr resolution are deferred to the consumer (flush
+--- functions), so that the main loop is not blocked by per-line work.
+--- This keeps phase 2 responsive even when ripgrep produces results
+--- faster than Neovim can render them.
+---
+---@param data string[] stdout segments yielded by the on_stdout callback. See :h channel-lines
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
----@param parse_line function The appropriate parser based on output format
-function M._on_stdout(data, ctx, session, parse_line)
+function M._on_stdout(data, ctx, session)
   if not active_rg_job_id then
     return
   end
@@ -388,6 +395,7 @@ function M._on_stdout(data, ctx, session, parse_line)
     end
   end
 
+  -- Enqueue raw lines. Parsing is deferred to the consumer.
   for _, line in ipairs(data) do
     if session.total_results >= ctx.cfg.max_results then
       -- Quickfix lists are memory-heavy. We stop early to cap memory bloat
@@ -401,22 +409,8 @@ function M._on_stdout(data, ctx, session, parse_line)
       break
     end
 
-    local entry = parse_line(line)
-    if entry then
-      -- Resolve filename to bufnr before enqueueing. This bypasses
-      -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
-      -- which Neovim can resolve in O(1).
-      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
-      entry.filename = nil
-      session.queue.push(entry)
-      session.total_results = session.total_results + 1
-    end
-
-    -- Don't wait until the entire result batch is processed, if there are
-    -- already enough results to flush.
-    if session.queue.len() >= ctx.cfg.max_batch_size then
-      M._request_flush(ctx, session)
-    end
+    session.queue.push(line)
+    session.total_results = session.total_results + 1
   end
 
   M._request_flush(ctx, session)
@@ -491,6 +485,34 @@ function M._resolve_bufnr(filename, cache)
     cache[filename] = bufnr
   end
   return bufnr
+end
+
+--- Pulls raw lines from the queue, parses them into quickfix entries, and
+--- resolves filenames to buffer numbers.
+---
+--- This is the consumer-side counterpart to the lightweight `_on_stdout`
+--- producer. By doing parsing and `bufadd()` here rather than in the
+--- producer, the expensive per-line work runs in bounded batches with idle
+--- gaps between them, preventing main-loop starvation.
+---
+---@param n number Maximum number of raw lines to pull
+---@param session brook.ExecSession
+---@return vim.quickfix.entry[] entries Parsed quickfix entries (may be fewer than n if lines fail to parse)
+function M._parse_batch(n, session)
+  local raw_lines = session.queue.pull(n)
+  local entries = {}
+  for _, line in ipairs(raw_lines) do
+    local entry = session.parse_line(line)
+    if entry then
+      -- Resolve filename to bufnr before enqueueing. This bypasses
+      -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
+      -- which Neovim can resolve in O(1).
+      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      entry.filename = nil
+      entries[#entries+1] = entry
+    end
+  end
+  return entries
 end
 
 --- Wipes unlisted buffers accumulated by previous searches.
@@ -620,7 +642,7 @@ function M._flush_phase1(ctx, session)
 
   -- Pull only the minimum necessary to fill the quickfix window above the
   -- fold.
-  M._update_quickfix(session.queue.pull(remaining_visible_slots), ctx, session)
+  M._update_quickfix(M._parse_batch(remaining_visible_slots, session), ctx, session)
 
   -- If phase 1 has finished, kick off phase 2 anyway, no need to wait for
   -- the next `on_stdout` run.
@@ -657,7 +679,7 @@ function M._flush_phase2(ctx, session)
   end
 
   local batch_size = M._with_jitter(ctx.cfg.max_batch_size, ctx.cfg.batch_jitter)
-  M._update_quickfix(session.queue.pull(batch_size), ctx, session)
+  M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
 
   -- Wait until quickfix is updated before unlocking next flush.
   phase2_scheduled = false
@@ -736,7 +758,7 @@ end
 ---@param session brook.ExecSession
 function M._flush_phase3(ctx, session)
   local batch_size = M._with_jitter(ctx.cfg.drain_phase_max_batch_size, ctx.cfg.batch_jitter)
-  M._update_quickfix(session.queue.pull(batch_size), ctx, session)
+  M._update_quickfix(M._parse_batch(batch_size, session), ctx, session)
 
   if session.queue.is_empty() then
     session.current_phase = phases.done
