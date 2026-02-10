@@ -225,7 +225,9 @@ function M._exec(ctx)
     stopped_at_limit = false,
     stopped_by_user = false,
     did_resize = false,
-    current_state = state.first_paint,
+    -- Skip first paint when qf_open is false: there is no visible window
+    -- to fill above the fold, so go straight into streaming.
+    current_state = ctx.cfg.qf_open and state.first_paint or state.streaming,
     queue = fifo.new(),
     bufnr_cache = {},
     stdout_buffer = '',
@@ -634,8 +636,6 @@ end
 ---     the consumer into streaming mode.
 ---
 --- See also the `state` enum.
----
---- TODO: if ctx.cfg.qf_open is false, the pipeline should skip this and go straight into streaming
 ---
 ---@param ctx brook.SearchContext
 ---@param session brook.ExecSession
