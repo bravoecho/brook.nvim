@@ -208,10 +208,6 @@ function M._exec(ctx)
     wipe_ns = vim.loop.hrtime() - t0
   end
 
-  -- Reset tracking for the new search. From this point, _resolve_bufnr
-  -- will populate previous_search_bufnrs with every buffer it creates.
-  previous_search_bufnrs = {}
-
   -- Initialise session
   ---------------------
   local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
@@ -492,7 +488,6 @@ function M._resolve_bufnr(filename, cache)
   if not bufnr then
     bufnr = vim.fn.bufadd(filename)
     cache[filename] = bufnr
-    previous_search_bufnrs[bufnr] = true
   end
   return bufnr
 end
@@ -543,13 +538,16 @@ end
 ---@return number wiped Number of buffers deleted
 function M._wipe_unlisted_buffers()
   local wiped = 0
-  for bufnr in pairs(previous_search_bufnrs) do
-    if vim.api.nvim_buf_is_valid(bufnr)
-        and not vim.bo[bufnr].buflisted
-        and not vim.bo[bufnr].modified
-        and vim.fn.bufwinid(bufnr) == -1
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if previous_search_bufnrs[buf]
+        and vim.api.nvim_buf_is_valid(buf)
+        and not vim.bo[buf].buflisted
+        and not vim.bo[buf].modified
+        and vim.fn.bufwinid(buf) == -1
     then
-      if pcall(vim.api.nvim_buf_delete, bufnr, { force = true }) then
+      -- pcall guards against buffers that become invalid between the
+      -- nvim_list_bufs() snapshot and the delete call.
+      if pcall(vim.api.nvim_buf_delete, buf, { force = true }) then
         wiped = wiped + 1
       end
     end
@@ -910,6 +908,12 @@ function M._notify_completion(ctx, session)
   end
 
   session.current_state = state.done
+
+  -- Snapshot this session's buffers so the next search can wipe them.
+  previous_search_bufnrs = {}
+  for _, bufnr in pairs(session.bufnr_cache) do
+    previous_search_bufnrs[bufnr] = true
+  end
 
   -- BENCH: emit timing summary
   if ctx.cfg._benchmark then
