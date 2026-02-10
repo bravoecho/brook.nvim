@@ -58,6 +58,11 @@ local flush_scheduled = false
 ---@type brook.SearchContext|nil
 local last_search_context = nil
 
+--- Buffer numbers created by the previous search (via bufadd), so that
+--- _wipe_unlisted_buffers only removes buffers that brook itself created.
+---@type table<number, true>
+local previous_search_bufnrs = {}
+
 ---@return brook.SearchContext|nil
 function M.last_search_context()
   return last_search_context
@@ -202,6 +207,10 @@ function M._exec(ctx)
     wipe_count = M._wipe_unlisted_buffers()
     wipe_ns = vim.loop.hrtime() - t0
   end
+
+  -- Reset tracking for the new search. From this point, _resolve_bufnr
+  -- will populate previous_search_bufnrs with every buffer it creates.
+  previous_search_bufnrs = {}
 
   -- Initialise session
   ---------------------
@@ -483,6 +492,7 @@ function M._resolve_bufnr(filename, cache)
   if not bufnr then
     bufnr = vim.fn.bufadd(filename)
     cache[filename] = bufnr
+    previous_search_bufnrs[bufnr] = true
   end
   return bufnr
 end
@@ -515,7 +525,7 @@ function M._parse_batch(n, session)
   return entries
 end
 
---- Wipes unlisted buffers accumulated by previous searches.
+--- Wipes unlisted buffers created by the previous search.
 ---
 --- Each `setqflist()` call with filename fields causes Neovim to create
 --- unlisted buffers via `buflist_add()`. These persist after the quickfix
@@ -525,24 +535,21 @@ end
 ---
 --- Only deletes buffers that are:
 ---
----   * not listed (not opened by the user)
+---   * tracked in previous_search_bufnrs (created by brook's own bufadd)
+---   * not listed (not opened by the user since)
 ---   * not displayed in any window
 ---   * not modified
----
---- TODO: Only remove buffers if they were the result of a search.
 ---
 ---@return number wiped Number of buffers deleted
 function M._wipe_unlisted_buffers()
   local wiped = 0
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_valid(buf)
-        and not vim.bo[buf].buflisted
-        and not vim.bo[buf].modified
-        and vim.fn.bufwinid(buf) == -1
+  for bufnr in pairs(previous_search_bufnrs) do
+    if vim.api.nvim_buf_is_valid(bufnr)
+        and not vim.bo[bufnr].buflisted
+        and not vim.bo[bufnr].modified
+        and vim.fn.bufwinid(bufnr) == -1
     then
-      -- pcall guards against buffers that become invalid between the
-      -- nvim_list_bufs() snapshot and the delete call.
-      if pcall(vim.api.nvim_buf_delete, buf, { force = true }) then
+      if pcall(vim.api.nvim_buf_delete, bufnr, { force = true }) then
         wiped = wiped + 1
       end
     end
