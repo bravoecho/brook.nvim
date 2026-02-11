@@ -63,6 +63,9 @@
 --- Maximum number of characters to use for a result preview
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number
+---
+--- Print execution benchmark results (only for development, default: false)
+---@field _benchmark? boolean
 
 --------------------------------------------------------------------------------
 

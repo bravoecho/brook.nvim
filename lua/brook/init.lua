@@ -43,6 +43,7 @@ function M.setup(cfg)
     set_search_register = true,
     max_preview_chars = 200,
     wipe_unlisted_buffers = true,
+    _benchmark = false,
   }
 
   ---@type brook.UserConfig
@@ -148,7 +149,7 @@ function M.setup(cfg)
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
     wipe_unlisted_buffers = cfg.wipe_unlisted_buffers,
-    _benchmark = false,
+    _benchmark = cfg._benchmark,
   }
 
   ---@type function|nil Function to be used to cancel any current job

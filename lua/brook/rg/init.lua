@@ -144,6 +144,7 @@ function M.raw(opts, cfg)
     parsed_args.patterns = { opts.fallback_word }
     parsed_args.fixed = true
     parsed_args.word = true
+    parsed_args.raw = parsed_args.raw .. opts.fallback_word
     table.insert(rg_args, opts.fallback_word)
   end
 

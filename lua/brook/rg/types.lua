@@ -52,6 +52,7 @@
 --- the previous search, but were never opened (default: true)
 ---@field wipe_unlisted_buffers boolean
 ---
+--- Print execution benchmark results (only for development, default: false)
 ---@field _benchmark boolean
 
 --------------------------------------------------------------------------------
