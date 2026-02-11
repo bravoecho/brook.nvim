@@ -159,18 +159,6 @@ local qf_operation = {
 ---@field drained_items number Items flushed during draining
 
 --------------------------------------------------------------------------------
---- Batch size jitter ----------------------------------------------------------
---------------------------------------------------------------------------------
-
----@param base_size integer Base batch size
----@param amplitude number Jitter amplitude (e.g. 0.1 for +/- 10%)
----@return integer jittered_size Batch size with random variation applied
-function M._with_jitter(base_size, amplitude)
-  local multiplier = (1 - amplitude) + math.random() * (2 * amplitude)
-  return math.floor(base_size * multiplier + 0.5)
-end
-
---------------------------------------------------------------------------------
 --- Entry Point ----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -328,6 +316,58 @@ function M._build_rg_cmd(ctx)
   return cmd
 end
 
+--- Parses a vimgrep-format result line into a quickfix entry.
+---
+--- Format: "file:line:col:text" (default, --vimgrep)
+--- Example: "some/path/to/file.txt:137:42:the red fox jumped"
+---
+---@param result string A line in vimgrep format
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
+function M._parse_vimgrep(result)
+  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+  -- Instead, we locate the :line:col: pattern and extract components by position.
+  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
+  if not start_pos then
+    return nil
+  end
+
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
+
+  return {
+    filename = filename,
+    lnum = tonumber(lnum),
+    col = tonumber(col),
+    text = text,
+  }
+end
+
+--- Parses a line-number-format result line into a quickfix entry.
+---
+--- Format: "file:line:text" (unique-lines mode, --line-number)
+--- Example: "some/path/to/file.txt:137:the red fox jumped"
+---
+---@param result string A line in line-number format
+---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
+function M._parse_line_number(result)
+  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
+  -- Instead, we locate the :line: pattern and extract components by position.
+  local start_pos, end_pos, lnum = result:find(':(%d+):')
+  if not start_pos then
+    return nil
+  end
+
+  local filename = result:sub(1, start_pos - 1)
+  local text = result:sub(end_pos + 1)
+
+  return {
+    filename = filename,
+    lnum = tonumber(lnum),
+    col = 1, -- Default to column 1 when no column info available
+    text = text,
+  }
+end
+
 ---@param job_id number|nil ID of the job to cancel
 ---@param session brook.ExecSession Session to invalidate
 ---@return function
@@ -421,105 +461,6 @@ function M._on_stdout(data, ctx, session)
   end
 
   M._request_flush(ctx, session)
-end
-
---- Parses a vimgrep-format result line into a quickfix entry.
----
---- Format: "file:line:col:text" (default, --vimgrep)
---- Example: "some/path/to/file.txt:137:42:the red fox jumped"
----
----@param result string A line in vimgrep format
----@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_vimgrep(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line:col: pattern and extract components by position.
-  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
-
-  return {
-    filename = filename,
-    lnum = tonumber(lnum),
-    col = tonumber(col),
-    text = text,
-  }
-end
-
---- Parses a line-number-format result line into a quickfix entry.
----
---- Format: "file:line:text" (unique-lines mode, --line-number)
---- Example: "some/path/to/file.txt:137:the red fox jumped"
----
----@param result string A line in line-number format
----@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_line_number(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line: pattern and extract components by position.
-  local start_pos, end_pos, lnum = result:find(':(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
-
-  return {
-    filename = filename,
-    lnum = tonumber(lnum),
-    col = 1, -- Default to column 1 when no column info available
-    text = text,
-  }
-end
-
---- Resolves a filename to a buffer number, caching the result.
----
---- `vim.fn.bufadd()` creates the buffer if absent, or returns the existing
---- bufnr. We call it once per unique filename rather than letting
---- `setqflist()` call `buflist_findname_stat()` once per match — turning
---- O(total_matches × buffer_count) into O(unique_files × buffer_count).
----
----@param filename string
----@param cache table<string, number>
----@return number bufnr
-function M._resolve_bufnr(filename, cache)
-  local bufnr = cache[filename]
-  if not bufnr then
-    bufnr = vim.fn.bufadd(filename)
-    cache[filename] = bufnr
-  end
-  return bufnr
-end
-
---- Pulls raw lines from the queue, parses them into quickfix entries, and
---- resolves filenames to buffer numbers.
----
---- This is the consumer-side counterpart to the lightweight `_on_stdout`
---- producer. By doing parsing and `bufadd()` here rather than in the
---- producer, the expensive per-line work runs in bounded batches with idle
---- gaps between them, preventing main-loop starvation.
----
----@param n number Maximum number of raw lines to pull
----@param session brook.ExecSession
----@return vim.quickfix.entry[] entries Parsed quickfix entries (may be fewer than n if lines fail to parse)
-function M._parse_batch(n, session)
-  local raw_lines = session.queue.pull(n)
-  local entries = {}
-  for _, line in ipairs(raw_lines) do
-    local entry = session.parse_line(line)
-    if entry then
-      -- Resolve filename to bufnr before enqueueing. This bypasses
-      -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
-      -- which Neovim can resolve in O(1).
-      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
-      entry.filename = nil
-      entries[#entries+1] = entry
-    end
-  end
-  return entries
 end
 
 --- Wipes unlisted buffers created by the previous search.
@@ -779,6 +720,65 @@ function M._start_draining(ctx, session)
   session.flush_throttle_ms = ctx.cfg.drain_phase_flush_throttle_ms
 
   M._flush_streaming(ctx, session)
+end
+
+--------------------------------------------------------------------------------
+--- Consumer: Parsing ----------------------------------------------------------
+--------------------------------------------------------------------------------
+
+---@param base_size integer Base batch size
+---@param amplitude number Jitter amplitude (e.g. 0.1 for +/- 10%)
+---@return integer jittered_size Batch size with random variation applied
+function M._with_jitter(base_size, amplitude)
+  local multiplier = (1 - amplitude) + math.random() * (2 * amplitude)
+  return math.floor(base_size * multiplier + 0.5)
+end
+
+--- Pulls raw lines from the queue, parses them into quickfix entries, and
+--- resolves filenames to buffer numbers.
+---
+--- This is the consumer-side counterpart to the lightweight `_on_stdout`
+--- producer. By doing parsing and `bufadd()` here rather than in the
+--- producer, the expensive per-line work runs in bounded batches with idle
+--- gaps between them, preventing main-loop starvation.
+---
+---@param n number Maximum number of raw lines to pull
+---@param session brook.ExecSession
+---@return vim.quickfix.entry[] entries Parsed quickfix entries (may be fewer than n if lines fail to parse)
+function M._parse_batch(n, session)
+  local raw_lines = session.queue.pull(n)
+  local entries = {}
+  for _, line in ipairs(raw_lines) do
+    local entry = session.parse_line(line)
+    if entry then
+      -- Resolve filename to bufnr before enqueueing. This bypasses
+      -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
+      -- which Neovim can resolve in O(1).
+      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      entry.filename = nil
+      entries[#entries+1] = entry
+    end
+  end
+  return entries
+end
+
+--- Resolves a filename to a buffer number, caching the result.
+---
+--- `vim.fn.bufadd()` creates the buffer if absent, or returns the existing
+--- bufnr. We call it once per unique filename rather than letting
+--- `setqflist()` call `buflist_findname_stat()` once per match — turning
+--- O(total_matches * buffer_count) into O(unique_files * buffer_count).
+---
+---@param filename string
+---@param cache table<string, number>
+---@return number bufnr
+function M._resolve_bufnr(filename, cache)
+  local bufnr = cache[filename]
+  if not bufnr then
+    bufnr = vim.fn.bufadd(filename)
+    cache[filename] = bufnr
+  end
+  return bufnr
 end
 
 --------------------------------------------------------------------------------
