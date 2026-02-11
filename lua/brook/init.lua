@@ -42,6 +42,7 @@ function M.setup(cfg)
     output_format = args_types.output_format.one_line_per_match,
     set_search_register = true,
     max_preview_chars = 200,
+    wipe_unlisted_buffers = true,
   }
 
   ---@type brook.UserConfig
@@ -146,7 +147,7 @@ function M.setup(cfg)
     drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
-    wipe_unlisted_buffers = true,
+    wipe_unlisted_buffers = cfg.wipe_unlisted_buffers,
     _benchmark = false,
   }
 

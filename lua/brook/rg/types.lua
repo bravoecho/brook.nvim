@@ -48,8 +48,8 @@
 --- excessive memory use (default: 200, range: 100-500)
 ---@field max_preview_chars number
 ---
---- Whether each search should wipe out buffers created just for the purpose of
---- adding the corresponding file to the quickfix list.
+--- Whether each search should wipe out unlisted buffers that were created in
+--- the previous search, but were never opened (default: true)
 ---@field wipe_unlisted_buffers boolean
 ---
 ---@field _benchmark boolean

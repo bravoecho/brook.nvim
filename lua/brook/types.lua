@@ -56,6 +56,10 @@
 --- (most users should not modify this).
 ---@field drain_phase_flush_throttle_ms? number
 ---
+--- Whether each search should wipe out unlisted buffers that were created in
+--- the previous search, but were never opened (default: true)
+---@field wipe_unlisted_buffers? boolean
+---
 --- Maximum number of characters to use for a result preview
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number
