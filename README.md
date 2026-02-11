@@ -175,6 +175,7 @@ quickfix list.
 
 ### Pro Tips
 
+* **Current word with options**: `:Rg --<any-options>` will use the current word
 * **Filter by file type** – `:Rg -t lua config` or `:Rg -T js bug`
 * **Literal search** – `:Rg -F "($[0].item)"` for special characters
 * **Multiple patterns** – `:Rg -e TODO -e FIXME` searches and navigates both, and

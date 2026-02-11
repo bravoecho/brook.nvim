@@ -93,14 +93,14 @@ end
 --- word(), where we have Lua strings that go directly to rg without any shell
 --- syntax involved.
 ---
----@param cmd_args string The raw command-line arguments
+---@param opts brook.rg.RawOpts The raw command-line arguments
 ---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
-function M.raw(cmd_args, cfg)
+function M.raw(opts, cfg)
   -- 1. Tokenise
   --------------
   -- Tokenise the command string (split on whitespace, respect quotes)
-  local tokens = tokenise(cmd_args)
+  local tokens = tokenise(opts.args_string)
 
   if not tokens or #tokens == 0 then
     vim.notify('rg: no arguments provided', vim.log.levels.ERROR)
@@ -121,7 +121,7 @@ function M.raw(cmd_args, cfg)
   -- 3. Parse ripgrep arguments
   -----------------------------
   -- Minimal parsing, just enough to support Neovim features
-  local parsed_args = parse_args(rg_args, cmd_args)
+  local parsed_args = parse_args(rg_args, opts.args_string)
 
   -- 4. Enforce single-line search
   --------------------------------
@@ -135,6 +135,16 @@ function M.raw(cmd_args, cfg)
   if parsed_args.pcre2 then
     vim.notify('rg: PCRE2 not supported', vim.log.levels.ERROR)
     return nil
+  end
+
+  if #parsed_args.patterns == 0
+      and opts.fallback_word
+      and opts.fallback_word ~= ''
+  then
+    parsed_args.patterns = { opts.fallback_word }
+    parsed_args.fixed = true
+    parsed_args.word = true
+    table.insert(rg_args, opts.fallback_word)
   end
 
   -- 6. Run the search

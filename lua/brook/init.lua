@@ -167,23 +167,28 @@ function M.setup(cfg)
   -----------------
   vim.api.nvim_create_user_command('Rg', function(cmd_opts)
     local args = vim.trim(cmd_opts.args)
+    local cword = vim.fn.expand('<cword>')
 
     -- Special case: current word
     -----------------------------
     if args == '' then
-      local word = vim.fn.expand('<cword>')
-      if word == '' then
+      if cword == '' then
         vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
         return
       end
 
-      cancel_fn = rg.word(word, exec_cfg)
+      cancel_fn = rg.word(cword, exec_cfg)
       return
     end
 
     -- General case
     ---------------
-    cancel_fn = rg.raw(cmd_opts.args, exec_cfg)
+    ---@type brook.rg.RawOpts
+    local raw_opts = {
+      args_string = cmd_opts.args,
+      fallback_word = cword,
+    }
+    cancel_fn = rg.raw(raw_opts, exec_cfg)
   end, { nargs = '*', desc = command_desc.search, complete = 'file' })
 
   -- Stop command
@@ -217,13 +222,13 @@ function M.setup(cfg)
   ---------------
   if cfg.keymap_cword then
     vim.keymap.set({ 'n' }, cfg.keymap_cword, function()
-      local word = vim.fn.expand('<cword>')
-      if word == '' then
+      local cword = vim.fn.expand('<cword>')
+      if cword == '' then
         vim.notify('rg: no word under the cursor', vim.log.levels.ERROR)
         return
       end
 
-      cancel_fn = rg.word(word, exec_cfg)
+      cancel_fn = rg.word(cword, exec_cfg)
     end, { desc = keymap_desc.cword })
   end
 

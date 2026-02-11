@@ -55,3 +55,11 @@
 ---@field _benchmark boolean
 
 --------------------------------------------------------------------------------
+
+---@class brook.rg.RawOpts
+---
+--- A string representing raw command-line arguments
+---@field args_string string
+---
+--- A fallback literal pattern to use when args_string doesn't include one
+---@field fallback_word string
