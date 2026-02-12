@@ -102,8 +102,6 @@ local state = {
   done = 'done',
 }
 
---- See `:h setqflist-action`.
----
 ---@enum brook.QuickfixOperation
 local qf_operation = {
   replace = 'r',
@@ -151,8 +149,8 @@ local qf_operation = {
 ---@field t_done number|nil hrtime at final flush completion
 ---@field setqflist_calls number Number of vim.fn.setqflist() invocations
 ---@field setqflist_ns number Cumulative nanoseconds spent inside setqflist()
----@field wipe_ns? number Nanoseconds spent wiping unlisted buffers
----@field wipe_count? number Number of buffers wiped
+---@field wipe_ns number Nanoseconds spent wiping unlisted buffers
+---@field wipe_count number Number of buffers wiped
 ---@field stdout_callbacks number Number of on_stdout invocations
 ---@field stdout_lines number Total lines processed across all callbacks
 ---@field stdout_max_batch number Largest single data array after buffer stitching
@@ -189,6 +187,15 @@ function M._exec(ctx)
     active_rg_job_id = nil
   end
 
+  -- Wipe unlisted buffers and capture timing for bench output.
+  local wipe_ns = 0
+  local wipe_count = 0
+  if ctx.cfg.wipe_unlisted_buffers then
+    local t0 = vim.loop.hrtime()
+    wipe_count = M._wipe_unlisted_buffers()
+    wipe_ns = vim.loop.hrtime() - t0
+  end
+
   -- Initialise session
   ---------------------
   local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
@@ -222,6 +229,8 @@ function M._exec(ctx)
       t_done = nil,
       setqflist_calls = 0,
       setqflist_ns = 0,
+      wipe_ns = wipe_ns,
+      wipe_count = wipe_count,
       stdout_callbacks = 0,
       stdout_lines = 0,
       stdout_max_batch = 0,
@@ -788,13 +797,6 @@ function M._update_quickfix(items, ctx, session)
   local current_buffer_size = #items
   if current_buffer_size == 0 then
     return
-  end
-
-  -- Wipe unlisted buffers
-  if session.is_first_batch and ctx.cfg.wipe_unlisted_buffers then
-    local wipe_t0 = vim.loop.hrtime()
-    session.bench.wipe_count = M._wipe_unlisted_buffers()
-    session.bench.wipe_ns = vim.loop.hrtime() - wipe_t0
   end
 
   -- BENCH: time the setqflist call
