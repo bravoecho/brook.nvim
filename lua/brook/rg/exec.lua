@@ -903,14 +903,14 @@ function M._notify_completion(ctx, session)
 
   -- Wipe unlisted buffers created by this search. The quickfix list does
   -- not need them; navigating to an entry re-creates the buffer from disk.
-  if ctx.cfg.wipe_unlisted_buffers then
-    local t0 = session.bench and vim.loop.hrtime() or nil
-    local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
-    if session.bench and t0 then
-      session.bench.wipe_ns = vim.loop.hrtime() - t0
-      session.bench.wipe_count = wipe_count
-    end
-  end
+  -- if ctx.cfg.wipe_unlisted_buffers then
+  --   local t0 = session.bench and vim.loop.hrtime() or nil
+  --   local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
+  --   if session.bench and t0 then
+  --     session.bench.wipe_ns = vim.loop.hrtime() - t0
+  --     session.bench.wipe_count = wipe_count
+  --   end
+  -- end
 
   -- BENCH: emit timing summary
   if ctx.cfg._benchmark then
