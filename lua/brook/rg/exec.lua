@@ -58,11 +58,6 @@ local flush_scheduled = false
 ---@type brook.SearchContext|nil
 local last_search_context = nil
 
---- Buffer numbers created by the previous search (via bufadd), so that
---- _wipe_unlisted_buffers only removes buffers that brook itself created.
----@type table<number, true>
-local previous_search_bufnrs = {}
-
 ---@return brook.SearchContext|nil
 function M.last_search_context()
   return last_search_context
@@ -104,7 +99,7 @@ local state = {
 
 ---@enum brook.QuickfixOperation
 local qf_operation = {
-  replace = 'r',
+  create = ' ',
   append = 'a',
 }
 
@@ -125,7 +120,7 @@ local qf_operation = {
 ---@field is_first_batch boolean
 ---@field max_batch_size number Batch size for streaming or draining
 ---@field flush_throttle_ms number Delay between flushes for streaming or draining
----@field qf_operation brook.QuickfixOperation First time replace the content, then switch to append
+---@field qf_operation brook.QuickfixOperation First time create a new list, then switch to append
 ---@field total_results number Number of raw lines enqueued from ripgrep (producer-side)
 ---@field flushed_results number Number of entries actually pushed into quickfix (consumer-side, UI)
 ---@field stopped_at_limit boolean
@@ -187,15 +182,6 @@ function M._exec(ctx)
     active_rg_job_id = nil
   end
 
-  -- Wipe unlisted buffers and capture timing for bench output.
-  local wipe_ns = 0
-  local wipe_count = 0
-  if ctx.cfg.wipe_unlisted_buffers then
-    local t0 = vim.loop.hrtime()
-    wipe_count = M._wipe_unlisted_buffers()
-    wipe_ns = vim.loop.hrtime() - t0
-  end
-
   -- Initialise session
   ---------------------
   local parse_line = ctx.cfg.output_format == args_types.output_format.unique_lines
@@ -207,7 +193,7 @@ function M._exec(ctx)
     is_first_batch = true,
     max_batch_size = ctx.cfg.max_batch_size,
     flush_throttle_ms = ctx.cfg.flush_throttle_ms,
-    qf_operation = qf_operation.replace,
+    qf_operation = qf_operation.create,
     total_results = 0,
     flushed_results = 0,
     stopped_at_limit = false,
@@ -229,8 +215,8 @@ function M._exec(ctx)
       t_done = nil,
       setqflist_calls = 0,
       setqflist_ns = 0,
-      wipe_ns = wipe_ns,
-      wipe_count = wipe_count,
+      wipe_ns = 0,
+      wipe_count = 0,
       stdout_callbacks = 0,
       stdout_lines = 0,
       stdout_max_batch = 0,
@@ -463,33 +449,39 @@ function M._on_stdout(data, ctx, session)
   M._request_flush(ctx, session)
 end
 
---- Wipes unlisted buffers created by the previous search.
+--- Wipes unlisted buffers created by the current search.
 ---
---- Each `setqflist()` call with filename fields causes Neovim to create
---- unlisted buffers via `buflist_add()`. These persist after the quickfix
---- list is freed, causing the buffer list to grow indefinitely. Since
---- `setqflist()` and `bufadd()` resolve filenames via a linear scan of
---- the buffer list, accumulated buffers degrade subsequent searches.
+--- `bufadd()` creates unlisted buffers for each unique filename. These
+--- accumulate across searches, and since `setqflist()` and `bufadd()`
+--- resolve filenames via a linear scan of the buffer list, they degrade
+--- subsequent searches.
+---
+--- The quickfix list does not need these buffers to function: navigating
+--- to an entry whose buffer was wiped simply re-creates it from disk.
 ---
 --- Only deletes buffers that are:
 ---
----   * tracked in previous_search_bufnrs (created by brook's own bufadd)
+---   * owned by the current session (created by brook's own bufadd)
 ---   * not listed (not opened by the user since)
 ---   * not displayed in any window
 ---   * not modified
 ---
+---@param bufnr_cache table<string, number> filename-to-bufnr map from the current session
 ---@return number wiped Number of buffers deleted
-function M._wipe_unlisted_buffers()
+function M._wipe_unlisted_buffers(bufnr_cache)
+  local owned = {}
+  for _, bufnr in pairs(bufnr_cache) do
+    owned[bufnr] = true
+  end
+
   local wiped = 0
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if previous_search_bufnrs[buf]
+    if owned[buf]
         and vim.api.nvim_buf_is_valid(buf)
         and not vim.bo[buf].buflisted
         and not vim.bo[buf].modified
         and vim.fn.bufwinid(buf) == -1
     then
-      -- pcall guards against buffers that become invalid between the
-      -- nvim_list_bufs() snapshot and the delete call.
       if pcall(vim.api.nvim_buf_delete, buf, { force = true }) then
         wiped = wiped + 1
       end
@@ -909,10 +901,15 @@ function M._notify_completion(ctx, session)
 
   session.current_state = state.done
 
-  -- Snapshot this session's buffers so the next search can wipe them.
-  previous_search_bufnrs = {}
-  for _, bufnr in pairs(session.bufnr_cache) do
-    previous_search_bufnrs[bufnr] = true
+  -- Wipe unlisted buffers created by this search. The quickfix list does
+  -- not need them; navigating to an entry re-creates the buffer from disk.
+  if ctx.cfg.wipe_unlisted_buffers then
+    local t0 = session.bench and vim.loop.hrtime() or nil
+    local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
+    if session.bench and t0 then
+      session.bench.wipe_ns = vim.loop.hrtime() - t0
+      session.bench.wipe_count = wipe_count
+    end
   end
 
   -- BENCH: emit timing summary
