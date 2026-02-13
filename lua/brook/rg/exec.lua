@@ -746,8 +746,9 @@ function M._parse_batch(n, session)
       -- Resolve filename to bufnr before enqueueing. This bypasses
       -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
       -- which Neovim can resolve in O(1).
-      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
-      entry.filename = nil
+      -- entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      -- entry.filename = nil
+      M._resolve_bufnr(entry.filename, session.bufnr_cache)
       entries[#entries+1] = entry
     end
   end
@@ -903,14 +904,14 @@ function M._notify_completion(ctx, session)
 
   -- Wipe unlisted buffers created by this search. The quickfix list does
   -- not need them; navigating to an entry re-creates the buffer from disk.
-  -- if ctx.cfg.wipe_unlisted_buffers then
-  --   local t0 = session.bench and vim.loop.hrtime() or nil
-  --   local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
-  --   if session.bench and t0 then
-  --     session.bench.wipe_ns = vim.loop.hrtime() - t0
-  --     session.bench.wipe_count = wipe_count
-  --   end
-  -- end
+  if ctx.cfg.wipe_unlisted_buffers then
+    local t0 = session.bench and vim.loop.hrtime() or nil
+    local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
+    if session.bench and t0 then
+      session.bench.wipe_ns = vim.loop.hrtime() - t0
+      session.bench.wipe_count = wipe_count
+    end
+  end
 
   -- BENCH: emit timing summary
   if ctx.cfg._benchmark then
@@ -989,6 +990,7 @@ function M._emit_bench_summary(session)
     .. '  streamed=' .. b.streamed_items
     .. '  drained=' .. b.drained_items
     .. '  total=' .. session.flushed_results,
+    '  buffers:                    ' .. #vim.fn.getbufinfo(),
     '──────────────────────────────────────────────────────',
   }
 
