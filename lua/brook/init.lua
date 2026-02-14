@@ -62,19 +62,8 @@ function M.setup(cfg)
 
   -- Validate max_results
   -----------------------
-  local valid_max_results = types.validations.max_results
-  if type(cfg.max_results) ~= 'number'
-      or cfg.max_results > valid_max_results.max
-      or cfg.max_results < valid_max_results.min
-  then
-    vim.notify(
-      string.format(
-        'brook.nvim: max_results range %d-%d',
-        valid_max_results.min,
-        valid_max_results.max
-      ),
-      vim.log.levels.ERROR
-    )
+  if type(cfg.max_results) ~= 'number' or cfg.max_results < 1 then
+    vim.notify('brook.nvim: max_results must be a positive number', vim.log.levels.ERROR)
     return
   end
 

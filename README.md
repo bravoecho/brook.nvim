@@ -102,7 +102,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap_repeat = '<leader>r',
 
     -- Result limits
-    max_results       = 1000, -- 500-10,000
+    max_results       = 1000, -- default 1,000; see note below
     max_preview_chars = 200,  -- 100-500
 
     -- Performance tuning
@@ -128,6 +128,29 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   },
 }
 ```
+
+> [!CAUTION]
+> **About `max_results`** — The default of 1,000 is appropriate for most
+> workflows. You can raise it as high as you like, but values above 10,000
+> carry real trade-offs you should understand before committing to them.
+>
+> Neovim resolves filenames in quickfix entries via a linear scan of its
+> internal buffer list. Each search creates unlisted buffers as a side
+> effect, and these accumulate across the session. At high result counts,
+> `setqflist()` becomes progressively slower with each search, and Neovim's
+> memory usage grows without bound. Brook mitigates this with an internal
+> buffer-number cache, but the underlying cost is in Neovim's core and
+> cannot be fully eliminated by a plugin.
+>
+> Why not just wipe the unlisted buffers? Because Neovim maintains a stack
+> of up to 10 quickfix lists, navigable with `:colder` and `:cnewer`. These
+> older lists reference the same buffers. Wiping them would break navigation
+> in every previous search result — exactly the kind of semi-persistent
+> history the quickfix stack is meant to provide.
+>
+> If you set `max_results` very high and run searches that produce tens of
+> thousands of matches, expect increasing UI stutter and memory pressure
+> over the course of a session. The only recovery is restarting Neovim.
 
 > [!TIP]
 > For consistent results, configure both ripgrep and Neovim with smart case.

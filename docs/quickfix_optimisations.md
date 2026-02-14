@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented (Parts 1–3). Bench instrumentation still present in `exec.lua` —
+Implemented (Parts 1–4). Bench instrumentation still present in `exec.lua` —
 strip or gate behind a flag before release.
 
 ## Summary
@@ -655,9 +655,13 @@ broken by the unlisted buffer cleanup.
 
 ## Files Modified
 
-- `lua/brook/rg/exec.lua` — all three parts implemented here
-- `lua/brook/rg/types.lua` — added `wipe_unlisted_buffers` field to
-  `brook.rg.ExecConfig`
+- `lua/brook/rg/exec.lua` — all three parts implemented here; wiping removed
+  in Part 4
+- `lua/brook/rg/types.lua` — `wipe_unlisted_buffers` field added in Part 2
+  and removed in Part 4
+- `lua/brook/types.lua` — `max_results` hard range removed in Part 4
+- `lua/brook/init.lua` — `max_results` validation simplified to accept any
+  positive number
 
 The bench instrumentation (`brook.BenchData` fields and `_emit_bench_summary`)
 is included in the current state of `exec.lua`. It should be stripped or gated
@@ -722,7 +726,7 @@ has no meaningful effect: `setqflist()` creates unlisted buffers internally
 via `buflist_add()`, and these are not tracked by brook, so the wipe function
 finds nothing to delete.
 
-### Decision: drop wiping, lower max_results
+### Decision: drop wiping, remove hard ceiling on max_results
 
 The bufnr cache must stay. Wiping breaks quickfix history. Without wiping,
 buffers accumulate and `setqflist()` degrades across searches — but only at
@@ -734,10 +738,19 @@ unlisted buffers. Even after 50 searches, the buffer list stays well under
 degradation that motivated wiping only manifests at 100K results, which is
 not a realistic usage pattern (nobody scrolls through 100K quickfix entries).
 
-The `max_results` ceiling was lowered from 100,000 to 10,000 to reflect this.
-The 100K limit served its purpose as a stress test that surfaced architectural
-insights, but it is not supported by any real need and Neovim's buffer list
-does not scale to it gracefully.
+The hard ceiling on `max_results` was removed entirely. The default remains
+1,000, which is appropriate for virtually all workflows. Users are free to
+set any positive value, but the README documents the trade-offs of pushing
+beyond 10,000: increasing `setqflist()` cost per search, cumulative buffer
+list growth, unbounded memory usage, and UI stutter that worsens over the
+session with no recovery short of restarting Neovim.
+
+This aligns with the plugin's principle of respecting user workflows: the
+`' '` (create new) quickfix action preserves the stack for `:colder` /
+`:cnewer` navigation, and the semi-persistent nature of the quickfix list is
+a feature worth protecting. Imposing a hard limit would force a choice
+between that property and large result sets — users are better placed to
+make that trade-off themselves.
 
 ### Removed
 
