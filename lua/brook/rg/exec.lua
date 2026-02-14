@@ -20,7 +20,7 @@
 ---
 --- Other key features:
 ---
----   * capped results (configurable up to 100,000) to prevent memory bloat
+---   * capped results (configurable up to 10,000) to prevent memory bloat
 ---     and editor slowdown
 ---
 ---   * bypasss shell for compatibility and security
@@ -144,8 +144,6 @@ local qf_operation = {
 ---@field t_done number|nil hrtime at final flush completion
 ---@field setqflist_calls number Number of vim.fn.setqflist() invocations
 ---@field setqflist_ns number Cumulative nanoseconds spent inside setqflist()
----@field wipe_ns number Nanoseconds spent wiping unlisted buffers
----@field wipe_count number Number of buffers wiped
 ---@field stdout_callbacks number Number of on_stdout invocations
 ---@field stdout_lines number Total lines processed across all callbacks
 ---@field stdout_max_batch number Largest single data array after buffer stitching
@@ -215,8 +213,6 @@ function M._exec(ctx)
       t_done = nil,
       setqflist_calls = 0,
       setqflist_ns = 0,
-      wipe_ns = 0,
-      wipe_count = 0,
       stdout_callbacks = 0,
       stdout_lines = 0,
       stdout_max_batch = 0,
@@ -447,47 +443,6 @@ function M._on_stdout(data, ctx, session)
   end
 
   M._request_flush(ctx, session)
-end
-
---- Wipes unlisted buffers created by the current search.
----
---- `bufadd()` creates unlisted buffers for each unique filename. These
---- accumulate across searches, and since `setqflist()` and `bufadd()`
---- resolve filenames via a linear scan of the buffer list, they degrade
---- subsequent searches.
----
---- The quickfix list does not need these buffers to function: navigating
---- to an entry whose buffer was wiped simply re-creates it from disk.
----
---- Only deletes buffers that are:
----
----   * owned by the current session (created by brook's own bufadd)
----   * not listed (not opened by the user since)
----   * not displayed in any window
----   * not modified
----
----@param bufnr_cache table<string, number> filename-to-bufnr map from the current session
----@return number wiped Number of buffers deleted
-function M._wipe_unlisted_buffers(bufnr_cache)
-  local owned = {}
-  for _, bufnr in pairs(bufnr_cache) do
-    owned[bufnr] = true
-  end
-
-  local wiped = 0
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if owned[buf]
-        and vim.api.nvim_buf_is_valid(buf)
-        and not vim.bo[buf].buflisted
-        and not vim.bo[buf].modified
-        and vim.fn.bufwinid(buf) == -1
-    then
-      if pcall(vim.api.nvim_buf_delete, buf, { force = true }) then
-        wiped = wiped + 1
-      end
-    end
-  end
-  return wiped
 end
 
 -- stderr is buffered (see jobstart options below), so this callback
@@ -746,9 +701,8 @@ function M._parse_batch(n, session)
       -- Resolve filename to bufnr before enqueueing. This bypasses
       -- setqflist()'s internal O(n*m) filename search, by passing a bufnr,
       -- which Neovim can resolve in O(1).
-      -- entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
-      -- entry.filename = nil
-      M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      entry.bufnr = M._resolve_bufnr(entry.filename, session.bufnr_cache)
+      entry.filename = nil
       entries[#entries+1] = entry
     end
   end
@@ -902,17 +856,6 @@ function M._notify_completion(ctx, session)
 
   session.current_state = state.done
 
-  -- Wipe unlisted buffers created by this search. The quickfix list does
-  -- not need them; navigating to an entry re-creates the buffer from disk.
-  if ctx.cfg.wipe_unlisted_buffers then
-    local t0 = session.bench and vim.loop.hrtime() or nil
-    local wipe_count = M._wipe_unlisted_buffers(session.bufnr_cache)
-    if session.bench and t0 then
-      session.bench.wipe_ns = vim.loop.hrtime() - t0
-      session.bench.wipe_count = wipe_count
-    end
-  end
-
   -- BENCH: emit timing summary
   if ctx.cfg._benchmark then
     M._emit_bench_summary(session)
@@ -979,8 +922,6 @@ function M._emit_bench_summary(session)
     '  drain (exit --> done):      ' .. ms(drain_ns),
     '  setqflist() cumulative:     ' .. ms(b.setqflist_ns)
     .. '  (' .. b.setqflist_calls .. ' calls)',
-    '  buf wipe:                   ' .. ms(b.wipe_ns)
-    .. '  (' .. b.wipe_count .. ' bufs)',
     '  on_stdout:                  '
     .. b.stdout_callbacks .. ' callbacks'
     .. '  ' .. b.stdout_lines .. ' lines'

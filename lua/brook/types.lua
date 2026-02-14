@@ -21,7 +21,7 @@
 --- Normal-mode keymap for repeating the last search in the session (default: '<leader>r')
 ---@field keymap_repeat? string|false
 ---
---- Maximum results before stopping (default: 1000, range: 500-100,000)
+--- Maximum results before stopping (default: 1000, range: 500-10,000)
 ---@field max_results? integer
 ---
 --- Maximum number of results to buffer before flushing (default: 100)
@@ -56,10 +56,6 @@
 --- (most users should not modify this).
 ---@field drain_phase_flush_throttle_ms? number
 ---
---- Whether each search should wipe out unlisted buffers that were created in
---- the previous search, but were never opened (default: true)
----@field wipe_unlisted_buffers? boolean
----
 --- Maximum number of characters to use for a result preview
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number
@@ -74,7 +70,7 @@ local M = {}
 --------------------------------------------------------------------------------
 
 M.validations = {
-  max_results = { min = 500, max = 100000 },
+  max_results = { min = 500, max = 10000 },
   max_preview_chars = { min = 100, max = 500 },
   max_batch_size = { min = 10, max = 200 },
 }

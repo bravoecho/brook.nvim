@@ -665,6 +665,89 @@ behind a flag before release.
 
 ---
 
+## Part 4: Quickfix stack and the demise of buffer wiping
+
+### Context
+
+Neovim maintains a stack of up to 10 quickfix lists, navigable with `:colder`
+and `:cnewer`. The original implementation used the `'r'` (replace) action for
+the first `setqflist()` call of each search, which overwrites the current list.
+This prevented users from recalling previous search results.
+
+### Change: `'r'` (replace) to `' '` (new, default)
+
+Switching the first-batch action from `'r'` to `' '` (create new list) pushes
+each search onto the stack, preserving quickfix history. This is the
+well-behaved convention for plugins.
+
+### Consequence: buffer wiping is no longer viable
+
+The bufnr cache (Part 1) passes buffer numbers to `setqflist()` instead of
+filenames. When wiping was active, it deleted the unlisted buffers that those
+entries reference. With `'r'`, only the current list existed, so wiping before
+the next search was safe. With `' '`, older lists persist in the stack and
+their entries still reference the wiped buffers, causing `Buffer not found`
+errors when navigating to results in those lists.
+
+Wiping at the end of each search (rather than the start of the next) was
+considered, but fails for the same reason: the current list's own entries
+reference the buffers being wiped. Unlike filenames, buffer numbers give
+Neovim no path to re-create the buffer on demand.
+
+### Benchmark: confirming the bufnr cache is essential
+
+Three configurations were benchmarked at 100,000 results across repeated
+searches (`:Rg data -w` × 5–7, then `:Rg -w report`):
+
+**With bufnr cache, no wiping** (the chosen configuration):
+
+- Run 1: setqflist 237ms, 11.9K bufs
+- Run 5: setqflist 1,055ms, 21.1K bufs
+- First `report`: setqflist 659ms, 31.6K bufs
+
+**Without bufnr cache, no wiping:**
+
+- Run 1: setqflist 5,705ms, 11.6K bufs
+- Run 5: setqflist 16,311ms, 25.0K bufs
+- First `report`: setqflist 54,328ms, 37.2K bufs
+
+**Without bufnr cache, with wiping:**
+
+- Run 1: setqflist 6,333ms, 11.5K bufs
+- Run 5: setqflist 15,261ms, 21.8K bufs
+- First `report`: setqflist 44,232ms, 33.6K bufs
+
+Without the cache, `setqflist()` is 10–80× slower. Wiping without the cache
+has no meaningful effect: `setqflist()` creates unlisted buffers internally
+via `buflist_add()`, and these are not tracked by brook, so the wipe function
+finds nothing to delete.
+
+### Decision: drop wiping, lower max_results
+
+The bufnr cache must stay. Wiping breaks quickfix history. Without wiping,
+buffers accumulate and `setqflist()` degrades across searches — but only at
+extreme scale.
+
+At the default `max_results = 1,000`, each search creates a few hundred
+unlisted buffers. Even after 50 searches, the buffer list stays well under
+10K — firmly in the range where `setqflist()` cost is imperceptible. The
+degradation that motivated wiping only manifests at 100K results, which is
+not a realistic usage pattern (nobody scrolls through 100K quickfix entries).
+
+The `max_results` ceiling was lowered from 100,000 to 10,000 to reflect this.
+The 100K limit served its purpose as a stress test that surfaced architectural
+insights, but it is not supported by any real need and Neovim's buffer list
+does not scale to it gracefully.
+
+### Removed
+
+- `wipe_unlisted_buffers` config option and its field in `brook.rg.ExecConfig`
+- `_wipe_unlisted_buffers()` function
+- `previous_search_bufnrs` module-level state
+- Wipe-related bench fields (`wipe_ns`, `wipe_count`)
+
+---
+
 ## References
 
 Neovim source: `src/nvim/quickfix.c` (`qf_get_fnum()`),

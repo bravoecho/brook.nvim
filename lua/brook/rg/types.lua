@@ -6,7 +6,7 @@
 
 ---@class brook.rg.ExecConfig
 ---
---- Maximum results before stopping (default: 1000, range 500-100,000)
+--- Maximum results before stopping (default: 1000, range 500-10,000)
 ---@field max_results integer
 ---
 --- Maximum number of results to buffer before flushing (default: 100)
@@ -47,10 +47,6 @@
 --- Maximum number of characters to use for a result preview, to prevent
 --- excessive memory use (default: 200, range: 100-500)
 ---@field max_preview_chars number
----
---- Whether each search should wipe out unlisted buffers that were created in
---- the previous search, but were never opened (default: true)
----@field wipe_unlisted_buffers boolean
 ---
 --- Print execution benchmark results (only for development, default: false)
 ---@field _benchmark boolean

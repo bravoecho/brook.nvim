@@ -52,7 +52,7 @@ shell, immune to injection, and unaffected by escaping quirks. If a command
 works with `rg`, it works with Brook.
 
 **Fast and responsive** – Results are streamed using carefully tuned cooperative
-scheduling, keeping the UI responsive even for extremely large searches.
+scheduling, keeping the UI responsive even in demanding scenarios.
 
 **Understated, refined UX** – Operates quietly and discreetly, with a small
 number of direct, intuitive keymaps. Brook respects the user's workflow,
@@ -102,7 +102,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     keymap_repeat = '<leader>r',
 
     -- Result limits
-    max_results       = 1000, -- 500-100,000
+    max_results       = 1000, -- 500-10,000
     max_preview_chars = 200,  -- 100-500
 
     -- Performance tuning
@@ -114,7 +114,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- (for ultra-large number of results, emitted by ripgrep at exceptionally high rate)
     drain_phase_max_batch_size    = 500,  -- defaults to 5x max_batch_size
     drain_phase_flush_throttle_ms = 5,    -- defaults to 1/2 of flush_throttle_ms
-    wipe_unlisted_buffers         = true, -- clean up unopened results of previous search
 
     -- Quickfix window
     qf_open        = true,
