@@ -440,6 +440,9 @@ function M._on_stdout(data, ctx, session)
 
     session.queue.push(line)
     session.total_results = session.total_results + 1
+    if ctx.cfg.qf_open and session.flushed_results < ctx.cfg.qf_win_height then
+      M._request_flush(ctx, session)
+    end
   end
 
   M._request_flush(ctx, session)
