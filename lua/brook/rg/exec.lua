@@ -868,9 +868,6 @@ function M._notify_completion(ctx, session)
 
   if session.stopped_at_limit then
     local msg = 'rg: stopped at limit (' .. ctx.cfg.max_results .. ')'
-    if ctx.cfg.max_results < types.validations.max_results.max then
-      msg = msg .. ' (configure in setup)'
-    end
     if #session.stderr_lines > 0 then
       table.insert(session.stderr_lines, msg)
       msg = table.concat(session.stderr_lines, '\n')
