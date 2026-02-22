@@ -66,6 +66,11 @@ configuration.
 
 ## Installation & Setup
 
+**Requirements:**
+
+- Neovim >= 0.10.0
+- ripgrep (available in path)
+
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
