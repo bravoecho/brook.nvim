@@ -259,6 +259,7 @@ function M._build_rg_cmd(ctx)
     '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
     '--color', 'never',
+    '--null',
   }
 
   -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
@@ -299,15 +300,20 @@ end
 ---@param result string A line in vimgrep format
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
 function M._parse_vimgrep(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line:col: pattern and extract components by position.
-  local start_pos, end_pos, lnum, col = result:find(':(%d+):(%d+):')
+  local null_idx = result:find('%z')
+  if not null_idx then
+    return nil
+  end
+
+  local filename = result:sub(1, null_idx - 1)
+  local rest = result:sub(null_idx + 1)
+
+  local start_pos, end_pos, lnum, col = rest:find('^(%d+):(%d+):')
   if not start_pos then
     return nil
   end
 
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
+  local text = rest:sub(end_pos + 1)
 
   return {
     filename = filename,
@@ -325,15 +331,20 @@ end
 ---@param result string A line in line-number format
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
 function M._parse_line_number(result)
-  -- Note: Unix filenames can contain colons, so we can't simply split on ':'.
-  -- Instead, we locate the :line: pattern and extract components by position.
-  local start_pos, end_pos, lnum = result:find(':(%d+):')
+  local null_idx = result:find('%z')
+  if not null_idx then
+    return nil
+  end
+
+  local filename = result:sub(1, null_idx - 1)
+  local rest = result:sub(null_idx + 1)
+
+  local start_pos, end_pos, lnum = rest:find('^(%d+):')
   if not start_pos then
     return nil
   end
 
-  local filename = result:sub(1, start_pos - 1)
-  local text = result:sub(end_pos + 1)
+  local text = rest:sub(end_pos + 1)
 
   return {
     filename = filename,
