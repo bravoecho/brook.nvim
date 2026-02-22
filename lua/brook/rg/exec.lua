@@ -33,7 +33,6 @@
 local pattern = require('brook.pattern')
 local fifo = require('brook.lib.fifo')
 local args_types = require('brook.args.types')
-local types = require('brook.types')
 
 local M = {}
 
