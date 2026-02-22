@@ -249,6 +249,9 @@ function M._exec(ctx)
   return M._user_cancel_function(active_rg_job_id, session)
 end
 
+-- Use a definite field separator in the results, to make parsing deterministic.
+local ASCII_UNIT_SEPARATOR = '\31'
+
 ---@param ctx brook.SearchContext Search context with all execution parameters
 ---@return string[] cmd Command table for jobstart()
 function M._build_rg_cmd(ctx)
@@ -259,7 +262,7 @@ function M._build_rg_cmd(ctx)
     '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
     '--color', 'never',
-    '--null',
+    '--field-match-separator', ASCII_UNIT_SEPARATOR
   }
 
   -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
@@ -297,28 +300,23 @@ end
 --- Format: "file:line:col:text" (default, --vimgrep)
 --- Example: "some/path/to/file.txt:137:42:the red fox jumped"
 ---
----@param result string A line in vimgrep format
+---@param line string A ripgrep result line in vimgrep format
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_vimgrep(result)
-  local null_idx = result:find('%z')
-  if not null_idx then
+function M._parse_vimgrep(line)
+  -- plain mode is faster because it bypasses the regex engine
+  local parts = vim.split(line, ASCII_UNIT_SEPARATOR, { plain = true })
+
+  if #parts < 4 then
     return nil
   end
 
-  local filename = result:sub(1, null_idx - 1)
-  local rest = result:sub(null_idx + 1)
-
-  local start_pos, end_pos, lnum, col = rest:find('^(%d+):(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local text = rest:sub(end_pos + 1)
+  -- Recombine text parts in the rare event that it contains the separator.
+  local text = table.concat(parts, ASCII_UNIT_SEPARATOR, 4)
 
   return {
-    filename = filename,
-    lnum = tonumber(lnum),
-    col = tonumber(col),
+    filename = parts[1],
+    lnum = tonumber(parts[2]),
+    col = tonumber(parts[3]),
     text = text,
   }
 end
@@ -328,27 +326,22 @@ end
 --- Format: "file:line:text" (unique-lines mode, --line-number)
 --- Example: "some/path/to/file.txt:137:the red fox jumped"
 ---
----@param result string A line in line-number format
+---@param line string A ripgrep result line in vimgrep format
 ---@return vim.quickfix.entry|nil entry Quickfix entry, or nil if parsing fails
-function M._parse_line_number(result)
-  local null_idx = result:find('%z')
-  if not null_idx then
+function M._parse_line_number(line)
+  -- plain mode is faster because it bypasses the regex engine
+  local parts = vim.split(line, ASCII_UNIT_SEPARATOR, { plain = true })
+
+  if #parts < 3 then
     return nil
   end
 
-  local filename = result:sub(1, null_idx - 1)
-  local rest = result:sub(null_idx + 1)
-
-  local start_pos, end_pos, lnum = rest:find('^(%d+):')
-  if not start_pos then
-    return nil
-  end
-
-  local text = rest:sub(end_pos + 1)
+  -- Recombine text parts in the rare event that it contains the separator.
+  local text = table.concat(parts, ASCII_UNIT_SEPARATOR, 3)
 
   return {
-    filename = filename,
-    lnum = tonumber(lnum),
+    filename = parts[1],
+    lnum = tonumber(parts[2]),
     col = 1, -- Default to column 1 when no column info available
     text = text,
   }
