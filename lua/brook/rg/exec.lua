@@ -201,7 +201,7 @@ function M._exec(ctx)
     parse_line = parse_line,
     bench = {
       raw = ctx.parsed_args.raw,
-      t_start = vim.loop.hrtime(),
+      t_start = vim.uv.hrtime(),
       t_rg_exit = nil,
       t_done = nil,
       setqflist_calls = 0,
@@ -468,7 +468,7 @@ function M._on_exit(exit_code, ctx, session)
 
   -- BENCH: record ripgrep completion time
   if session.bench then
-    session.bench.t_rg_exit = vim.loop.hrtime()
+    session.bench.t_rg_exit = vim.uv.hrtime()
   end
 
   if session.current_state == state.first_paint then
@@ -743,13 +743,13 @@ function M._update_quickfix(items, ctx, session)
   end
 
   -- BENCH: time the setqflist call
-  local t0 = session.bench and vim.loop.hrtime() or nil
+  local t0 = session.bench and vim.uv.hrtime() or nil
   vim.fn.setqflist({}, session.qf_operation, {
     title = 'rg ' .. ctx.parsed_args.raw,
     items = items,
   })
   if session.bench and t0 then
-    session.bench.setqflist_ns = session.bench.setqflist_ns + (vim.loop.hrtime() - t0)
+    session.bench.setqflist_ns = session.bench.setqflist_ns + (vim.uv.hrtime() - t0)
     session.bench.setqflist_calls = session.bench.setqflist_calls + 1
 
     if session.current_state == state.first_paint then
@@ -896,7 +896,7 @@ function M._emit_bench_summary(session)
     return
   end
 
-  b.t_done = vim.loop.hrtime()
+  b.t_done = vim.uv.hrtime()
 
   local function ms(ns)
     return string.format('%.1f ms', ns / 1e6)
