@@ -1,9 +1,10 @@
 -- Benchmark: setqflist with parsed entries vs raw lines + efm
 --
--- Compares three approaches:
---   1. Parsed vimgrep entries (file:line:col:text) - current default
---   2. Parsed line-number entries (file:line:text) - unique_lines mode
---   3. Raw lines with errorformat
+-- Compares different approaches:
+--   1. Parsed vimgrep entries (file:line:col:text)
+--   2. Same, with bufnr cache - current default
+--   3. Parsed line-number entries (file:line:text) - unique_lines mode
+--   4. Raw lines with errorformat
 --
 -- Run with:
 --   nvim --headless -c "luafile bench_setqflist.lua" -c "q"
@@ -78,6 +79,27 @@ local function bench_parsed_vimgrep(lines)
   for _, line in ipairs(lines) do
     local entry = parse_vimgrep(line)
     if entry then
+      table.insert(entries, entry)
+    end
+  end
+  vim.fn.setqflist({}, 'r')
+  vim.fn.setqflist(entries, 'a')
+end
+
+local function bench_parsed_vimgrep_cache(lines)
+  local entries = {}
+  local cache = {}
+  for _, line in ipairs(lines) do
+    local entry = parse_vimgrep(line)
+    if entry then
+      local filename = entry.filename
+      local bufnr = cache[filename]
+      if not bufnr then
+        bufnr = vim.fn.bufadd(filename)
+        cache[filename] = bufnr
+      end
+      entry.bufnr = bufnr
+      entry.filename = nil
       table.insert(entries, entry)
     end
   end
@@ -161,7 +183,7 @@ end
 
 local function format_result(r)
   return string.format(
-    '%-20s  mean: %7.2f ms  median: %7.2f ms  min: %7.2f ms  max: %7.2f ms',
+    '%-22s  mean: %7.2f ms  median: %7.2f ms  min: %7.2f ms  max: %7.2f ms',
     r.name, r.mean, r.median, r.min, r.max
   )
 end
@@ -178,6 +200,7 @@ print(string.format('Generated %d fake lines for each format\n', N))
 
 local results = {
   measure('parsed (vimgrep)', bench_parsed_vimgrep, vimgrep_lines),
+  measure('parsed (vimgrep, cache)', bench_parsed_vimgrep_cache, vimgrep_lines),
   measure('parsed (line-num)', bench_parsed_line_number, line_number_lines),
   measure('raw lines + efm', bench_efm, vimgrep_lines),
 }
