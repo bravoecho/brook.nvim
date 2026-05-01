@@ -134,29 +134,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-> [!CAUTION]
-> **About `max_results`** — The default of 1,000 is appropriate for most
-> workflows. You can raise it as high as you like, but values above 10,000
-> carry real trade-offs you should understand before committing to them.
->
-> Neovim resolves filenames in quickfix entries via a linear scan of its
-> internal buffer list. Each search creates unlisted buffers as a side
-> effect, and these accumulate across the session. At high result counts,
-> `setqflist()` becomes progressively slower with each search, and Neovim's
-> memory usage grows without bound. Brook mitigates this with an internal
-> buffer-number cache, but the underlying cost is in Neovim's core and
-> cannot be fully eliminated by a plugin.
->
-> Why not just wipe the unlisted buffers? Because Neovim maintains a stack
-> of up to 10 quickfix lists, navigable with `:colder` and `:cnewer`. These
-> older lists reference the same buffers. Wiping them would break navigation
-> in every previous search result — exactly the kind of semi-persistent
-> history the quickfix stack is meant to provide.
->
-> If you set `max_results` very high and run searches that produce tens of
-> thousands of matches, expect increasing UI stutter and memory pressure
-> over the course of a session. The only recovery is restarting Neovim.
-
 > [!TIP]
 > For consistent results, configure both ripgrep and Neovim with smart case.
 >
@@ -172,6 +149,25 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 > ```
 > --smart-case
 > ```
+
+> [!CAUTION]
+> **About the `max_results` option** — The default of 1,000 suits most
+> workflows. You can raise it, but values above 10,000 carry real trade-offs.
+>
+> Allowing a search to return many thousands of results will slow Neovim and
+> cause UI stutter. Each file in the results requires a hidden buffer, leading
+> to unbounded memory growth and a degraded UI for the remainder of the session.
+>
+> Neovim keeps a stack of up to 10 quickfix lists (navigable with `:colder` and
+> `:cnewer`). Wiping the hidden buffers would corrupt every previous list in
+> that stack, defeating the semi-persistent history the quickfix system is
+> designed to provide.
+>
+> Brook mitigates this by maintaining a cache of buffer numbers and adding
+> results by buffer number instead of filename. This avoids the linear
+> buffer-list scan Neovim would otherwise perform, yielding considerable gains
+> – but the underlying cost remains in Neovim's core and cannot be fully
+> eliminated.
 
 ---
 
