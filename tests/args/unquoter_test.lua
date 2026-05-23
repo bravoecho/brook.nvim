@@ -1,5 +1,5 @@
 -- Run with:
---   nvim --headless -c "luafile tests/args/unquoter_test.lua" -c "q"
+--   nvim --headless -c "set rtp+=." -c "luafile tests/args/unquoter_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test

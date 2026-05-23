@@ -1,7 +1,7 @@
 -- tests/pattern/tokenise_escapes_test.lua
 
 -- Run with:
---   nvim --headless -u NONE -c "set rtp+=. -c "luafile tests/pattern/tokeniser_03_escapes_test.lua" -c "q"
+--   nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/tokeniser_03_escapes_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test

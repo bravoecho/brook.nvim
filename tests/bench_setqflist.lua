@@ -7,7 +7,7 @@
 --   4. Raw lines with errorformat
 --
 -- Run with:
---   nvim --headless -c "luafile bench_setqflist.lua" -c "q"
+--   nvim --headless -c "set rtp+=." -c "luafile bench_setqflist.lua" -c "q"
 
 local N = 10000
 local RUNS = 10

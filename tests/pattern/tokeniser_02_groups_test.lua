@@ -1,7 +1,7 @@
 -- tests/pattern/tokenise_groups_test.lua
 
 -- Run with:
---   nvim --headless -c "luafile tests/pattern/tokeniser_groups_test.lua" -c "q"
+--   nvim --headless -c "set rtp+=." -c "luafile tests/pattern/tokeniser_groups_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
