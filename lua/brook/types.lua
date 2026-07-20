@@ -60,6 +60,13 @@
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number
 ---
+--- Use full POSIX shell escaping rules inside double-quoted arguments (\$,
+--- \`, \", \\), so a command copied from (or destined for) a real shell
+--- round-trips exactly. When false (default), double quotes are literal
+--- like single quotes -- except for \" -- so ripgrep patterns containing
+--- \$, \`, or \\ are not silently altered (default: false)
+---@field strict_posix_quoting? boolean
+---
 --- Print execution benchmark results (only for development, default: false)
 ---@field _benchmark? boolean
 

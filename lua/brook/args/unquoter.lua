@@ -6,18 +6,32 @@
 
 local M = {}
 
---- The set of characters that can be escaped inside double quotes.
+--- The set of characters that can be escaped inside double quotes, by mode.
 ---
---- Deliberately narrower than POSIX shells (which also treat \$, \`, and \\
---- as escapes): Brook never spawns a shell, so there is no variable
---- interpolation or command substitution to guard against, and those extra
---- escapes only caused backslashes meant for ripgrep's own regex syntax
---- (e.g. \$ for a literal dollar sign) to be silently stripped. The only
---- thing that still needs escaping is the delimiter itself, so double
---- quotes behave exactly like single quotes except that \" can be used to
---- embed a literal double quote without closing the token.
+--- `literal` (the default) is deliberately narrower than POSIX shells (which
+--- also treat \$, \`, and \\ as escapes): Brook never spawns a shell, so
+--- there is no variable interpolation or command substitution to guard
+--- against, and those extra escapes only caused backslashes meant for
+--- ripgrep's own regex syntax (e.g. \$ for a literal dollar sign) to be
+--- silently stripped. The only thing that still needs escaping is the
+--- delimiter itself, so double quotes behave exactly like single quotes
+--- except that \" can be used to embed a literal double quote without
+--- closing the token.
+---
+--- `strict_posix` reproduces full POSIX shell semantics, so a token copied
+--- from (or destined for) an actual shell round-trips exactly, at the cost
+--- of reintroducing the \$/\`-swallowing surprise for regex patterns. Opt in
+--- via the `strict_posix_quoting` setup option.
 local DOUBLE_QUOTE_ESCAPES = {
-  ['"'] = true,
+  literal = {
+    ['"'] = true,
+  },
+  strict_posix = {
+    ['$'] = true,
+    ['`'] = true,
+    ['"'] = true,
+    ['\\'] = true,
+  },
 }
 
 ---@enum
@@ -37,9 +51,11 @@ local ESCAPE = '\\'
 ---
 --- This handles:
 ---   - Single-quoted strings: 'foo bar' => foo bar (no escapes inside)
----   - Double-quoted strings: "foo bar" => foo bar (only \" is special; all
----     other backslash sequences, including \$, \`, and \\, pass through
----     literally so ripgrep sees exactly what was typed)
+---   - Double-quoted strings: "foo bar" => foo bar. By default (`strict` =
+---     false) only \" is special; all other backslash sequences, including
+---     \$, \`, and \\, pass through literally so ripgrep sees exactly what
+---     was typed. With `strict` = true, full POSIX escapes apply (\$, \`,
+---     \", \\), matching what a real shell would produce.
 ---   - Backslash escapes outside quotes: foo\ bar => foo bar
 ---   - The POSIX idiom for single quotes: 'it'\''s' => it's
 ---   - Mixed quoting: foo"bar"'baz' => foobarbaz
@@ -52,8 +68,11 @@ local ESCAPE = '\\'
 --- which is what the external command receives.
 ---
 ---@param token string The shell token to unquote
+---@param strict? boolean Use full POSIX double-quote escapes (\$, \`, \", \\)
+---  instead of the default, regex-friendly literal mode (only \")
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
-function M.posix_unquote(token)
+function M.posix_unquote(token, strict)
+  local double_quote_escapes = strict and DOUBLE_QUOTE_ESCAPES.strict_posix or DOUBLE_QUOTE_ESCAPES.literal
   local state = states.NORMAL
   local result = {}
   local len = #token
@@ -77,7 +96,7 @@ function M.posix_unquote(token)
       -------------------------------------------------
       if ch == DOUBLE_QUOTE then
         state = states.NORMAL -- close double quote
-      elseif ch == ESCAPE and DOUBLE_QUOTE_ESCAPES[next_char] then
+      elseif ch == ESCAPE and double_quote_escapes[next_char] then
         -- POSIX escape: collect the next char and skip the backslash.
         table.insert(result, next_char)
         i = i + 1
@@ -124,15 +143,16 @@ end
 --- Returns nil if any token is malformed (unterminated quotes).
 ---
 ---@param tokens string[]|nil List of shell tokens
+---@param strict? boolean Use full POSIX double-quote escapes, see posix_unquote
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
-function M.posix_unquote_all(tokens)
+function M.posix_unquote_all(tokens, strict)
   if not tokens then
     return nil
   end
 
   local result = {}
   for _, token in ipairs(tokens) do
-    local unquoted = M.posix_unquote(token)
+    local unquoted = M.posix_unquote(token, strict)
     if not unquoted then return nil end
     table.insert(result, unquoted)
   end

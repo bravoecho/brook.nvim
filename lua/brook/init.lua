@@ -42,6 +42,7 @@ function M.setup(cfg)
     output_format = args_types.output_format.one_line_per_match,
     set_search_register = true,
     max_preview_chars = 200,
+    strict_posix_quoting = false,
     _benchmark = false,
   }
 
@@ -118,6 +119,13 @@ function M.setup(cfg)
     return
   end
 
+  -- Validate strict_posix_quoting
+  --------------------------------
+  if type(cfg.strict_posix_quoting) ~= 'boolean' then
+    vim.notify('brook.nvim: strict_posix_quoting must be a boolean', vim.log.levels.ERROR)
+    return
+  end
+
   ------------------------------------------------------------------------------
   --- Command configuration ----------------------------------------------------
   ------------------------------------------------------------------------------
@@ -136,6 +144,7 @@ function M.setup(cfg)
     drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
+    strict_posix_quoting = cfg.strict_posix_quoting,
     _benchmark = cfg._benchmark,
   }
 

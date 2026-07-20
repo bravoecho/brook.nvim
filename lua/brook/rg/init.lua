@@ -110,7 +110,7 @@ function M.raw(opts, cfg)
   -- 2. Unquote
   -------------
   -- Unquote each token (interprets shell quoting rules)
-  local rg_args = posix_unquote_all(tokens)
+  local rg_args = posix_unquote_all(tokens, cfg.strict_posix_quoting)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then

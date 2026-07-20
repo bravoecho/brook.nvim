@@ -176,8 +176,8 @@ test('rg: escaped double quotes', function()
 end)
 
 test('rg: double and single quotes agree on \\( \\$ (regression)', function()
-  eq(posix_unquote('"getTests\\(\\$"'), 'getTests\\(\\$')
-  eq(posix_unquote("'getTests\\(\\$'"), 'getTests\\(\\$')
+  eq(posix_unquote('"myPhpFunction\\(\\$"'), 'myPhpFunction\\(\\$')
+  eq(posix_unquote("'myPhpFunction\\(\\$'"), 'myPhpFunction\\(\\$')
 end)
 
 test('rg: quoted options and flags, double-quoted pattern option (outer)', function()
@@ -202,7 +202,7 @@ test('rg: quoted options and flags, single-quoted pattern option', function()
 end)
 
 --------------------------------------------------------------------------------
---- Double quotes: $ and ` are never shell escapes -----------------------------
+--- Double quotes (default/literal mode): $ and ` are never shell escapes ------
 --------------------------------------------------------------------------------
 --- Brook never spawns a shell, so \$ and \` have no interpolation to guard
 --- against. Unlike POSIX, a backslash before them is preserved literally
@@ -222,6 +222,52 @@ end)
 
 test('double: unescaped backtick preserved', function()
   eq(posix_unquote('"foo`bar"'), 'foo`bar')
+end)
+
+--------------------------------------------------------------------------------
+--- strict_posix_quoting mode ---------------------------------------------------
+--------------------------------------------------------------------------------
+--- Opt-in mode that reproduces full POSIX shell semantics, so a command
+--- copied from (or destined for) a real shell round-trips exactly -- at the
+--- cost of reintroducing the \$/\`-swallowing surprise for regex patterns.
+
+test('strict: escaped dollar sign is swallowed, like a real shell', function()
+  eq(posix_unquote('"foo\\$bar"', true), 'foo$bar')
+end)
+
+test('strict: escaped backtick is swallowed, like a real shell', function()
+  eq(posix_unquote('"foo\\`bar"', true), 'foo`bar')
+end)
+
+test('strict: escaped backslash collapses, like a real shell', function()
+  eq(posix_unquote('"foo\\\\bar"', true), 'foo\\bar')
+end)
+
+test('strict: escaped double quote still works', function()
+  eq(posix_unquote('"say \\"hello\\""', true), 'say "hello"')
+end)
+
+test('strict: unrecognised escape still passes through', function()
+  eq(posix_unquote('"foo\\nbar"', true), 'foo\\nbar')
+end)
+
+test('strict: single quotes are unaffected by the flag', function()
+  eq(posix_unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+end)
+
+test('strict: reproduces the real-shell divergence between quote styles', function()
+  -- This is the documented, intentional trade-off of strict mode: unlike
+  -- the default literal mode, double and single quotes disagree here,
+  -- exactly as bash/zsh would for `rg "myPhpFunction\(\$"` vs `rg 'myPhpFunction\(\$'`.
+  eq(posix_unquote('"myPhpFunction\\(\\$"', true), 'myPhpFunction\\($')
+  eq(posix_unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+end)
+
+test('strict: posix_unquote_all threads the flag through', function()
+  deep_eq(
+    posix_unquote_all({ '"foo\\$bar"', "'baz\\$qux'" }, true),
+    { 'foo$bar', 'baz\\$qux' }
+  )
 end)
 
 --------------------------------------------------------------------------------
