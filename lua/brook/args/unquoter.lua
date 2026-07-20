@@ -6,12 +6,18 @@
 
 local M = {}
 
---- The set of characters that can be escaped in a POSIX shell.
+--- The set of characters that can be escaped inside double quotes.
+---
+--- Deliberately narrower than POSIX shells (which also treat \$, \`, and \\
+--- as escapes): Brook never spawns a shell, so there is no variable
+--- interpolation or command substitution to guard against, and those extra
+--- escapes only caused backslashes meant for ripgrep's own regex syntax
+--- (e.g. \$ for a literal dollar sign) to be silently stripped. The only
+--- thing that still needs escaping is the delimiter itself, so double
+--- quotes behave exactly like single quotes except that \" can be used to
+--- embed a literal double quote without closing the token.
 local DOUBLE_QUOTE_ESCAPES = {
-  ['$'] = true,
-  ['`'] = true,
   ['"'] = true,
-  ['\\'] = true,
 }
 
 ---@enum
@@ -31,7 +37,9 @@ local ESCAPE = '\\'
 ---
 --- This handles:
 ---   - Single-quoted strings: 'foo bar' => foo bar (no escapes inside)
----   - Double-quoted strings: "foo bar" => foo bar (with \\, \", \$, \` escapes)
+---   - Double-quoted strings: "foo bar" => foo bar (only \" is special; all
+---     other backslash sequences, including \$, \`, and \\, pass through
+---     literally so ripgrep sees exactly what was typed)
 ---   - Backslash escapes outside quotes: foo\ bar => foo bar
 ---   - The POSIX idiom for single quotes: 'it'\''s' => it's
 ---   - Mixed quoting: foo"bar"'baz' => foobarbaz

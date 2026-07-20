@@ -73,8 +73,8 @@ test('double: escaped double quote', function()
   eq(posix_unquote('"say \\"hello\\""'), 'say "hello"')
 end)
 
-test('double: escaped backslash', function()
-  eq(posix_unquote('"foo\\\\bar"'), 'foo\\bar')
+test('double: backslash-backslash preserved (not collapsed)', function()
+  eq(posix_unquote('"foo\\\\bar"'), 'foo\\\\bar')
 end)
 
 test('double: unrecognised escape passes through', function()
@@ -175,6 +175,11 @@ test('rg: escaped double quotes', function()
   eq(posix_unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
 end)
 
+test('rg: double and single quotes agree on \\( \\$ (regression)', function()
+  eq(posix_unquote('"getTests\\(\\$"'), 'getTests\\(\\$')
+  eq(posix_unquote("'getTests\\(\\$'"), 'getTests\\(\\$')
+end)
+
 test('rg: quoted options and flags, double-quoted pattern option (outer)', function()
   deep_eq(
     posix_unquote_all({ "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
@@ -197,15 +202,18 @@ test('rg: quoted options and flags, single-quoted pattern option', function()
 end)
 
 --------------------------------------------------------------------------------
---- POSIX double-quote escapes ($ and `) --------------------------------------
+--- Double quotes: $ and ` are never shell escapes -----------------------------
 --------------------------------------------------------------------------------
+--- Brook never spawns a shell, so \$ and \` have no interpolation to guard
+--- against. Unlike POSIX, a backslash before them is preserved literally
+--- (same as \( or \n), so ripgrep sees exactly what the user typed.
 
-test('double: escaped dollar sign', function()
-  eq(posix_unquote('"foo\\$bar"'), 'foo$bar')
+test('double: backslash-dollar passes through literally', function()
+  eq(posix_unquote('"foo\\$bar"'), 'foo\\$bar')
 end)
 
-test('double: escaped backtick', function()
-  eq(posix_unquote('"foo\\`bar"'), 'foo`bar')
+test('double: backslash-backtick passes through literally', function()
+  eq(posix_unquote('"foo\\`bar"'), 'foo\\`bar')
 end)
 
 test('double: unescaped dollar sign preserved', function()

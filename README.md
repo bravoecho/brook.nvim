@@ -197,6 +197,14 @@ quickfix list.
    register is already populated, so empty `//` targets exactly what ripgrep
    found.
 
+### Quoting
+
+Quotes are delimiters only:
+
+* you can use either single or double quotes interchangeably
+* what you type in quotes is exactly what ripgrep receives
+* the only exception is `\"` which embeds a literal quote in double quotes
+
 ### Pro Tips
 
 * **Current word with options**: `:Rg --<any-options>` will use the current word
