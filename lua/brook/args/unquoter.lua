@@ -6,31 +6,40 @@
 
 local M = {}
 
---- The set of characters that can be escaped inside double quotes, by mode.
+--- The set of characters that can be escaped inside quotes, by quote type and
+--- mode.
 ---
 --- `literal` (the default) is deliberately narrower than POSIX shells (which
---- also treat \$, \`, and \\ as escapes): Brook never spawns a shell, so
+--- also treat \$, \`, and \\ as escapes inside double quotes, and allow no
+--- escapes at all inside single quotes): Brook never spawns a shell, so
 --- there is no variable interpolation or command substitution to guard
 --- against, and those extra escapes only caused backslashes meant for
 --- ripgrep's own regex syntax (e.g. \$ for a literal dollar sign) to be
 --- silently stripped. The only thing that still needs escaping is the
---- delimiter itself, so double quotes behave exactly like single quotes
---- except that \" can be used to embed a literal double quote without
---- closing the token.
+--- delimiter itself, so single and double quotes behave identically: \' can
+--- be used to embed a literal single quote inside a single-quoted token, and
+--- \" can be used to embed a literal double quote inside a double-quoted
+--- token, without closing either.
 ---
 --- `strict_posix` reproduces full POSIX shell semantics, so a token copied
 --- from (or destined for) an actual shell round-trips exactly, at the cost
---- of reintroducing the \$/\`-swallowing surprise for regex patterns. Opt in
---- via the `strict_posix_quoting` setup option.
-local DOUBLE_QUOTE_ESCAPES = {
+--- of reintroducing the \$/\`-swallowing surprise for regex patterns, and the
+--- inability to escape a quote from inside single quotes (POSIX shells have
+--- no escapes at all inside single quotes; use the 'foo'\''bar' idiom
+--- instead). Opt in via the `strict_posix_quoting` setup option.
+local QUOTE_ESCAPES = {
   literal = {
-    ['"'] = true,
+    double = { ['"'] = true },
+    single = { ["'"] = true },
   },
   strict_posix = {
-    ['$'] = true,
-    ['`'] = true,
-    ['"'] = true,
-    ['\\'] = true,
+    double = {
+      ['$'] = true,
+      ['`'] = true,
+      ['"'] = true,
+      ['\\'] = true,
+    },
+    single = {},
   },
 }
 
@@ -50,14 +59,20 @@ local ESCAPE = '\\'
 --- The purpose it to prepare the token to be passed to `vim.fn.jobstart()`.
 ---
 --- This handles:
----   - Single-quoted strings: 'foo bar' => foo bar (no escapes inside)
+---   - Single-quoted strings: 'foo bar' => foo bar. By default (`strict` =
+---     false) only \' is special, letting a literal single quote be embedded
+---     without closing the token. All other backslash sequences pass through
+---     literally. With `strict` = true, no escapes apply inside single
+---     quotes at all, matching real POSIX shells.
 ---   - Double-quoted strings: "foo bar" => foo bar. By default (`strict` =
 ---     false) only \" is special; all other backslash sequences, including
 ---     \$, \`, and \\, pass through literally so ripgrep sees exactly what
 ---     was typed. With `strict` = true, full POSIX escapes apply (\$, \`,
 ---     \", \\), matching what a real shell would produce.
 ---   - Backslash escapes outside quotes: foo\ bar => foo bar
----   - The POSIX idiom for single quotes: 'it'\''s' => it's
+---   - The POSIX idiom for single quotes: 'it'\''s' => it's (still works in
+---     both modes, though in the default mode \' inside the quotes achieves
+---     the same result more directly)
 ---   - Mixed quoting: foo"bar"'baz' => foobarbaz
 ---
 --- Returns nil for malformed input (unterminated quotes).
@@ -68,11 +83,14 @@ local ESCAPE = '\\'
 --- which is what the external command receives.
 ---
 ---@param token string The shell token to unquote
----@param strict? boolean Use full POSIX double-quote escapes (\$, \`, \", \\)
----  instead of the default, regex-friendly literal mode (only \")
+---@param strict? boolean Use full POSIX quote escapes (\$, \`, \", \\ inside
+---  double quotes, and no escapes at all inside single quotes) instead of the
+---  default, regex-friendly literal mode (only \" and \' respectively)
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
 function M.posix_unquote(token, strict)
-  local double_quote_escapes = strict and DOUBLE_QUOTE_ESCAPES.strict_posix or DOUBLE_QUOTE_ESCAPES.literal
+  local mode = strict and QUOTE_ESCAPES.strict_posix or QUOTE_ESCAPES.literal
+  local double_quote_escapes = mode.double
+  local single_quote_escapes = mode.single
   local state = states.NORMAL
   local result = {}
   local len = #token
@@ -83,12 +101,16 @@ function M.posix_unquote(token, strict)
     local next_char = token:sub(i + 1, i + 1)
 
     if state == states.SINGLE then
-      -- CASE 1: Inside single quotes: no escaping, all characters are literal
+      -- CASE 1: Inside single quotes: handle escapes (mirrors double quotes)
       ------------------------------------------------------------------------
       if ch == SINGLE_QUOTE then
         state = states.NORMAL -- close single quote
+      elseif ch == ESCAPE and single_quote_escapes[next_char] then
+        -- Escape: collect the next char and skip the backslash.
+        table.insert(result, next_char)
+        i = i + 1
       else
-        -- Regular character.
+        -- Unrecognised escapes pass through literally, same as double quotes.
         table.insert(result, ch)
       end
     elseif state == states.DOUBLE then
@@ -143,7 +165,7 @@ end
 --- Returns nil if any token is malformed (unterminated quotes).
 ---
 ---@param tokens string[]|nil List of shell tokens
----@param strict? boolean Use full POSIX double-quote escapes, see posix_unquote
+---@param strict? boolean Use full POSIX quote escapes, see posix_unquote
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
 function M.posix_unquote_all(tokens, strict)
   if not tokens then

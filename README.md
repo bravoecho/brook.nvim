@@ -131,9 +131,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Populate search register for n/N navigation and :cfdo substitutions
     set_search_register = true,
 
-    -- See "Quoting" below. Default (false) treats double quotes literally,
-    -- like single quotes. Set true to reproduce real shell escaping rules
-    -- instead, so a command round-trips exactly with your shell.
+    -- See "Quoting" below. Default (false) treats single and double quotes
+    -- literally, the same way. Set true to reproduce real shell escaping
+    -- rules instead, so a command round-trips exactly with your shell.
     strict_posix_quoting = false,
   },
 }
@@ -208,20 +208,24 @@ Quotes are delimiters only:
 
 * you can use either single or double quotes interchangeably
 * what you type in quotes is exactly what ripgrep receives
-* the only exception is `\"` which embeds a literal quote in double quotes
+* the only exception is `\'`/`\"`, which embed a literal quote inside a
+  quoted string of the corresponding kind, without closing it
 
 This is a deliberate departure from POSIX shell rules, which also treat `\$`,
-`` \` ``, and `\\` as escapes inside double quotes. Since Brook never spawns a
-shell, there's nothing for those escapes to guard against (no variable
-interpolation, no command substitution) — they only served to silently strip
-backslashes that ripgrep needed for its own regex syntax, e.g. turning
-`"myPhpFunction\(\$"` into the pattern `myPhpFunction\($` (a dangling end-of-line
-anchor) instead of the intended literal `myPhpFunction($`.
+`` \` ``, and `\\` as escapes inside double quotes, and allow no escapes at
+all inside single quotes. Since Brook never spawns a shell, there's nothing
+for those escapes to guard against (no variable interpolation, no command
+substitution). They only served to silently strip backslashes that ripgrep
+needed for its own regex syntax, e.g. turning `"myPhpFunction\(\$"` into the
+pattern `myPhpFunction\($` (a dangling end-of-line anchor) instead of the
+intended literal `myPhpFunction($`.
 
 If you rely on pasting commands between Brook and an actual shell and want
 that round-trip to be exact instead, set `strict_posix_quoting = true`: this
-restores full POSIX escaping in double quotes, matching what bash/zsh would
-produce for the same command — including the caveat above.
+restores full POSIX escaping in double quotes, and POSIX's no-escapes rule in
+single quotes (embed a literal single quote with the `'foo'\''bar'` idiom
+instead), matching what bash/zsh would produce for the same command —
+including the caveat above.
 
 ### Pro Tips
 

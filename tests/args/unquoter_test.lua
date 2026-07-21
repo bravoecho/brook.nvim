@@ -8,6 +8,7 @@ local deep_eq = h.deep_eq
 local unquoter = require('brook.args.unquoter')
 local posix_unquote = unquoter.posix_unquote
 local posix_unquote_all = unquoter.posix_unquote_all
+local tokenise = require('brook.args.tokeniser').tokenise
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------
@@ -45,8 +46,16 @@ test('single: preserves double quotes inside', function()
   eq(posix_unquote("'say \"hello\"'"), 'say "hello"')
 end)
 
-test('single: preserves backslashes (no escapes in single quotes)', function()
+test('single: escaped single quote', function()
+  eq(posix_unquote("'it\\'s'"), "it's")
+end)
+
+test('single: unrecognised escape passes through', function()
   eq(posix_unquote("'foo\\nbar'"), 'foo\\nbar')
+end)
+
+test('single: backslash-backslash preserved (not collapsed)', function()
+  eq(posix_unquote("'foo\\\\bar'"), 'foo\\\\bar')
 end)
 
 test('single: preserves dollar signs', function()
@@ -113,6 +122,10 @@ end)
 --------------------------------------------------------------------------------
 --- POSIX single quote escape idiom --------------------------------------------
 --------------------------------------------------------------------------------
+--- This idiom (closing, escaping a quote outside the quotes, then reopening)
+--- still works in the default mode, though \' inside the quotes achieves the
+--- same result more directly. It remains the only way to embed a literal
+--- single quote in `strict_posix_quoting` mode, see below.
 
 test('posix idiom: basic', function()
   -- 'foo'\''bar' means: 'foo' + escaped single quote + 'bar'
@@ -229,7 +242,8 @@ end)
 --------------------------------------------------------------------------------
 --- Opt-in mode that reproduces full POSIX shell semantics, so a command
 --- copied from (or destined for) a real shell round-trips exactly -- at the
---- cost of reintroducing the \$/\`-swallowing surprise for regex patterns.
+--- cost of reintroducing the \$/\`-swallowing surprise for regex patterns,
+--- and losing the ability to escape a quote from inside single quotes.
 
 test('strict: escaped dollar sign is swallowed, like a real shell', function()
   eq(posix_unquote('"foo\\$bar"', true), 'foo$bar')
@@ -251,8 +265,33 @@ test('strict: unrecognised escape still passes through', function()
   eq(posix_unquote('"foo\\nbar"', true), 'foo\\nbar')
 end)
 
-test('strict: single quotes are unaffected by the flag', function()
+test('strict: single quotes with no quote characters are unaffected by the flag', function()
   eq(posix_unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+end)
+
+test('strict: no escapes at all inside single quotes, unlike the default mode', function()
+  eq(posix_unquote("'foo\\$bar'", true), 'foo\\$bar')
+end)
+
+test('strict: the default mode\'s \\\' escape idiom is malformed instead (unterminated quote)', function()
+  eq(posix_unquote("'it\\'s'", true), nil)
+end)
+
+test('strict: full pipeline rejects the default-mode idiom, like a real shell', function()
+  -- 'it\'s a test' relies on the default mode's \' escape to stay one word.
+  -- tokenise() and posix_unquote() have distinct jobs: the tokeniser only
+  -- finds word boundaries and never rejects anything by itself -- see
+  -- "single quotes escape: strict mode closes the quote early, unlike
+  -- default mode" in tokeniser_test.lua, which shows it happily emits
+  -- { "'it\'s", "a", "test'" } even though the last token's quote never
+  -- closes. It's posix_unquote, called here on each of those tokens, that
+  -- notices the dangling quote and returns nil -- so the two stages
+  -- cooperate to reject this input end-to-end, exactly as `rg 'it\'s a
+  -- test'` would be rejected by an actual shell.
+  local input = "'it\\'s a test'"
+  eq(posix_unquote_all(tokenise(input, true), true), nil)
+  -- The same input parses fine in the default (non-strict) mode.
+  eq(posix_unquote_all(tokenise(input, false), false)[1], "it's a test")
 end)
 
 test('strict: reproduces the real-shell divergence between quote styles', function()

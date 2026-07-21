@@ -48,7 +48,7 @@
 --- excessive memory use (default: 200, range: 100-500)
 ---@field max_preview_chars number
 ---
---- Use full POSIX shell escaping rules inside double-quoted arguments
+--- Use full POSIX shell escaping rules for quoted arguments
 --- (default: false), see brook.UserConfig
 ---@field strict_posix_quoting boolean
 ---

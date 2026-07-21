@@ -67,6 +67,40 @@ test('single quotes: empty with following token', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Escapes inside single quotes ------------------------------------------------
+--------------------------------------------------------------------------------
+
+test('single quotes escape: escaped quote does not close the token', function()
+  deep_eq(tokenise("'it\\'s a test'"), { "'it\\'s a test'" })
+end)
+
+test('single quotes escape: escaped backslash', function()
+  deep_eq(tokenise("'foo\\\\bar'"), { "'foo\\\\bar'" })
+end)
+
+test('single quotes escape: multiple escaped quotes', function()
+  deep_eq(tokenise("'foo\\'bar\\'baz'"), { "'foo\\'bar\\'baz'" })
+end)
+
+test('single quotes escape: strict mode closes the quote early, unlike default mode', function()
+  -- The tokeniser only finds *word* boundaries (splits on unquoted
+  -- whitespace) and never rejects input -- it has no notion of "malformed".
+  -- In strict mode the backslash isn't an escape inside single quotes, so
+  -- the quote here closes right after "it\", "s" glues onto that same word
+  -- (no whitespace separates them, same rule as the "glued to unquoted"
+  -- tests above), then "a" and "test'" are their own words. The final
+  -- token, "test'", opens an unmatched quote and is still emitted as-is --
+  -- the tokeniser doesn't notice or care.
+  --
+  -- It's posix_unquote (in unquoter.lua), not the tokeniser, that walks
+  -- these tokens afterwards and detects the unterminated quote, returning
+  -- nil for the whole command. See "strict: full pipeline rejects the
+  -- default-mode idiom, like a real shell" in unquoter_test.lua for that
+  -- end-to-end behaviour.
+  deep_eq(tokenise("'it\\'s a test'", true), { "'it\\'s", 'a', "test'" })
+end)
+
+--------------------------------------------------------------------------------
 --- Double quotes --------------------------------------------------------------
 --------------------------------------------------------------------------------
 

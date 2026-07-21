@@ -100,7 +100,7 @@ function M.raw(opts, cfg)
   -- 1. Tokenise
   --------------
   -- Tokenise the command string (split on whitespace, respect quotes)
-  local tokens = tokenise(opts.args_string)
+  local tokens = tokenise(opts.args_string, cfg.strict_posix_quoting)
 
   if not tokens or #tokens == 0 then
     vim.notify('rg: no arguments provided', vim.log.levels.ERROR)

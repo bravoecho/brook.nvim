@@ -126,8 +126,8 @@ The full translation spec (all supported/unsupported constructs, edge cases) liv
 
 `lua/brook/args/` implements POSIX-compatible shell tokenisation and unquoting so the user can pass `:Rg 'hello world'` exactly as they would on the command line.
 
-- **tokeniser.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes, and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
-- **unquoter.lua** — Interprets quoted tokens into plain strings. Handles single-quoted (no escapes), double-quoted (only `\\`, `\"`, `\$`, `\`` escapes), and backslash-escaped characters.
+- **tokeniser.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes (including `\'`/`\"` inside their matching quotes), and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
+- **unquoter.lua** — Interprets quoted tokens into plain strings. By default, single- and double-quoted strings behave identically: only the matching quote character (`\'`, `\"`) is a recognised escape, everything else (including `\\`, `\$`, `` \` ``) passes through literally. An opt-in `strict_posix_quoting` mode restores full POSIX escaping (`\\`, `\"`, `\$`, `` \` `` in double quotes; no escapes at all in single quotes).
 - **parser.lua** — Extracts ripgrep search pattern (first positional or `-e`/`--regexp`), interprets a minimal subset of ripgrep flags (`-F`, `-w`, `-s`, `-i`, `-S`, `-n`, `--vimgrep`, `-P`, `--multiline`, `--engine`) to support Neovim features (search register, n/N navigation).
 
 ---
