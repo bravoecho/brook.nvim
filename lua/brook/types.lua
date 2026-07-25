@@ -60,13 +60,17 @@
 --- (default: 200, range: 100-500)
 ---@field max_preview_chars? number
 ---
---- Use full POSIX shell escaping rules for quoted arguments: \$, \`, \", \\
---- inside double quotes, and no escapes at all inside single quotes, so a
---- command copied from (or destined for) a real shell round-trips exactly.
---- When false (default), single and double quotes behave identically --
---- only \' / \" is special, to embed a literal quote -- so ripgrep patterns
---- containing \$, \`, or \\ are not silently altered (default: false)
----@field strict_posix_quoting? boolean
+--- Quoting mode for unquoting command-line arguments: 'literal' (default) or
+--- 'posix'.
+---
+--- 'literal': single and double quotes behave identically -- only \' / \" is
+--- special, to embed a literal quote -- so ripgrep patterns containing \$,
+--- \`, or \\ are not silently altered.
+---
+--- 'posix': full POSIX shell escaping rules apply: \$, \`, \", \\ inside
+--- double quotes, and no escapes at all inside single quotes, so a command
+--- copied from (or destined for) a real shell round-trips exactly.
+---@field quoting_mode? brook.args.QuotingMode
 ---
 --- Print execution benchmark results (only for development, default: false)
 ---@field _benchmark? boolean

@@ -133,7 +133,7 @@ end)
 --- This idiom (closing, escaping a quote outside the quotes, then reopening)
 --- still works in the default mode, though \' inside the quotes achieves the
 --- same result more directly. It remains the only way to embed a literal
---- single quote in `strict_posix_quoting` mode, see below.
+--- single quote in `quoting_mode = 'posix'`, see below.
 
 test('posix idiom: basic', function()
   -- 'foo'\''bar' means: 'foo' + escaped single quote + 'bar'
@@ -246,7 +246,7 @@ test('double: unescaped backtick preserved', function()
 end)
 
 --------------------------------------------------------------------------------
---- strict_posix_quoting mode ---------------------------------------------------
+--- quoting_mode = 'posix' -------------------------------------------------------
 --------------------------------------------------------------------------------
 --- Opt-in mode that reproduces full POSIX shell semantics, so a command
 --- copied from (or destined for) a real shell round-trips exactly -- at the

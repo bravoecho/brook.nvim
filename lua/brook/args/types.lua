@@ -50,6 +50,16 @@ M.output_format = {
 
 --------------------------------------------------------------------------------
 
+--- User-facing choice of quoting mode, see the `quoting_mode` brook.UserConfig
+--- option. Resolves to one of the brook.args.Quoting values below.
+---@enum brook.args.QuotingMode
+M.quoting_mode = {
+  literal = 'literal',
+  posix = 'posix',
+}
+
+--------------------------------------------------------------------------------
+
 --- Which characters can be backslash-escaped inside single- and
 --- double-quoted tokens. Shared contract between the tokeniser (which needs
 --- to know whether an escaped quote closes its token) and the unquoter
@@ -76,7 +86,7 @@ M.quoting = {
   --- actual shell round-trips exactly: \$, \`, \", \\ are escapable inside
   --- double quotes, and single quotes allow no escapes at all (use the
   --- 'foo'\''bar' idiom to embed a literal single quote instead). Opt in via
-  --- the `strict_posix_quoting` setup option.
+  --- `quoting_mode = 'posix'`.
   ---@type brook.args.Quoting
   strict_posix = {
     double = {

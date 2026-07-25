@@ -20,6 +20,12 @@ local valid_output_formats = {
   [args_types.output_format.unique_lines] = true,
 }
 
+--- Valid values for quoting_mode config option.
+local valid_quoting_modes = {
+  [args_types.quoting_mode.literal] = true,
+  [args_types.quoting_mode.posix] = true,
+}
+
 --- @param cfg? brook.UserConfig User-provided configuration
 function M.setup(cfg)
   ------------------------------------------------------------------------------
@@ -42,7 +48,7 @@ function M.setup(cfg)
     output_format = args_types.output_format.one_line_per_match,
     set_search_register = true,
     max_preview_chars = 200,
-    strict_posix_quoting = false,
+    quoting_mode = args_types.quoting_mode.literal,
     _benchmark = false,
   }
 
@@ -119,10 +125,18 @@ function M.setup(cfg)
     return
   end
 
-  -- Validate strict_posix_quoting
-  --------------------------------
-  if type(cfg.strict_posix_quoting) ~= 'boolean' then
-    vim.notify('brook.nvim: strict_posix_quoting must be a boolean', vim.log.levels.ERROR)
+  -- Validate quoting_mode
+  ------------------------
+  if cfg.quoting_mode ~= nil and not valid_quoting_modes[cfg.quoting_mode] then
+    vim.notify(
+      string.format(
+        "brook: invalid quoting_mode '%s', expected '%s' or '%s'",
+        tostring(cfg.quoting_mode),
+        args_types.quoting_mode.literal,
+        args_types.quoting_mode.posix
+      ),
+      vim.log.levels.ERROR
+    )
     return
   end
 
@@ -144,7 +158,8 @@ function M.setup(cfg)
     drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
-    quoting = cfg.strict_posix_quoting and args_types.quoting.strict_posix or args_types.quoting.literal,
+    quoting = cfg.quoting_mode == args_types.quoting_mode.posix and args_types.quoting.strict_posix
+      or args_types.quoting.literal,
     _benchmark = cfg._benchmark,
   }
 

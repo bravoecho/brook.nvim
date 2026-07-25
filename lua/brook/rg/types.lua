@@ -49,7 +49,7 @@
 ---@field max_preview_chars number
 ---
 --- Resolved quoting mode for unquoting command-line arguments, see
---- brook.args.Quoting and the `strict_posix_quoting` brook.UserConfig option
+--- brook.args.Quoting and the `quoting_mode` brook.UserConfig option
 ---@field quoting brook.args.Quoting
 ---
 --- Print execution benchmark results (only for development, default: false)
