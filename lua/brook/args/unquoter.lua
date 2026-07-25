@@ -1,4 +1,7 @@
---- POSIX shell unquoting: interpreting quoted tokens into plain strings.
+--- Shell-style unquoting: interpreting quoted tokens into plain strings.
+---
+--- By default, quotes are interpreted literally rather than with full POSIX
+--- shell semantics; an opt-in strict mode reproduces POSIX rules exactly.
 ---
 --- Decouples from the user's shell and from Neovim's unquoting.
 ---
@@ -54,7 +57,7 @@ local SINGLE_QUOTE = "'"
 local DOUBLE_QUOTE = '"'
 local ESCAPE = '\\'
 
---- Unquotes a shell token, interpreting POSIX shell quoting rules.
+--- Unquotes a shell token, interpreting its quoting rules.
 ---
 --- The purpose it to prepare the token to be passed to `vim.fn.jobstart()`.
 ---
@@ -87,7 +90,7 @@ local ESCAPE = '\\'
 ---  double quotes, and no escapes at all inside single quotes) instead of the
 ---  default, regex-friendly literal mode (only \" and \' respectively)
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
-function M.posix_unquote(token, strict)
+function M.unquote(token, strict)
   local mode = strict and QUOTE_ESCAPES.strict_posix or QUOTE_ESCAPES.literal
   local double_quote_escapes = mode.double
   local single_quote_escapes = mode.single
@@ -165,16 +168,16 @@ end
 --- Returns nil if any token is malformed (unterminated quotes).
 ---
 ---@param tokens string[]|nil List of shell tokens
----@param strict? boolean Use full POSIX quote escapes, see posix_unquote
+---@param strict? boolean Use full POSIX quote escapes, see unquote
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
-function M.posix_unquote_all(tokens, strict)
+function M.unquote_all(tokens, strict)
   if not tokens then
     return nil
   end
 
   local result = {}
   for _, token in ipairs(tokens) do
-    local unquoted = M.posix_unquote(token, strict)
+    local unquoted = M.unquote(token, strict)
     if not unquoted then return nil end
     table.insert(result, unquoted)
   end

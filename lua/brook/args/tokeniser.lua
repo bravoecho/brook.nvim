@@ -1,7 +1,7 @@
 --- Shell-style tokenisation: splitting a command string into logical arguments
 --- (beyond the whitespace-based splitting provided by Neovim for user commands.)
 ---
---- See also the companion module posix_unquote.lua
+--- See also the companion module unquoter.lua
 ---
 ---@module 'brook.tokeniser'
 local M = {}
@@ -23,7 +23,7 @@ local ESCAPE = '\\'
 ---     special meaning inside single quotes, matching real POSIX shells.
 ---   - POSIX single-quote escape: 'it'\''s' is a single token (in both modes)
 ---
---- Quotes and escapes are preserved in the output tokens; use posix_unquote
+--- Quotes and escapes are preserved in the output tokens; use unquote
 --- to interpret them.
 ---
 --- See:
@@ -33,7 +33,7 @@ local ESCAPE = '\\'
 ---@param qargs string The raw command-line string to tokenise
 ---@param strict? boolean Match real POSIX shells: no escapes inside single
 ---  quotes. Should mirror the `strict_posix_quoting` setup option, see
----  posix_unquote.
+---  unquote.
 ---@return string[] tokens List of tokens (may be empty if input is blank)
 function M.tokenise(qargs, strict)
   qargs = vim.trim(qargs)

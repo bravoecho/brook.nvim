@@ -643,7 +643,7 @@ end)
 --- Patterns with embedded quotes (post-unquoting) -----------------------------
 --------------------------------------------------------------------------------
 
--- After posix_unquote, the pattern itself may contain quote characters
+-- After unquote, the pattern itself may contain quote characters
 test('pattern: contains single quote', function()
   deep_eq(parse_args({ "it's" }, raw), result({ "it's" }))
 end)

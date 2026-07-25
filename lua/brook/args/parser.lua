@@ -29,7 +29,7 @@ local POSITIONAL_SEPARATOR = '--'
 --- returned in the `patterns` field. Support for merging them into a single
 --- alternation pattern (for search register integration) is handled downstream.
 ---
---- NOTE: The tokens must be already shell-unquoted (call posix_unquote_all to
+--- NOTE: The tokens must be already shell-unquoted (call unquote_all to
 --- pre-process them).
 ---
 ---@param tokens string[]|nil A list of shell-unquoted command-line tokens

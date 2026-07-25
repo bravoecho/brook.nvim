@@ -6,8 +6,8 @@ local test = h.test
 local eq = h.eq
 local deep_eq = h.deep_eq
 local unquoter = require('brook.args.unquoter')
-local posix_unquote = unquoter.posix_unquote
-local posix_unquote_all = unquoter.posix_unquote_all
+local unquote = unquoter.unquote
+local unquote_all = unquoter.unquote_all
 local tokenise = require('brook.args.tokeniser').tokenise
 
 --------------------------------------------------------------------------------
@@ -15,19 +15,19 @@ local tokenise = require('brook.args.tokeniser').tokenise
 --------------------------------------------------------------------------------
 
 test('unquoted: simple word', function()
-  eq(posix_unquote('hello'), 'hello')
+  eq(unquote('hello'), 'hello')
 end)
 
 test('unquoted: empty string', function()
-  eq(posix_unquote(''), '')
+  eq(unquote(''), '')
 end)
 
 test('unquoted: with hyphens', function()
-  eq(posix_unquote('--word-regexp'), '--word-regexp')
+  eq(unquote('--word-regexp'), '--word-regexp')
 end)
 
 test('unquoted: path-like', function()
-  eq(posix_unquote('src/lib/foo.lua'), 'src/lib/foo.lua')
+  eq(unquote('src/lib/foo.lua'), 'src/lib/foo.lua')
 end)
 
 --------------------------------------------------------------------------------
@@ -35,31 +35,31 @@ end)
 --------------------------------------------------------------------------------
 
 test('single: basic', function()
-  eq(posix_unquote("'hello world'"), 'hello world')
+  eq(unquote("'hello world'"), 'hello world')
 end)
 
 test('single: empty', function()
-  eq(posix_unquote("''"), '')
+  eq(unquote("''"), '')
 end)
 
 test('single: preserves double quotes inside', function()
-  eq(posix_unquote("'say \"hello\"'"), 'say "hello"')
+  eq(unquote("'say \"hello\"'"), 'say "hello"')
 end)
 
 test('single: escaped single quote', function()
-  eq(posix_unquote("'it\\'s'"), "it's")
+  eq(unquote("'it\\'s'"), "it's")
 end)
 
 test('single: unrecognised escape passes through', function()
-  eq(posix_unquote("'foo\\nbar'"), 'foo\\nbar')
+  eq(unquote("'foo\\nbar'"), 'foo\\nbar')
 end)
 
 test('single: backslash-backslash preserved (not collapsed)', function()
-  eq(posix_unquote("'foo\\\\bar'"), 'foo\\\\bar')
+  eq(unquote("'foo\\\\bar'"), 'foo\\\\bar')
 end)
 
 test('single: preserves dollar signs', function()
-  eq(posix_unquote("'$HOME'"), '$HOME')
+  eq(unquote("'$HOME'"), '$HOME')
 end)
 
 --------------------------------------------------------------------------------
@@ -67,28 +67,28 @@ end)
 --------------------------------------------------------------------------------
 
 test('double: basic', function()
-  eq(posix_unquote('"hello world"'), 'hello world')
+  eq(unquote('"hello world"'), 'hello world')
 end)
 
 test('double: empty', function()
-  eq(posix_unquote('""'), '')
+  eq(unquote('""'), '')
 end)
 
 test('double: preserves single quotes inside', function()
-  eq(posix_unquote('"it\'s"'), "it's")
+  eq(unquote('"it\'s"'), "it's")
 end)
 
 test('double: escaped double quote', function()
-  eq(posix_unquote('"say \\"hello\\""'), 'say "hello"')
+  eq(unquote('"say \\"hello\\""'), 'say "hello"')
 end)
 
 test('double: backslash-backslash preserved (not collapsed)', function()
-  eq(posix_unquote('"foo\\\\bar"'), 'foo\\\\bar')
+  eq(unquote('"foo\\\\bar"'), 'foo\\\\bar')
 end)
 
 test('double: unrecognised escape passes through', function()
   -- In POSIX shells, \n inside double quotes is just \n (backslash + n)
-  eq(posix_unquote('"foo\\nbar"'), 'foo\\nbar')
+  eq(unquote('"foo\\nbar"'), 'foo\\nbar')
 end)
 
 --------------------------------------------------------------------------------
@@ -96,27 +96,27 @@ end)
 --------------------------------------------------------------------------------
 
 test('backslash: escaped space', function()
-  eq(posix_unquote('foo\\ bar'), 'foo bar')
+  eq(unquote('foo\\ bar'), 'foo bar')
 end)
 
 test('backslash: escaped backslash', function()
-  eq(posix_unquote('foo\\\\bar'), 'foo\\bar')
+  eq(unquote('foo\\\\bar'), 'foo\\bar')
 end)
 
 test('backslash: escaped single quote', function()
-  eq(posix_unquote("\\'hello"), "'hello")
+  eq(unquote("\\'hello"), "'hello")
 end)
 
 test('backslash: escaped double quote', function()
-  eq(posix_unquote('\\"hello'), '"hello')
+  eq(unquote('\\"hello'), '"hello')
 end)
 
 test('backslash: lone escaped single quote', function()
-  eq(posix_unquote("\\'"), "'")
+  eq(unquote("\\'"), "'")
 end)
 
 test('backslash: lone escaped double quote', function()
-  eq(posix_unquote('\\"'), '"')
+  eq(unquote('\\"'), '"')
 end)
 
 --------------------------------------------------------------------------------
@@ -129,15 +129,15 @@ end)
 
 test('posix idiom: basic', function()
   -- 'foo'\''bar' means: 'foo' + escaped single quote + 'bar'
-  eq(posix_unquote("'foo'\\''bar'"), "foo'bar")
+  eq(unquote("'foo'\\''bar'"), "foo'bar")
 end)
 
 test('posix idiom: contraction', function()
-  eq(posix_unquote("'it'\\''s a test'"), "it's a test")
+  eq(unquote("'it'\\''s a test'"), "it's a test")
 end)
 
 test('posix idiom: multiple escapes', function()
-  eq(posix_unquote("'don'\\''t won'\\''t'"), "don't won't")
+  eq(unquote("'don'\\''t won'\\''t'"), "don't won't")
 end)
 
 --------------------------------------------------------------------------------
@@ -145,19 +145,19 @@ end)
 --------------------------------------------------------------------------------
 
 test('mixed: single then double', function()
-  eq(posix_unquote("'foo'\"bar\""), 'foobar')
+  eq(unquote("'foo'\"bar\""), 'foobar')
 end)
 
 test('mixed: double then single', function()
-  eq(posix_unquote("\"foo\"'bar'"), 'foobar')
+  eq(unquote("\"foo\"'bar'"), 'foobar')
 end)
 
 test('mixed: unquoted and quoted', function()
-  eq(posix_unquote("foo'bar baz'qux"), 'foobar bazqux')
+  eq(unquote("foo'bar baz'qux"), 'foobar bazqux')
 end)
 
 test('mixed: complex', function()
-  eq(posix_unquote("hello' world '\"!\""), 'hello world !')
+  eq(unquote("hello' world '\"!\""), 'hello world !')
 end)
 
 --------------------------------------------------------------------------------
@@ -165,51 +165,51 @@ end)
 --------------------------------------------------------------------------------
 
 test('rg: simple quoted pattern', function()
-  eq(posix_unquote("'hello world'"), 'hello world')
+  eq(unquote("'hello world'"), 'hello world')
 end)
 
 test('rg: regex with special chars', function()
-  eq(posix_unquote("'foo.*bar'"), 'foo.*bar')
+  eq(unquote("'foo.*bar'"), 'foo.*bar')
 end)
 
 test('rg: escaped parens (for literal search)', function()
-  eq(posix_unquote("'Fatal\\(err\\)'"), 'Fatal\\(err\\)')
+  eq(unquote("'Fatal\\(err\\)'"), 'Fatal\\(err\\)')
 end)
 
 test('rg: glob pattern', function()
-  eq(posix_unquote("'*.lua'"), '*.lua')
+  eq(unquote("'*.lua'"), '*.lua')
 end)
 
 test('rg: pattern with pipe', function()
-  eq(posix_unquote("'foo|bar'"), 'foo|bar')
+  eq(unquote("'foo|bar'"), 'foo|bar')
 end)
 
 test('rg: escaped double quotes', function()
-  eq(posix_unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
+  eq(unquote([["\.password-.+?(\"|')\)"]]), [[\.password-.+?("|')\)]])
 end)
 
 test('rg: double and single quotes agree on \\( \\$ (regression)', function()
-  eq(posix_unquote('"myPhpFunction\\(\\$"'), 'myPhpFunction\\(\\$')
-  eq(posix_unquote("'myPhpFunction\\(\\$'"), 'myPhpFunction\\(\\$')
+  eq(unquote('"myPhpFunction\\(\\$"'), 'myPhpFunction\\(\\$')
+  eq(unquote("'myPhpFunction\\(\\$'"), 'myPhpFunction\\(\\$')
 end)
 
 test('rg: quoted options and flags, double-quoted pattern option (outer)', function()
   deep_eq(
-    posix_unquote_all({ "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    unquote_all({ "'-e=\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
     { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
   )
 end)
 
 test('rg: quoted options and flags, double-quoted pattern option (inner)', function()
   deep_eq(
-    posix_unquote_all({ "-e='\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    unquote_all({ "-e='\"more data\"'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
     { '-e="more data"', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
   )
 end)
 
 test('rg: quoted options and flags, single-quoted pattern option', function()
   deep_eq(
-    posix_unquote_all({ "-e='more data'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
+    unquote_all({ "-e='more data'", "'-w'", '--vimgrep', '"--max-columns=300"', '--max-columns-preview', "'--color=never'" }),
     { '-e=more data', '-w', '--vimgrep', '--max-columns=300', '--max-columns-preview', '--color=never' }
   )
 end)
@@ -222,19 +222,19 @@ end)
 --- (same as \( or \n), so ripgrep sees exactly what the user typed.
 
 test('double: backslash-dollar passes through literally', function()
-  eq(posix_unquote('"foo\\$bar"'), 'foo\\$bar')
+  eq(unquote('"foo\\$bar"'), 'foo\\$bar')
 end)
 
 test('double: backslash-backtick passes through literally', function()
-  eq(posix_unquote('"foo\\`bar"'), 'foo\\`bar')
+  eq(unquote('"foo\\`bar"'), 'foo\\`bar')
 end)
 
 test('double: unescaped dollar sign preserved', function()
-  eq(posix_unquote('"foo$bar"'), 'foo$bar')
+  eq(unquote('"foo$bar"'), 'foo$bar')
 end)
 
 test('double: unescaped backtick preserved', function()
-  eq(posix_unquote('"foo`bar"'), 'foo`bar')
+  eq(unquote('"foo`bar"'), 'foo`bar')
 end)
 
 --------------------------------------------------------------------------------
@@ -246,65 +246,65 @@ end)
 --- and losing the ability to escape a quote from inside single quotes.
 
 test('strict: escaped dollar sign is swallowed, like a real shell', function()
-  eq(posix_unquote('"foo\\$bar"', true), 'foo$bar')
+  eq(unquote('"foo\\$bar"', true), 'foo$bar')
 end)
 
 test('strict: escaped backtick is swallowed, like a real shell', function()
-  eq(posix_unquote('"foo\\`bar"', true), 'foo`bar')
+  eq(unquote('"foo\\`bar"', true), 'foo`bar')
 end)
 
 test('strict: escaped backslash collapses, like a real shell', function()
-  eq(posix_unquote('"foo\\\\bar"', true), 'foo\\bar')
+  eq(unquote('"foo\\\\bar"', true), 'foo\\bar')
 end)
 
 test('strict: escaped double quote still works', function()
-  eq(posix_unquote('"say \\"hello\\""', true), 'say "hello"')
+  eq(unquote('"say \\"hello\\""', true), 'say "hello"')
 end)
 
 test('strict: unrecognised escape still passes through', function()
-  eq(posix_unquote('"foo\\nbar"', true), 'foo\\nbar')
+  eq(unquote('"foo\\nbar"', true), 'foo\\nbar')
 end)
 
 test('strict: single quotes with no quote characters are unaffected by the flag', function()
-  eq(posix_unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+  eq(unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
 end)
 
 test('strict: no escapes at all inside single quotes, unlike the default mode', function()
-  eq(posix_unquote("'foo\\$bar'", true), 'foo\\$bar')
+  eq(unquote("'foo\\$bar'", true), 'foo\\$bar')
 end)
 
 test('strict: the default mode\'s \\\' escape idiom is malformed instead (unterminated quote)', function()
-  eq(posix_unquote("'it\\'s'", true), nil)
+  eq(unquote("'it\\'s'", true), nil)
 end)
 
 test('strict: full pipeline rejects the default-mode idiom, like a real shell', function()
   -- 'it\'s a test' relies on the default mode's \' escape to stay one word.
-  -- tokenise() and posix_unquote() have distinct jobs: the tokeniser only
+  -- tokenise() and unquote() have distinct jobs: the tokeniser only
   -- finds word boundaries and never rejects anything by itself -- see
   -- "single quotes escape: strict mode closes the quote early, unlike
   -- default mode" in tokeniser_test.lua, which shows it happily emits
   -- { "'it\'s", "a", "test'" } even though the last token's quote never
-  -- closes. It's posix_unquote, called here on each of those tokens, that
+  -- closes. It's unquote, called here on each of those tokens, that
   -- notices the dangling quote and returns nil -- so the two stages
   -- cooperate to reject this input end-to-end, exactly as `rg 'it\'s a
   -- test'` would be rejected by an actual shell.
   local input = "'it\\'s a test'"
-  eq(posix_unquote_all(tokenise(input, true), true), nil)
+  eq(unquote_all(tokenise(input, true), true), nil)
   -- The same input parses fine in the default (non-strict) mode.
-  eq(posix_unquote_all(tokenise(input, false), false)[1], "it's a test")
+  eq(unquote_all(tokenise(input, false), false)[1], "it's a test")
 end)
 
 test('strict: reproduces the real-shell divergence between quote styles', function()
   -- This is the documented, intentional trade-off of strict mode: unlike
   -- the default literal mode, double and single quotes disagree here,
   -- exactly as bash/zsh would for `rg "myPhpFunction\(\$"` vs `rg 'myPhpFunction\(\$'`.
-  eq(posix_unquote('"myPhpFunction\\(\\$"', true), 'myPhpFunction\\($')
-  eq(posix_unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+  eq(unquote('"myPhpFunction\\(\\$"', true), 'myPhpFunction\\($')
+  eq(unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
 end)
 
-test('strict: posix_unquote_all threads the flag through', function()
+test('strict: unquote_all threads the flag through', function()
   deep_eq(
-    posix_unquote_all({ '"foo\\$bar"', "'baz\\$qux'" }, true),
+    unquote_all({ '"foo\\$bar"', "'baz\\$qux'" }, true),
     { 'foo$bar', 'baz\\$qux' }
   )
 end)
@@ -314,31 +314,31 @@ end)
 --------------------------------------------------------------------------------
 
 test('edge: unterminated single quote returns nil', function()
-  eq(posix_unquote("'hello"), nil)
+  eq(unquote("'hello"), nil)
 end)
 
 test('edge: unterminated double quote returns nil', function()
-  eq(posix_unquote('"hello'), nil)
+  eq(unquote('"hello'), nil)
 end)
 
 test('edge: trailing backslash returns nil', function()
-  eq(posix_unquote('foo\\'), nil)
+  eq(unquote('foo\\'), nil)
 end)
 
 test('edge: only quotes', function()
-  eq(posix_unquote("''\"\""), '')
+  eq(unquote("''\"\""), '')
 end)
 
 test('edge: lone single quote returns nil', function()
-  eq(posix_unquote("'"), nil)
+  eq(unquote("'"), nil)
 end)
 
 test('edge: lone double quote returns nil', function()
-  eq(posix_unquote('"'), nil)
+  eq(unquote('"'), nil)
 end)
 
 test('edge: lone backslash returns nil', function()
-  eq(posix_unquote('\\'), nil)
+  eq(unquote('\\'), nil)
 end)
 
 --------------------------------------------------------------------------------

@@ -11,7 +11,7 @@
 local exec_module = require('brook.rg.exec')
 local exec = exec_module._exec
 local tokenise = require('brook.args.tokeniser').tokenise
-local posix_unquote_all = require('brook.args.unquoter').posix_unquote_all
+local unquote_all = require('brook.args.unquoter').unquote_all
 local parse_args = require('brook.args.parser').parse_args
 
 local M = {}
@@ -82,8 +82,8 @@ end
 
 --- Searches with user-defined arguments.
 ---
---- The raw command string is tokenised using POSIX shell rules, then each token
---- is unquoted before being passed to rg. This simulates what a shell would do,
+--- The raw command string is tokenised shell-style, then each token is
+--- unquoted before being passed to rg. This simulates what a shell would do,
 --- but without actually invoking a shell process.
 ---
 --- Unquoting is necessary here because the user types their command using shell
@@ -110,7 +110,7 @@ function M.raw(opts, cfg)
   -- 2. Unquote
   -------------
   -- Unquote each token (interprets shell quoting rules)
-  local rg_args = posix_unquote_all(tokens, cfg.strict_posix_quoting)
+  local rg_args = unquote_all(tokens, cfg.strict_posix_quoting)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then

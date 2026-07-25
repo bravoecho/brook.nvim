@@ -51,7 +51,7 @@ lua/brook/
   args/
     parser.lua          — Extracts ripgrep search pattern and flags from unquoted tokens
     tokeniser.lua       — Shell-style tokenisation (splits on whitespace, respects quotes)
-    unquoter.lua        — POSIX shell unquoting (interprets single/double quotes, escapes)
+    unquoter.lua        — Shell-style unquoting, literal by default (interprets single/double quotes, escapes)
     types.lua           — ParsedArgs class, SearchCase enum, OutputFormat enum
 
   lib/
@@ -65,8 +65,8 @@ lua/brook/
 
 ```
 User invokes command
-  -> args module: tokenises and unquotes input (POSIX shell rules),
-     extracts ripgrep pattern and flags
+  -> args module: tokenises and unquotes input (shell-style, literal by
+     default), extracts ripgrep pattern and flags
   -> pattern module: translates ripgrep regex to Vim \v-mode regex
      (tokeniser -> parser -> translator)
   -> rg/exec: spawns ripgrep without a shell,
@@ -124,7 +124,7 @@ The full translation spec (all supported/unsupported constructs, edge cases) liv
 
 ## Args Module
 
-`lua/brook/args/` implements POSIX-compatible shell tokenisation and unquoting so the user can pass `:Rg 'hello world'` exactly as they would on the command line.
+`lua/brook/args/` implements shell-style tokenisation and unquoting, literal by default with an opt-in strict POSIX mode, so the user can pass `:Rg 'hello world'` exactly as they would on the command line.
 
 - **tokeniser.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes (including `\'`/`\"` inside their matching quotes), and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
 - **unquoter.lua** — Interprets quoted tokens into plain strings. By default, single- and double-quoted strings behave identically: only the matching quote character (`\'`, `\"`) is a recognised escape, everything else (including `\\`, `\$`, `` \` ``) passes through literally. An opt-in `strict_posix_quoting` mode restores full POSIX escaping (`\\`, `\"`, `\$`, `` \` `` in double quotes; no escapes at all in single quotes).
@@ -147,7 +147,7 @@ Tests live in `tests/` and are plain Lua scripts using assertion helpers from `t
 - `lib/fifo` — FIFO queue push/pull/len/is_empty
 - `args/parser` — Token extraction, option parsing, stacked short args, long args with =
 - `args/tokeniser` — Shell-style tokenisation with quotes and escapes
-- `args/unquoter` — POSIX unquoting of single, double, mixed, and escaped tokens
+- `args/unquoter` — Literal-by-default unquoting of single, double, mixed, and escaped tokens
 - `pattern/tokeniser` (5 files) — Basic tokens, groups, escapes, character classes, complex patterns
 - `pattern/parser` (5 files) — Escape classification, wordness, boundary handling, validation, complex
 - `pattern/translator` (8 files) — Basics, literals, escapes, boundaries, quantifiers, groups, char classes, complex

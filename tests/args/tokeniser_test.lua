@@ -92,7 +92,7 @@ test('single quotes escape: strict mode closes the quote early, unlike default m
   -- token, "test'", opens an unmatched quote and is still emitted as-is --
   -- the tokeniser doesn't notice or care.
   --
-  -- It's posix_unquote (in unquoter.lua), not the tokeniser, that walks
+  -- It's unquote (in unquoter.lua), not the tokeniser, that walks
   -- these tokens afterwards and detects the unterminated quote, returning
   -- nil for the whole command. See "strict: full pipeline rejects the
   -- default-mode idiom, like a real shell" in unquoter_test.lua for that
