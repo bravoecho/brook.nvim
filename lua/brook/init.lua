@@ -144,7 +144,7 @@ function M.setup(cfg)
     drain_phase_max_batch_size = cfg.drain_phase_max_batch_size,
     drain_phase_flush_throttle_ms = cfg.drain_phase_flush_throttle_ms,
     max_preview_chars = cfg.max_preview_chars,
-    strict_posix_quoting = cfg.strict_posix_quoting,
+    quoting = cfg.strict_posix_quoting and args_types.quoting.strict_posix or args_types.quoting.literal,
     _benchmark = cfg._benchmark,
   }
 

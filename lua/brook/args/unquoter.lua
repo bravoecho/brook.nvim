@@ -8,8 +8,6 @@
 ---
 ---@module 'brook.args.unquoter'
 
-local Types = require('brook.args.types')
-
 local M = {}
 
 ---@enum
@@ -28,20 +26,20 @@ local ESCAPE = '\\'
 --- The purpose it to prepare the token to be passed to `vim.fn.jobstart()`.
 ---
 --- This handles:
----   - Single-quoted strings: 'foo bar' => foo bar. By default (quoting =
----     Types.quoting.literal) only \' is special, letting a literal single
----     quote be embedded without closing the token. All other backslash
----     sequences pass through literally. With quoting = Types.quoting.strict_posix,
----     no escapes apply inside single quotes at all, matching real POSIX shells.
----   - Double-quoted strings: "foo bar" => foo bar. By default only \" is
----     special; all other backslash sequences, including \$, \`, and \\, pass
----     through literally so ripgrep sees exactly what was typed. In strict
----     POSIX mode, full POSIX escapes apply (\$, \`, \", \\), matching what a
----     real shell would produce.
+---   - Single-quoted strings: 'foo bar' => foo bar. With `quoting.literal`
+---     (see types.lua) only \' is special, letting a literal single quote be
+---     embedded without closing the token. All other backslash sequences
+---     pass through literally. With `quoting.strict_posix`, no escapes apply
+---     inside single quotes at all, matching real POSIX shells.
+---   - Double-quoted strings: "foo bar" => foo bar. With `quoting.literal`
+---     only \" is special; all other backslash sequences, including \$, \`,
+---     and \\, pass through literally so ripgrep sees exactly what was
+---     typed. With `quoting.strict_posix`, full POSIX escapes apply (\$,
+---     \`, \", \\), matching what a real shell would produce.
 ---   - Backslash escapes outside quotes: foo\ bar => foo bar
 ---   - The POSIX idiom for single quotes: 'it'\''s' => it's (still works in
----     both modes, though in the default mode \' inside the quotes achieves
----     the same result more directly)
+---     both modes, though with `quoting.literal`, \' inside the quotes
+---     achieves the same result more directly)
 ---   - Mixed quoting: foo"bar"'baz' => foobarbaz
 ---
 --- Returns nil for malformed input (unterminated quotes).
@@ -52,11 +50,9 @@ local ESCAPE = '\\'
 --- which is what the external command receives.
 ---
 ---@param token string The shell token to unquote
----@param quoting? brook.args.Quoting Which characters are escapable (see
----  types.lua); defaults to Types.quoting.literal
+---@param quoting brook.args.Quoting Which characters are escapable, see types.lua
 ---@return string|nil unquoted_token The unquoted value, or nil if malformed
 function M.unquote(token, quoting)
-  quoting = quoting or Types.quoting.literal
   local double_quote_escapes = quoting.double
   local single_quote_escapes = quoting.single
   local state = states.NORMAL
@@ -133,7 +129,7 @@ end
 --- Returns nil if any token is malformed (unterminated quotes).
 ---
 ---@param tokens string[]|nil List of shell tokens
----@param quoting? brook.args.Quoting Which characters are escapable, see unquote
+---@param quoting brook.args.Quoting Which characters are escapable, see unquote
 ---@return string[]|nil unquoted_tokens List of unquoted values, or nil if any token is malformed
 function M.unquote_all(tokens, quoting)
   if not tokens then

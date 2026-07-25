@@ -6,10 +6,17 @@ local test = h.test
 local eq = h.eq
 local deep_eq = h.deep_eq
 local unquoter = require('brook.args.unquoter')
-local unquote = unquoter.unquote
-local unquote_all = unquoter.unquote_all
 local tokenise = require('brook.args.tokeniser').tokenise
 local Types = require('brook.args.types')
+
+-- quoting defaults to literal mode when omitted, so most tests below don't
+-- need to care about it; tests exercising strict_posix pass it explicitly.
+local function unquote(token, quoting)
+  return unquoter.unquote(token, quoting or Types.quoting.literal)
+end
+local function unquote_all(tokens, quoting)
+  return unquoter.unquote_all(tokens, quoting or Types.quoting.literal)
+end
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------

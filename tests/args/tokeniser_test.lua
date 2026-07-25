@@ -4,8 +4,14 @@
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
-local tokenise = require('brook.args.tokeniser').tokenise
+local raw_tokenise = require('brook.args.tokeniser').tokenise
 local Types = require('brook.args.types')
+
+-- quoting defaults to literal mode when omitted, so most tests below don't
+-- need to care about it; tests exercising strict_posix pass it explicitly.
+local function tokenise(qargs, quoting)
+  return raw_tokenise(qargs, quoting or Types.quoting.literal)
+end
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------

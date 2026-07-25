@@ -48,9 +48,9 @@
 --- excessive memory use (default: 200, range: 100-500)
 ---@field max_preview_chars number
 ---
---- Use full POSIX shell escaping rules for quoted arguments
---- (default: false), see brook.UserConfig
----@field strict_posix_quoting boolean
+--- Resolved quoting mode for unquoting command-line arguments, see
+--- brook.args.Quoting and the `strict_posix_quoting` brook.UserConfig option
+---@field quoting brook.args.Quoting
 ---
 --- Print execution benchmark results (only for development, default: false)
 ---@field _benchmark boolean
