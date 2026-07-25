@@ -53,6 +53,10 @@ function M.tokenise(qargs, quoting)
 
   local in_single = false
   local in_double = false
+
+  -- Does a backslash here prevent the next character from acting as a token
+  -- boundary or quote-toggle? If yes, set escaped = true so the next iteration
+  -- ignores that character's special meaning.
   local escaped = false
 
   while i <= len do
@@ -68,7 +72,19 @@ function M.tokenise(qargs, quoting)
       -- update state for the next iteration
       if escaped then
         escaped = false
-      elseif ch == ESCAPE and (not in_single or single_escapable) then
+      elseif ch == ESCAPE and (
+          -- `escaped` is a single flag reused for two purposes:
+          --
+          -- 1. suppressing delimiter-whitespace outside quotes (always active,
+          --    both literal and posix modes)
+          --
+          -- 2. suppressing quote-toggling inside quotes (mode-dependent: strict
+          --    POSIX gives backslash no power inside single quotes, so an
+          --    escaped quote must still close the string).
+          --
+          -- single_escapable exists only for the latter case.
+            not in_single or single_escapable
+          ) then
         escaped = true
       elseif ch == SINGLE_QUOTE and not in_double then
         in_single = not in_single
