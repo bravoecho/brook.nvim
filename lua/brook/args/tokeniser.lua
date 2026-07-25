@@ -4,6 +4,9 @@
 --- See also the companion module unquoter.lua
 ---
 ---@module 'brook.tokeniser'
+
+local Types = require('brook.args.types')
+
 local M = {}
 
 local SINGLE_QUOTE = "'"
@@ -16,11 +19,11 @@ local ESCAPE = '\\'
 ---   - Single-quoted strings: 'foo bar' is a single token
 ---   - Double-quoted strings: "foo bar" is a single token
 ---   - Backslash escapes: foo\ bar is a single token (outside single quotes)
----   - Escaped quotes: by default (`strict` = false), a backslash-escaped
----     quote character does not close its enclosing quotes, in both single-
----     and double-quoted tokens (e.g. 'it\'s' or "say \"hi\""), matching the
----     default literal unquoting mode. With `strict` = true, backslash has no
----     special meaning inside single quotes, matching real POSIX shells.
+---   - Escaped quotes: by default (quoting = Types.quoting.literal), a
+---     backslash-escaped quote character does not close its enclosing
+---     quotes, in both single- and double-quoted tokens (e.g. 'it\'s' or
+---     "say \"hi\""). With quoting = Types.quoting.strict_posix, backslash
+---     has no special meaning inside single quotes, matching real POSIX shells.
 ---   - POSIX single-quote escape: 'it'\''s' is a single token (in both modes)
 ---
 --- Quotes and escapes are preserved in the output tokens; use unquote
@@ -31,11 +34,13 @@ local ESCAPE = '\\'
 ---   - https://www.gnu.org/software/bash/manual/html_node/Quote-Removal.html
 ---
 ---@param qargs string The raw command-line string to tokenise
----@param strict? boolean Match real POSIX shells: no escapes inside single
----  quotes. Should mirror the `strict_posix_quoting` setup option, see
----  unquote.
+---@param quoting? brook.args.Quoting Which characters are escapable (see
+---  types.lua); should mirror the value passed to unquote. Defaults to
+---  Types.quoting.literal
 ---@return string[] tokens List of tokens (may be empty if input is blank)
-function M.tokenise(qargs, strict)
+function M.tokenise(qargs, quoting)
+  quoting = quoting or Types.quoting.literal
+  local single_escapable = next(quoting.single) ~= nil
   qargs = vim.trim(qargs)
   local tokens = {}
   local current = {}
@@ -67,7 +72,7 @@ function M.tokenise(qargs, strict)
       -- update state for the next iteration
       if escaped then
         escaped = false
-      elseif ch == ESCAPE and (not in_single or not strict) then
+      elseif ch == ESCAPE and (not in_single or single_escapable) then
         escaped = true
       elseif ch == SINGLE_QUOTE and not in_double then
         in_single = not in_single

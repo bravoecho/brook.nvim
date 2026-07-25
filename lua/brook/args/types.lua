@@ -50,4 +50,45 @@ M.output_format = {
 
 --------------------------------------------------------------------------------
 
+--- Which characters can be backslash-escaped inside single- and
+--- double-quoted tokens. Shared contract between the tokeniser (which needs
+--- to know whether an escaped quote closes its token) and the unquoter
+--- (which needs to know exactly which characters to unescape).
+---@class brook.args.Quoting
+---@field double table<string, boolean> Characters escapable inside double quotes
+---@field single table<string, boolean> Characters escapable inside single quotes
+
+M.quoting = {
+  --- Only the enclosing quote character is escapable, in both single and
+  --- double quotes. Everything else (including \\, \$, \`) passes through
+  --- literally, so ripgrep sees exactly what was typed. This is the default:
+  --- Brook never spawns a shell, so there is no variable interpolation or
+  --- command substitution to guard against, and full POSIX escaping only
+  --- caused backslashes meant for ripgrep's own regex syntax (e.g. \$ for a
+  --- literal dollar sign) to be silently stripped.
+  ---@type brook.args.Quoting
+  literal = {
+    double = { ['"'] = true },
+    single = { ["'"] = true },
+  },
+
+  --- Full POSIX shell semantics, so a token copied from (or destined for) an
+  --- actual shell round-trips exactly: \$, \`, \", \\ are escapable inside
+  --- double quotes, and single quotes allow no escapes at all (use the
+  --- 'foo'\''bar' idiom to embed a literal single quote instead). Opt in via
+  --- the `strict_posix_quoting` setup option.
+  ---@type brook.args.Quoting
+  strict_posix = {
+    double = {
+      ['$'] = true,
+      ['`'] = true,
+      ['"'] = true,
+      ['\\'] = true,
+    },
+    single = {},
+  },
+}
+
+--------------------------------------------------------------------------------
+
 return M

@@ -9,6 +9,7 @@ local unquoter = require('brook.args.unquoter')
 local unquote = unquoter.unquote
 local unquote_all = unquoter.unquote_all
 local tokenise = require('brook.args.tokeniser').tokenise
+local Types = require('brook.args.types')
 
 --------------------------------------------------------------------------------
 --- Unquoted input -------------------------------------------------------------
@@ -246,35 +247,35 @@ end)
 --- and losing the ability to escape a quote from inside single quotes.
 
 test('strict: escaped dollar sign is swallowed, like a real shell', function()
-  eq(unquote('"foo\\$bar"', true), 'foo$bar')
+  eq(unquote('"foo\\$bar"', Types.quoting.strict_posix), 'foo$bar')
 end)
 
 test('strict: escaped backtick is swallowed, like a real shell', function()
-  eq(unquote('"foo\\`bar"', true), 'foo`bar')
+  eq(unquote('"foo\\`bar"', Types.quoting.strict_posix), 'foo`bar')
 end)
 
 test('strict: escaped backslash collapses, like a real shell', function()
-  eq(unquote('"foo\\\\bar"', true), 'foo\\bar')
+  eq(unquote('"foo\\\\bar"', Types.quoting.strict_posix), 'foo\\bar')
 end)
 
 test('strict: escaped double quote still works', function()
-  eq(unquote('"say \\"hello\\""', true), 'say "hello"')
+  eq(unquote('"say \\"hello\\""', Types.quoting.strict_posix), 'say "hello"')
 end)
 
 test('strict: unrecognised escape still passes through', function()
-  eq(unquote('"foo\\nbar"', true), 'foo\\nbar')
+  eq(unquote('"foo\\nbar"', Types.quoting.strict_posix), 'foo\\nbar')
 end)
 
-test('strict: single quotes with no quote characters are unaffected by the flag', function()
-  eq(unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+test('strict: single quotes with no quote characters are unaffected by the mode', function()
+  eq(unquote("'myPhpFunction\\(\\$'", Types.quoting.strict_posix), 'myPhpFunction\\(\\$')
 end)
 
 test('strict: no escapes at all inside single quotes, unlike the default mode', function()
-  eq(unquote("'foo\\$bar'", true), 'foo\\$bar')
+  eq(unquote("'foo\\$bar'", Types.quoting.strict_posix), 'foo\\$bar')
 end)
 
 test('strict: the default mode\'s \\\' escape idiom is malformed instead (unterminated quote)', function()
-  eq(unquote("'it\\'s'", true), nil)
+  eq(unquote("'it\\'s'", Types.quoting.strict_posix), nil)
 end)
 
 test('strict: full pipeline rejects the default-mode idiom, like a real shell', function()
@@ -289,22 +290,22 @@ test('strict: full pipeline rejects the default-mode idiom, like a real shell', 
   -- cooperate to reject this input end-to-end, exactly as `rg 'it\'s a
   -- test'` would be rejected by an actual shell.
   local input = "'it\\'s a test'"
-  eq(unquote_all(tokenise(input, true), true), nil)
+  eq(unquote_all(tokenise(input, Types.quoting.strict_posix), Types.quoting.strict_posix), nil)
   -- The same input parses fine in the default (non-strict) mode.
-  eq(unquote_all(tokenise(input, false), false)[1], "it's a test")
+  eq(unquote_all(tokenise(input, Types.quoting.literal), Types.quoting.literal)[1], "it's a test")
 end)
 
 test('strict: reproduces the real-shell divergence between quote styles', function()
   -- This is the documented, intentional trade-off of strict mode: unlike
   -- the default literal mode, double and single quotes disagree here,
   -- exactly as bash/zsh would for `rg "myPhpFunction\(\$"` vs `rg 'myPhpFunction\(\$'`.
-  eq(unquote('"myPhpFunction\\(\\$"', true), 'myPhpFunction\\($')
-  eq(unquote("'myPhpFunction\\(\\$'", true), 'myPhpFunction\\(\\$')
+  eq(unquote('"myPhpFunction\\(\\$"', Types.quoting.strict_posix), 'myPhpFunction\\($')
+  eq(unquote("'myPhpFunction\\(\\$'", Types.quoting.strict_posix), 'myPhpFunction\\(\\$')
 end)
 
-test('strict: unquote_all threads the flag through', function()
+test('strict: unquote_all threads quoting through', function()
   deep_eq(
-    unquote_all({ '"foo\\$bar"', "'baz\\$qux'" }, true),
+    unquote_all({ '"foo\\$bar"', "'baz\\$qux'" }, Types.quoting.strict_posix),
     { 'foo$bar', 'baz\\$qux' }
   )
 end)

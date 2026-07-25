@@ -5,6 +5,7 @@ local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
 local tokenise = require('brook.args.tokeniser').tokenise
+local Types = require('brook.args.types')
 
 --------------------------------------------------------------------------------
 --- Empty input ----------------------------------------------------------------
@@ -97,7 +98,7 @@ test('single quotes escape: strict mode closes the quote early, unlike default m
   -- nil for the whole command. See "strict: full pipeline rejects the
   -- default-mode idiom, like a real shell" in unquoter_test.lua for that
   -- end-to-end behaviour.
-  deep_eq(tokenise("'it\\'s a test'", true), { "'it\\'s", 'a', "test'" })
+  deep_eq(tokenise("'it\\'s a test'", Types.quoting.strict_posix), { "'it\\'s", 'a', "test'" })
 end)
 
 --------------------------------------------------------------------------------

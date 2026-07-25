@@ -13,6 +13,7 @@ local exec = exec_module._exec
 local tokenise = require('brook.args.tokeniser').tokenise
 local unquote_all = require('brook.args.unquoter').unquote_all
 local parse_args = require('brook.args.parser').parse_args
+local Types = require('brook.args.types')
 
 local M = {}
 
@@ -97,10 +98,12 @@ end
 ---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.raw(opts, cfg)
+  local quoting = cfg.strict_posix_quoting and Types.quoting.strict_posix or Types.quoting.literal
+
   -- 1. Tokenise
   --------------
   -- Tokenise the command string (split on whitespace, respect quotes)
-  local tokens = tokenise(opts.args_string, cfg.strict_posix_quoting)
+  local tokens = tokenise(opts.args_string, quoting)
 
   if not tokens or #tokens == 0 then
     vim.notify('rg: no arguments provided', vim.log.levels.ERROR)
@@ -110,7 +113,7 @@ function M.raw(opts, cfg)
   -- 2. Unquote
   -------------
   -- Unquote each token (interprets shell quoting rules)
-  local rg_args = unquote_all(tokens, cfg.strict_posix_quoting)
+  local rg_args = unquote_all(tokens, quoting)
   -- If any token was malformed (unterminated quotes, trailing backslashes...),
   -- we cannot run the `rg` command: notify and bail out.
   if rg_args == nil then
