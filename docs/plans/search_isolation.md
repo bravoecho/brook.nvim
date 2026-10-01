@@ -105,7 +105,7 @@ Re-check these against the 0.13 release before implementing. The API was taken f
 
 ### 2. Write the regression tests first
 
-Add `tests/rg/exec_session_test.lua` and register it in `bin/test` with `run_test 'rg/exec_session'`. The name avoids `tests/rg/exec_test.lua`, which `docs/context_lines.md` reserves for parser tests.
+Add `tests/rg/exec_session_test.lua` and register it in `bin/test` with `run_test 'rg/exec_session'`. The name avoids `tests/rg/exec_test.lua`, which `docs/plans/context_lines.md` reserves for parser tests.
 
 The file stubs `vim.fn.jobstart` (records each job's `opts` and returns increasing fake ids), `vim.fn.jobstop` (records ids), and `vim.notify` (records messages and levels). CI needs no ripgrep.
 
