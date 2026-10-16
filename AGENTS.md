@@ -21,7 +21,7 @@ brook.nvim is a Neovim plugin that wraps ripgrep (`rg`) and streams results into
 **Run a single test file:**
 
 ```bash
-nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/tokenizer_literals_test.lua"
+nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/translator_02_literals_test.lua"
 ```
 
 **Lint:** `selene` (configured via `selene.toml` with the `neovim` standard library).
