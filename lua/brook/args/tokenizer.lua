@@ -3,7 +3,7 @@
 ---
 --- See also the companion module unquoter.lua
 ---
----@module 'brook.tokenizer'
+---@module 'brook.args.tokenizer'
 
 local M = {}
 
