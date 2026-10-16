@@ -34,7 +34,7 @@ options=$(
 # Generate Lua code containing a set of ripgrep options (named arguments that
 # take a value).
 cat <<EOF | tee "$rootdir/lua/brook/lib/rg_named_args.lua"
--- GENERATED FILE: see ../bin/generate-named-args
+-- GENERATED FILE: see ../../../bin/generate-rg-named-args
 
 --- List of ripgrep named arguments. Used for search pattern selection.
 local M = {}

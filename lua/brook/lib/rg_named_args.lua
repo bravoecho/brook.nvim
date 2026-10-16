@@ -1,4 +1,4 @@
--- GENERATED FILE: see ../bin/generate-named-args
+-- GENERATED FILE: see ../../../bin/generate-rg-named-args
 
 --- List of ripgrep named arguments. Used for search pattern selection.
 local M = {}
