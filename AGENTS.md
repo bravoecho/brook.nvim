@@ -140,7 +140,7 @@ Tests live in `tests/` and are plain Lua scripts using assertion helpers from `t
 
 - `tests/harness.lua` — Custom assertion library with `test()`, `eq()`, `deep_eq()`, and formatted failure output (shows got vs want, file/line info).
 - Tests are run via `./bin/test` which invokes `nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/<name>_test.lua"`.
-- `bin/test` runs ~28 test files covering all modules.
+- `bin/test` runs each test file it lists (add new ones there), and stops at the first file with a failure: the harness exits with `cquit 1`. Each file prints its own `N/M tests passed` line, so the last line of output covers only the last file that ran: judge the run by the exit status, or total the `N/M` lines.
 
 **Test coverage areas:**
 
