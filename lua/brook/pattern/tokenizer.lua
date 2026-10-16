@@ -1,12 +1,12 @@
--- lua/brook/pattern/tokeniser.lua
+-- lua/brook/pattern/tokenizer.lua
 
---- Lexical analyser for ripgrep regex patterns.
+--- Lexical analyzer for ripgrep regex patterns.
 ---
 --- Scans input and produces a flat list of tokens. Does not validate semantic
 --- correctness: that's the parser's job. Recognises all ripgrep default regex
 --- syntax, including constructs that may not be translatable to Vim.
 ---
----@module 'brook.pattern.tokeniser'
+---@module 'brook.pattern.tokenizer'
 local M = {}
 
 local types = require('brook.pattern.types')
@@ -34,14 +34,14 @@ local special = {
 }
 
 --------------------------------------------------------------------------------
---- Main tokeniser -------------------------------------------------------------
+--- Main tokenizer -------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Tokenise a ripgrep regex pattern.
+--- Tokenize a ripgrep regex pattern.
 ---
----@param input string The pattern to tokenise
+---@param input string The pattern to tokenize
 ---@return brook.pattern.Token[] tokens Token list (may be empty)
-function M.tokenise(input)
+function M.tokenize(input)
   local tokens = {}
   local pos = 1
 

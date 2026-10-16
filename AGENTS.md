@@ -21,7 +21,7 @@ brook.nvim is a Neovim plugin that wraps ripgrep (`rg`) and streams results into
 **Run a single test file:**
 
 ```bash
-nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/tokeniser_literals_test.lua"
+nvim --headless -u NONE -c "set rtp+=." -c "luafile tests/pattern/tokenizer_literals_test.lua"
 ```
 
 **Lint:** `selene` (configured via `selene.toml` with the `neovim` standard library).
@@ -44,13 +44,13 @@ lua/brook/
   pattern/
     init.lua            — Public pattern API: translate()
     types.lua           — Token types, group kinds, escape classes, wordness enums
-    tokeniser.lua       — Phase 1: lexical analysis, identifies token boundaries
+    tokenizer.lua       — Phase 1: lexical analysis, identifies token boundaries
     parser.lua          — Phase 2: semantic classification, wordness analysis for \b translation, validation
     translator.lua      — Phase 3: emits Vim \v regex
 
   args/
     parser.lua          — Extracts ripgrep search pattern and flags from unquoted tokens
-    tokeniser.lua       — Shell-style tokenisation (splits on whitespace, respects quotes)
+    tokenizer.lua       — Shell-style tokenization (splits on whitespace, respects quotes)
     unquoter.lua        — Shell-style unquoting, literal by default (interprets single/double quotes, escapes)
     types.lua           — ParsedArgs class, SearchCase enum, OutputFormat enum
 
@@ -65,10 +65,10 @@ lua/brook/
 
 ```
 User invokes command
-  -> args module: tokenises and unquotes input (shell-style, literal by
+  -> args module: tokenizes and unquotes input (shell-style, literal by
      default), extracts ripgrep pattern and flags
   -> pattern module: translates ripgrep regex to Vim \v-mode regex
-     (tokeniser -> parser -> translator)
+     (tokenizer -> parser -> translator)
   -> rg/exec: spawns ripgrep without a shell,
      streams stdout through a FIFO into the quickfix list
 ```
@@ -112,7 +112,7 @@ Notably, `drain_phase_max_batch_size` defaults to `max_batch_size * 5` and `drai
 
 Three-phase compiler in `lua/brook/pattern/`:
 
-1. **Tokeniser** — Lexical analysis. Identifies token boundaries: literals, metacharacters, quantifiers, groups (capturing, named, lookarounds, atomic, flags), character classes (including nested), escape sequences (boundaries, character classes, literals, hex/unicode/octal, properties, backreferences), slashes.
+1. **Tokenizer** — Lexical analysis. Identifies token boundaries: literals, metacharacters, quantifiers, groups (capturing, named, lookarounds, atomic, flags), character classes (including nested), escape sequences (boundaries, character classes, literals, hex/unicode/octal, properties, backreferences), slashes.
 2. **Parser** — Semantic classification. Assigns wordness to tokens for `\b` boundary translation, validates unsupported constructs (PCRE2-only features rejected in default mode), computes word/anchor properties for escapes.
 3. **Translator** — Emits Vim `\v` regex. Handles mode prefix (`\C`/`\c`/`\Cv`), word boundaries, group translation, character class translation.
 
@@ -124,9 +124,9 @@ The full translation spec (all supported/unsupported constructs, edge cases) liv
 
 ## Args Module
 
-`lua/brook/args/` implements shell-style tokenisation and unquoting, literal by default with an opt-in strict POSIX mode, so the user can pass `:Rg 'hello world'` exactly as they would on the command line.
+`lua/brook/args/` implements shell-style tokenization and unquoting, literal by default with an opt-in strict POSIX mode, so the user can pass `:Rg 'hello world'` exactly as they would on the command line.
 
-- **tokeniser.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes (including `\'`/`\"` inside their matching quotes), and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
+- **tokenizer.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes (including `\'`/`\"` inside their matching quotes), and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
 - **unquoter.lua** — Interprets quoted tokens into plain strings. By default, single- and double-quoted strings behave identically: only the matching quote character (`\'`, `\"`) is a recognised escape, everything else (including `\\`, `\$`, `` \` ``) passes through literally. An opt-in `quoting_mode = 'posix'` restores full POSIX escaping (`\\`, `\"`, `\$`, `` \` `` in double quotes; no escapes at all in single quotes).
 - **parser.lua** — Extracts ripgrep search pattern (first positional or `-e`/`--regexp`), interprets a minimal subset of ripgrep flags (`-F`, `-w`, `-s`, `-i`, `-S`, `-n`, `--vimgrep`, `-P`, `--multiline`, `--engine`) to support Neovim features (search register, n/N navigation).
 
@@ -146,9 +146,9 @@ Tests live in `tests/` and are plain Lua scripts using assertion helpers from `t
 
 - `lib/fifo` — FIFO queue push/pull/len/is_empty
 - `args/parser` — Token extraction, option parsing, stacked short args, long args with =
-- `args/tokeniser` — Shell-style tokenisation with quotes and escapes
+- `args/tokenizer` — Shell-style tokenization with quotes and escapes
 - `args/unquoter` — Literal-by-default unquoting of single, double, mixed, and escaped tokens
-- `pattern/tokeniser` (5 files) — Basic tokens, groups, escapes, character classes, complex patterns
+- `pattern/tokenizer` (5 files) — Basic tokens, groups, escapes, character classes, complex patterns
 - `pattern/parser` (5 files) — Escape classification, wordness, boundary handling, validation, complex
 - `pattern/translator` (8 files) — Basics, literals, escapes, boundaries, quantifiers, groups, char classes, complex
 - `pattern/pattern_integration` — Full pipeline integration

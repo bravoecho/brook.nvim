@@ -6,7 +6,7 @@ local test = h.test
 local eq = h.eq
 local deep_eq = h.deep_eq
 local unquoter = require('brook.args.unquoter')
-local tokenise = require('brook.args.tokeniser').tokenise
+local tokenize = require('brook.args.tokenizer').tokenize
 local Types = require('brook.args.types')
 
 -- quoting defaults to literal mode when omitted, so most tests below don't
@@ -287,19 +287,19 @@ end)
 
 test('strict: full pipeline rejects the default-mode idiom, like a real shell', function()
   -- 'it\'s a test' relies on the default mode's \' escape to stay one word.
-  -- tokenise() and unquote() have distinct jobs: the tokeniser only
+  -- tokenize() and unquote() have distinct jobs: the tokenizer only
   -- finds word boundaries and never rejects anything by itself -- see
   -- "single quotes escape: strict mode closes the quote early, unlike
-  -- default mode" in tokeniser_test.lua, which shows it happily emits
+  -- default mode" in tokenizer_test.lua, which shows it happily emits
   -- { "'it\'s", "a", "test'" } even though the last token's quote never
   -- closes. It's unquote, called here on each of those tokens, that
   -- notices the dangling quote and returns nil -- so the two stages
   -- cooperate to reject this input end-to-end, exactly as `rg 'it\'s a
   -- test'` would be rejected by an actual shell.
   local input = "'it\\'s a test'"
-  eq(unquote_all(tokenise(input, Types.quoting.strict_posix), Types.quoting.strict_posix), nil)
+  eq(unquote_all(tokenize(input, Types.quoting.strict_posix), Types.quoting.strict_posix), nil)
   -- The same input parses fine in the default (non-strict) mode.
-  eq(unquote_all(tokenise(input, Types.quoting.literal), Types.quoting.literal)[1], "it's a test")
+  eq(unquote_all(tokenize(input, Types.quoting.literal), Types.quoting.literal)[1], "it's a test")
 end)
 
 test('strict: reproduces the real-shell divergence between quote styles', function()

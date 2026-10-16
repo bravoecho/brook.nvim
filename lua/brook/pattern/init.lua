@@ -4,7 +4,7 @@
 ---
 --- Three-phase architecture:
 ---
----   1. Tokenise: lexical analysis, identify token boundaries
+---   1. Tokenize: lexical analysis, identify token boundaries
 ---   2. Parse: semantic analysis, classify, validate, annotate
 ---   3. Translate: code generation, emit Vim regex
 ---
@@ -13,7 +13,7 @@
 ---@module 'brook.pattern'
 local M = {}
 
-local tokeniser = require('brook.pattern.tokeniser')
+local tokenizer = require('brook.pattern.tokenizer')
 local parser = require('brook.pattern.parser')
 local translator = require('brook.pattern.translator')
 
@@ -86,8 +86,8 @@ function M._translate_and_merge(patterns, opts)
   local prefix = nil
 
   for _, pattern in ipairs(patterns) do
-    -- Phase 1: tokenise
-    local tokens = tokeniser.tokenise(pattern)
+    -- Phase 1: tokenize
+    local tokens = tokenizer.tokenize(pattern)
 
     -- Phase 2: parse
     local parse_result = parser.parse(tokens)
@@ -141,7 +141,7 @@ end
 ---
 --- Uses very-nomagic mode (\V) where only backslash and search delimiter
 --- need escaping. Multiple patterns are joined with \| (literal alternation
---- in \V mode). No tokenisation or parsing required.
+--- in \V mode). No tokenization or parsing required.
 ---
 ---@param patterns string[] The literal search strings
 ---@param opts brook.pattern.TranslateOpts Translation options

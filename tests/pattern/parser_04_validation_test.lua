@@ -427,7 +427,7 @@ test('edge: trailing backslash', function()
   eq(result.error, nil)
 end)
 
-test('edge: unclosed character class (parser accepts tokeniser output)', function()
+test('edge: unclosed character class (parser accepts tokenizer output)', function()
   local result = parse({
     { type = T.char_class_open, value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,     value = 'a', pos = 1 },
@@ -435,7 +435,7 @@ test('edge: unclosed character class (parser accepts tokeniser output)', functio
   eq(result.error, nil)
 end)
 
-test('edge: unclosed group (parser accepts tokeniser output)', function()
+test('edge: unclosed group (parser accepts tokenizer output)', function()
   local result = parse({
     { type = T.group_open, value = '(', pos = 1, kind = GK.capturing },
     { type = T.literal,    value = 'a', pos = 1 },
@@ -443,7 +443,7 @@ test('edge: unclosed group (parser accepts tokeniser output)', function()
   eq(result.error, nil)
 end)
 
-test('edge: unmatched group_close (parser accepts tokeniser output)', function()
+test('edge: unmatched group_close (parser accepts tokenizer output)', function()
   local result = parse({
     { type = T.literal,     value = 'a', pos = 1 },
     { type = T.group_close, value = ')', pos = 1 },

@@ -16,7 +16,7 @@ The motivating case: searching for a field name to check nothing was missed duri
 
 `-A`/`-B`/`-C` are not currently blocked. They already pass through `:Rg pattern -C 3` today.
 
-The multiline rejection in `M.raw` (`lua/brook/rg/init.lua`) only checks for `-U`/`--multiline`/`--multiline-dotall`. The flag tokeniser (`lua/brook/lib/rg_named_args.lua`) already recognises `-A`/`-B`/`-C` as value-taking flags.
+The multiline rejection in `M.raw` (`lua/brook/rg/init.lua`) only checks for `-U`/`--multiline`/`--multiline-dotall`. The flag tokenizer (`lua/brook/lib/rg_named_args.lua`) already recognises `-A`/`-B`/`-C` as value-taking flags.
 
 The output silently breaks instead. Ripgrep's context lines use a different, dash-delimited format from match lines, which the current `\x1f`-separator-based parser cannot parse.
 
@@ -91,7 +91,7 @@ In unique-lines mode, match and context lines cannot be told apart. Leave both u
 
 No new config field is needed.
 
-`-A`/`-B`/`-C` already flow through `:Rg pattern -C 3` today via the existing raw-args passthrough (tokeniser, unquoter, `M.parse_args`, `ctx.args`, `M._build_rg_cmd`). Fixing the parser is sufficient to make that path work for the SQL-review use case.
+`-A`/`-B`/`-C` already flow through `:Rg pattern -C 3` today via the existing raw-args passthrough (tokenizer, unquoter, `M.parse_args`, `ctx.args`, `M._build_rg_cmd`). Fixing the parser is sufficient to make that path work for the SQL-review use case.
 
 A persistent "always show N lines of context" config default is a plausible future addition, following the `output_format` precedence pattern already used in `M.raw` (`lua/brook/rg/init.lua`). Leave it out of this change; revisit only if requested separately.
 

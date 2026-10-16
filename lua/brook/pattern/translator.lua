@@ -185,7 +185,7 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
         local val = token.value
 
         -- Strip the trailing ? from the value to get the base quantifier
-        -- (The tokeniser includes the ? in the value for non-greedy)
+        -- (The tokenizer includes the ? in the value for non-greedy)
         if val == '*?' then
           table.insert(parts, '{-}')
         elseif val == '+?' then
@@ -205,7 +205,7 @@ function M.translate(tokens, opts, incoming_warnings, incoming_error)
           local n, m = val:match('^{(%d+),(%d+)}%?$')
           table.insert(parts, '{-' .. n .. ',' .. m .. '}')
         else
-          -- Fallback: shouldn't happen with valid tokeniser output
+          -- Fallback: shouldn't happen with valid tokenizer output
           table.insert(parts, val)
         end
       end

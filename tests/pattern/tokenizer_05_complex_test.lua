@@ -1,28 +1,28 @@
--- tests/pattern/tokenise_complex_test.lua
+-- tests/pattern/tokenize_complex_test.lua
 
 -- Run with:
---   nvim --headless -c "set rtp+=." -c "luafile tests/pattern/tokeniser_complex_test.lua" -c "q"
+--   nvim --headless -c "set rtp+=." -c "luafile tests/pattern/tokenizer_complex_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
 local eq = h.eq
 
-local tokeniser = require('brook.pattern.tokeniser')
+local tokenizer = require('brook.pattern.tokenizer')
 
 local types = require('brook.pattern.types')
 local T = types.token_type
 local CC = types.cc_token_type
 local GK = types.group_kind
 
-local tokenise = tokeniser.tokenise
+local tokenize = tokenizer.tokenize
 
 --------------------------------------------------------------------------------
 -- Complex patterns ------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 test('complex: email-like pattern structure', function()
-  local result = tokenise('[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}')
+  local result = tokenize('[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}')
   -- verify key structural elements
   eq(result[1].type, T.char_class_open)
   eq(result[1].negated, false)
@@ -40,7 +40,7 @@ test('complex: email-like pattern structure', function()
 end)
 
 test('complex: multiple features', function()
-  deep_eq(tokenise('^(?:\\d+)\\b'), {
+  deep_eq(tokenize('^(?:\\d+)\\b'), {
     { type = T.anchor,          value = '^',   pos = 1 },
     { type = T.group_open,      value = '(?:', pos = 2, kind = GK.non_capturing },
     { type = T.escape_class,    value = '\\d', pos = 5 },
@@ -51,7 +51,7 @@ test('complex: multiple features', function()
 end)
 
 test('complex: URL-like pattern structure', function()
-  local result = tokenise('https?://[^/]+/.*')
+  local result = tokenize('https?://[^/]+/.*')
   eq(result[1].type, T.literal)
   eq(result[1].value, 'h')
   -- verify the ? is a quantifier after s
@@ -72,12 +72,12 @@ end)
 --------------------------------------------------------------------------------
 
 test('edge: empty pattern', function()
-  deep_eq(tokenise(''), {})
+  deep_eq(tokenize(''), {})
 end)
 
 test('edge: trailing backslash', function()
   -- trailing backslash is incomplete escape, emitted as escape_literal
-  deep_eq(tokenise('a\\'), {
+  deep_eq(tokenize('a\\'), {
     { type = T.literal,        value = 'a',  pos = 1 },
     { type = T.escape_literal, value = '\\', pos = 2 },
   })
@@ -85,14 +85,14 @@ end)
 
 test('edge: unclosed character class', function()
   -- should still produce tokens; parser handles the error
-  local result = tokenise('[abc')
+  local result = tokenize('[abc')
   eq(result[1].type, T.char_class_open)
   eq(result[2].type, CC.cc_literal)
   eq(result[2].value, 'a')
 end)
 
 test('edge: unclosed group', function()
-  local result = tokenise('(abc')
+  local result = tokenize('(abc')
   eq(result[1].type, T.group_open)
   eq(result[1].kind, GK.capturing)
   eq(result[2].type, T.literal)
@@ -100,7 +100,7 @@ test('edge: unclosed group', function()
 end)
 
 test('edge: unmatched close paren', function()
-  deep_eq(tokenise('a)'), {
+  deep_eq(tokenize('a)'), {
     { type = T.literal,     value = 'a', pos = 1 },
     { type = T.group_close, value = ')', pos = 2 },
   })
@@ -109,7 +109,7 @@ end)
 test('edge: multiple quantifiers after literal', function()
   -- a+*? should be: literal, quantifier +, non-greedy quantifier *?
   -- parser decides validity
-  deep_eq(tokenise('a+*?'), {
+  deep_eq(tokenize('a+*?'), {
     { type = T.literal,    value = 'a',  pos = 1 },
     { type = T.quantifier, value = '+',  pos = 2, greedy = true },
     { type = T.quantifier, value = '*?', pos = 3, greedy = false },
@@ -121,27 +121,27 @@ end)
 --------------------------------------------------------------------------------
 
 test('position: simple pattern', function()
-  local tokens = tokenise('a.b')
+  local tokens = tokenize('a.b')
   eq(tokens[1].pos, 1)
   eq(tokens[2].pos, 2)
   eq(tokens[3].pos, 3)
 end)
 
 test('position: multi-char tokens', function()
-  local tokens = tokenise('(?:a)')
+  local tokens = tokenize('(?:a)')
   eq(tokens[1].pos, 1) -- (?:
   eq(tokens[2].pos, 4) -- a
   eq(tokens[3].pos, 5) -- )
 end)
 
 test('position: escape sequences', function()
-  local tokens = tokenise('\\d\\w')
+  local tokens = tokenize('\\d\\w')
   eq(tokens[1].pos, 1) -- \\d
   eq(tokens[2].pos, 3) -- \\w
 end)
 
 test('position: named groups', function()
-  local tokens = tokenise('(?P<foo>a)')
+  local tokens = tokenize('(?P<foo>a)')
   eq(tokens[1].pos, 1)  -- (?P<foo>
   eq(tokens[2].pos, 9)  -- a
   eq(tokens[3].pos, 10) -- )

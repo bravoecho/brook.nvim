@@ -61,7 +61,7 @@ M.quoting_mode = {
 --------------------------------------------------------------------------------
 
 --- Which characters can be backslash-escaped inside single- and
---- double-quoted tokens. Shared contract between the tokeniser (which needs
+--- double-quoted tokens. Shared contract between the tokenizer (which needs
 --- to know whether an escaped quote closes its token) and the unquoter
 --- (which needs to know exactly which characters to unescape).
 ---@class brook.args.Quoting

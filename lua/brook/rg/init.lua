@@ -10,7 +10,7 @@
 
 local exec_module = require('brook.rg.exec')
 local exec = exec_module._exec
-local tokenise = require('brook.args.tokeniser').tokenise
+local tokenize = require('brook.args.tokenizer').tokenize
 local unquote_all = require('brook.args.unquoter').unquote_all
 local parse_args = require('brook.args.parser').parse_args
 
@@ -82,7 +82,7 @@ end
 
 --- Searches with user-defined arguments.
 ---
---- The raw command string is tokenised shell-style, then each token is
+--- The raw command string is tokenized shell-style, then each token is
 --- unquoted before being passed to rg. This simulates what a shell would do,
 --- but without actually invoking a shell process.
 ---
@@ -97,10 +97,10 @@ end
 ---@param cfg brook.rg.ExecConfig Plugin options
 ---@return function|nil cancel_fn Function to use to cancel the current job
 function M.raw(opts, cfg)
-  -- 1. Tokenise
+  -- 1. Tokenize
   --------------
-  -- Tokenise the command string (split on whitespace, respect quotes)
-  local tokens = tokenise(opts.args_string, cfg.quoting)
+  -- Tokenize the command string (split on whitespace, respect quotes)
+  local tokens = tokenize(opts.args_string, cfg.quoting)
 
   if not tokens or #tokens == 0 then
     vim.notify('rg: no arguments provided', vim.log.levels.ERROR)
@@ -181,7 +181,7 @@ end
 
 --- Quotes a string for use in command history.
 ---
---- Uses double quotes so the tokeniser preserves the text as a single token.
+--- Uses double quotes so the tokenizer preserves the text as a single token.
 --- Internal double quotes and backslashes are escaped.
 ---
 ---@param s string The string to quote

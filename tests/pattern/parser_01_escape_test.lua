@@ -1,7 +1,7 @@
 -- tests/pattern/parser_escape_test.lua
 -- Escape sequence classification tests for the parser.
 --
--- The parser receives tokens from the tokeniser and adds semantic
+-- The parser receives tokens from the tokenizer and adds semantic
 -- classification via the `escape_class` field. These tests verify
 -- correct classification of all escape sequence types.
 --

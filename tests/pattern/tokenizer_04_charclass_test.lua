@@ -1,26 +1,26 @@
--- tests/pattern/tokenise_charclass_test.lua
+-- tests/pattern/tokenize_charclass_test.lua
 
 -- Run with:
---   nvim --headless -c "set rtp+=." -c "luafile tests/pattern/tokeniser_charclass_test.lua" -c "q"
+--   nvim --headless -c "set rtp+=." -c "luafile tests/pattern/tokenizer_charclass_test.lua" -c "q"
 
 local h = require('tests.harness')
 local test = h.test
 local deep_eq = h.deep_eq
 
-local tokeniser = require('brook.pattern.tokeniser')
+local tokenizer = require('brook.pattern.tokenizer')
 
 local types = require('brook.pattern.types')
 local T = types.token_type
 local CC = types.cc_token_type
 
-local tokenise = tokeniser.tokenise
+local tokenize = tokenizer.tokenize
 
 --------------------------------------------------------------------------------
 -- Character classes: basics ---------------------------------------------------
 --------------------------------------------------------------------------------
 
 test('charclass: simple', function()
-  deep_eq(tokenise('[abc]'), {
+  deep_eq(tokenize('[abc]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = 'a', pos = 2 },
     { type = CC.cc_literal,      value = 'b', pos = 3 },
@@ -30,7 +30,7 @@ test('charclass: simple', function()
 end)
 
 test('charclass: negated', function()
-  deep_eq(tokenise('[^a]'), {
+  deep_eq(tokenize('[^a]'), {
     { type = T.char_class_open,  value = '[^', pos = 1, negated = true },
     { type = CC.cc_literal,      value = 'a',  pos = 3 },
     { type = T.char_class_close, value = ']',  pos = 4 },
@@ -38,7 +38,7 @@ test('charclass: negated', function()
 end)
 
 test('charclass: bracket at start as literal', function()
-  deep_eq(tokenise('[]a]'), {
+  deep_eq(tokenize('[]a]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = ']', pos = 2 },
     { type = CC.cc_literal,      value = 'a', pos = 3 },
@@ -47,7 +47,7 @@ test('charclass: bracket at start as literal', function()
 end)
 
 test('charclass: bracket after negation as literal', function()
-  deep_eq(tokenise('[^]a]'), {
+  deep_eq(tokenize('[^]a]'), {
     { type = T.char_class_open,  value = '[^', pos = 1, negated = true },
     { type = CC.cc_literal,      value = ']',  pos = 3 },
     { type = CC.cc_literal,      value = 'a',  pos = 4 },
@@ -56,7 +56,7 @@ test('charclass: bracket after negation as literal', function()
 end)
 
 test('charclass: hyphen at start as literal', function()
-  deep_eq(tokenise('[-a]'), {
+  deep_eq(tokenize('[-a]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '-', pos = 2 },
     { type = CC.cc_literal,      value = 'a', pos = 3 },
@@ -65,7 +65,7 @@ test('charclass: hyphen at start as literal', function()
 end)
 
 test('charclass: hyphen at end as literal', function()
-  deep_eq(tokenise('[a-]'), {
+  deep_eq(tokenize('[a-]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = 'a', pos = 2 },
     { type = CC.cc_literal,      value = '-', pos = 3 },
@@ -78,7 +78,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('charclass range: simple', function()
-  deep_eq(tokenise('[a-z]'), {
+  deep_eq(tokenize('[a-z]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = T.char_class_close, value = ']',   pos = 5 },
@@ -86,7 +86,7 @@ test('charclass range: simple', function()
 end)
 
 test('charclass range: digits', function()
-  deep_eq(tokenise('[0-9]'), {
+  deep_eq(tokenize('[0-9]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = '0-9', pos = 2, from = '0',     to = '9' },
     { type = T.char_class_close, value = ']',   pos = 5 },
@@ -94,7 +94,7 @@ test('charclass range: digits', function()
 end)
 
 test('charclass range: multiple', function()
-  deep_eq(tokenise('[a-zA-Z]'), {
+  deep_eq(tokenize('[a-zA-Z]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = CC.cc_range,        value = 'A-Z', pos = 5, from = 'A',     to = 'Z' },
@@ -103,7 +103,7 @@ test('charclass range: multiple', function()
 end)
 
 test('charclass range: followed by literal', function()
-  deep_eq(tokenise('[a-z_]'), {
+  deep_eq(tokenize('[a-z_]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = CC.cc_literal,      value = '_',   pos = 5 },
@@ -120,7 +120,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('charclass escape: class inside', function()
-  deep_eq(tokenise('[\\d]'), {
+  deep_eq(tokenize('[\\d]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\d', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
@@ -128,7 +128,7 @@ test('charclass escape: class inside', function()
 end)
 
 test('charclass escape: multiple classes', function()
-  deep_eq(tokenise('[\\w\\s]'), {
+  deep_eq(tokenize('[\\w\\s]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_class, value = '\\w', pos = 2 },
     { type = CC.cc_escape_class, value = '\\s', pos = 4 },
@@ -137,7 +137,7 @@ test('charclass escape: multiple classes', function()
 end)
 
 test('charclass escape: bracket', function()
-  deep_eq(tokenise('[\\]]'), {
+  deep_eq(tokenize('[\\]]'), {
     { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\]', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
@@ -145,7 +145,7 @@ test('charclass escape: bracket', function()
 end)
 
 test('charclass escape: backslash', function()
-  deep_eq(tokenise('[\\\\]'), {
+  deep_eq(tokenize('[\\\\]'), {
     { type = T.char_class_open,    value = '[',    pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\\\', pos = 2 },
     { type = T.char_class_close,   value = ']',    pos = 4 },
@@ -154,7 +154,7 @@ end)
 
 test('charclass escape: \\b as literal b', function()
   -- in rust regex, \\b inside [...] is literal b, not backspace
-  deep_eq(tokenise('[\\b]'), {
+  deep_eq(tokenize('[\\b]'), {
     { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\b', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
@@ -162,7 +162,7 @@ test('charclass escape: \\b as literal b', function()
 end)
 
 test('charclass escape: hyphen', function()
-  deep_eq(tokenise('[\\-]'), {
+  deep_eq(tokenize('[\\-]'), {
     { type = T.char_class_open,    value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_literal, value = '\\-', pos = 2 },
     { type = T.char_class_close,   value = ']',   pos = 4 },
@@ -170,7 +170,7 @@ test('charclass escape: hyphen', function()
 end)
 
 test('charclass escape: hex', function()
-  deep_eq(tokenise('[\\x7F]'), {
+  deep_eq(tokenize('[\\x7F]'), {
     { type = T.char_class_open,  value = '[',     pos = 1, negated = false },
     { type = CC.cc_escape_hex,   value = '\\x7F', pos = 2 },
     { type = T.char_class_close, value = ']',     pos = 6 },
@@ -178,7 +178,7 @@ test('charclass escape: hex', function()
 end)
 
 test('charclass escape: unicode', function()
-  deep_eq(tokenise('[\\u{20}]'), {
+  deep_eq(tokenize('[\\u{20}]'), {
     { type = T.char_class_open,    value = '[',       pos = 1, negated = false },
     { type = CC.cc_escape_unicode, value = '\\u{20}', pos = 2 },
     { type = T.char_class_close,   value = ']',       pos = 8 },
@@ -186,7 +186,7 @@ test('charclass escape: unicode', function()
 end)
 
 test('charclass escape: octal', function()
-  deep_eq(tokenise('[\\0]'), {
+  deep_eq(tokenize('[\\0]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_escape_octal, value = '\\0', pos = 2 },
     { type = T.char_class_close, value = ']',   pos = 4 },
@@ -194,7 +194,7 @@ test('charclass escape: octal', function()
 end)
 
 test('charclass escape: property', function()
-  deep_eq(tokenise('[\\p{L}]'), {
+  deep_eq(tokenize('[\\p{L}]'), {
     { type = T.char_class_open,     value = '[',      pos = 1, negated = false },
     { type = CC.cc_escape_property, value = '\\p{L}', pos = 2, negated = false },
     { type = T.char_class_close,    value = ']',      pos = 7 },
@@ -206,7 +206,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('charclass POSIX: alpha', function()
-  deep_eq(tokenise('[[:alpha:]]'), {
+  deep_eq(tokenize('[[:alpha:]]'), {
     { type = T.char_class_open,  value = '[',         pos = 1, negated = false },
     { type = CC.cc_posix,        value = '[:alpha:]', pos = 2, class_name = 'alpha', negated = false },
     { type = T.char_class_close, value = ']',         pos = 11 },
@@ -214,7 +214,7 @@ test('charclass POSIX: alpha', function()
 end)
 
 test('charclass POSIX: negated', function()
-  deep_eq(tokenise('[[:^alpha:]]'), {
+  deep_eq(tokenize('[[:^alpha:]]'), {
     { type = T.char_class_open,  value = '[',          pos = 1, negated = false },
     { type = CC.cc_posix,        value = '[:^alpha:]', pos = 2, class_name = 'alpha', negated = true },
     { type = T.char_class_close, value = ']',          pos = 12 },
@@ -222,7 +222,7 @@ test('charclass POSIX: negated', function()
 end)
 
 test('charclass POSIX: digit', function()
-  deep_eq(tokenise('[[:digit:]]'), {
+  deep_eq(tokenize('[[:digit:]]'), {
     { type = T.char_class_open,  value = '[',         pos = 1, negated = false },
     { type = CC.cc_posix,        value = '[:digit:]', pos = 2, class_name = 'digit', negated = false },
     { type = T.char_class_close, value = ']',         pos = 11 },
@@ -230,7 +230,7 @@ test('charclass POSIX: digit', function()
 end)
 
 test('charclass POSIX: multiple', function()
-  deep_eq(tokenise('[[:alpha:][:digit:]]'), {
+  deep_eq(tokenize('[[:alpha:][:digit:]]'), {
     { type = T.char_class_open,  value = '[',         pos = 1,  negated = false },
     { type = CC.cc_posix,        value = '[:alpha:]', pos = 2,  class_name = 'alpha', negated = false },
     { type = CC.cc_posix,        value = '[:digit:]', pos = 11, class_name = 'digit', negated = false },
@@ -239,7 +239,7 @@ test('charclass POSIX: multiple', function()
 end)
 
 test('charclass POSIX: with other elements', function()
-  deep_eq(tokenise('[[:alpha:]_]'), {
+  deep_eq(tokenize('[[:alpha:]_]'), {
     { type = T.char_class_open,  value = '[',         pos = 1, negated = false },
     { type = CC.cc_posix,        value = '[:alpha:]', pos = 2, class_name = 'alpha', negated = false },
     { type = CC.cc_literal,      value = '_',         pos = 11 },
@@ -257,7 +257,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('charclass set: intersection', function()
-  deep_eq(tokenise('[a-z&&[\\d]]'), {
+  deep_eq(tokenize('[a-z&&[\\d]]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = CC.cc_intersection, value = '&&',  pos = 5 },
@@ -269,7 +269,7 @@ test('charclass set: intersection', function()
 end)
 
 test('charclass set: nested', function()
-  deep_eq(tokenise('[[a-z]]'), {
+  deep_eq(tokenize('[[a-z]]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_nested_open,  value = '[',   pos = 2, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 3, from = 'a',     to = 'z' },
@@ -279,7 +279,7 @@ test('charclass set: nested', function()
 end)
 
 test('charclass set: negated nested', function()
-  deep_eq(tokenise('[a-z&&[^xyz]]'), {
+  deep_eq(tokenize('[a-z&&[^xyz]]'), {
     { type = T.char_class_open,  value = '[',   pos = 1, negated = false },
     { type = CC.cc_range,        value = 'a-z', pos = 2, from = 'a',     to = 'z' },
     { type = CC.cc_intersection, value = '&&',  pos = 5 },
@@ -297,7 +297,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('charclass meta: dot as literal', function()
-  deep_eq(tokenise('[.]'), {
+  deep_eq(tokenize('[.]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '.', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
@@ -305,7 +305,7 @@ test('charclass meta: dot as literal', function()
 end)
 
 test('charclass meta: star as literal', function()
-  deep_eq(tokenise('[*]'), {
+  deep_eq(tokenize('[*]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '*', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
@@ -313,7 +313,7 @@ test('charclass meta: star as literal', function()
 end)
 
 test('charclass meta: plus as literal', function()
-  deep_eq(tokenise('[+]'), {
+  deep_eq(tokenize('[+]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '+', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
@@ -321,7 +321,7 @@ test('charclass meta: plus as literal', function()
 end)
 
 test('charclass meta: question as literal', function()
-  deep_eq(tokenise('[?]'), {
+  deep_eq(tokenize('[?]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '?', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
@@ -329,7 +329,7 @@ test('charclass meta: question as literal', function()
 end)
 
 test('charclass meta: caret in middle as literal', function()
-  deep_eq(tokenise('[a^b]'), {
+  deep_eq(tokenize('[a^b]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = 'a', pos = 2 },
     { type = CC.cc_literal,      value = '^', pos = 3 },
@@ -339,7 +339,7 @@ test('charclass meta: caret in middle as literal', function()
 end)
 
 test('charclass meta: pipe as literal', function()
-  deep_eq(tokenise('[|]'), {
+  deep_eq(tokenize('[|]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '|', pos = 2 },
     { type = T.char_class_close, value = ']', pos = 3 },
@@ -347,7 +347,7 @@ test('charclass meta: pipe as literal', function()
 end)
 
 test('charclass meta: parens as literal', function()
-  deep_eq(tokenise('[()]'), {
+  deep_eq(tokenize('[()]'), {
     { type = T.char_class_open,  value = '[', pos = 1, negated = false },
     { type = CC.cc_literal,      value = '(', pos = 2 },
     { type = CC.cc_literal,      value = ')', pos = 3 },

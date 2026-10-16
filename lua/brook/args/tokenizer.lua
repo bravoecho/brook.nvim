@@ -1,9 +1,9 @@
---- Shell-style tokenisation: splitting a command string into logical arguments
+--- Shell-style tokenization: splitting a command string into logical arguments
 --- (beyond the whitespace-based splitting provided by Neovim for user commands.)
 ---
 --- See also the companion module unquoter.lua
 ---
----@module 'brook.tokeniser'
+---@module 'brook.tokenizer'
 
 local M = {}
 
@@ -11,7 +11,7 @@ local SINGLE_QUOTE = "'"
 local DOUBLE_QUOTE = '"'
 local ESCAPE = '\\'
 
---- Tokenises a command-line string into individual arguments.
+--- Tokenizes a command-line string into individual arguments.
 ---
 --- Splits the input string on whitespace while respecting shell quoting rules:
 ---   - Single-quoted strings: 'foo bar' is a single token
@@ -31,11 +31,11 @@ local ESCAPE = '\\'
 ---   - https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_07
 ---   - https://www.gnu.org/software/bash/manual/html_node/Quote-Removal.html
 ---
----@param qargs string The raw command-line string to tokenise
+---@param qargs string The raw command-line string to tokenize
 ---@param quoting brook.args.Quoting Which characters are escapable (see
 ---  types.lua); should mirror the value passed to unquote
 ---@return string[] tokens List of tokens (may be empty if input is blank)
-function M.tokenise(qargs, quoting)
+function M.tokenize(qargs, quoting)
   local single_escapable = next(quoting.single) ~= nil
   qargs = vim.trim(qargs)
   local tokens = {}

@@ -35,14 +35,14 @@ The translator uses a three-phase pipeline:
 ```
 Input: ripgrep regex pattern
 
-  1. Tokenise: lexical analysis, identify token boundaries
+  1. Tokenize: lexical analysis, identify token boundaries
   2. Parse: semantic analysis, classify, validate, annotate
   3. Translate: code generation, emit Vim regex
 
 Output: { pattern, warning }
 ```
 
-### Phase 1: Tokenise
+### Phase 1: Tokenize
 
 Lexical analysis producing a flat list of tokens.
 
@@ -51,7 +51,7 @@ Responsibilities:
 - Categorise tokens as specifically as the lexical grammar allows
 - Handle character class as a lexical submode (different rules inside `[...]`)
 
-The tokeniser does not:
+The tokenizer does not:
 - Look at preceding tokens to decide a category
 - Validate whether sequences make semantic sense
 - Emit errors (invalid sequences become tokens; the parser decides validity)
@@ -338,7 +338,7 @@ Characters that need escaping outside classes are literal inside:
 
 #### 9.6 Nesting and intersection
 
-The tokeniser recognises nested classes and set intersection:
+The tokenizer recognises nested classes and set intersection:
 
 - `[a-z&&[^aeiou]]` => nested class with intersection
 - `[[a-z][A-Z]]` => nested classes
@@ -348,7 +348,7 @@ Note: negated nested classes lose the `^` in Vim's syntax.
 #### 9.7 `\b` inside character classes
 
 In Rust regex (and ripgrep), `\b` inside a character class is the literal
-character `b`, not a word boundary. The tokeniser emits `cc_escape_literal`.
+character `b`, not a word boundary. The tokenizer emits `cc_escape_literal`.
 
 ### 10. Groups
 
@@ -589,7 +589,7 @@ Examples:
 ```
 lua/brook/pattern/
   init.lua       # public API: rg_to_vim()
-  tokeniser.lua  # phase 1: lexical analysis
+  tokenizer.lua  # phase 1: lexical analysis
   parser.lua     # phase 2: semantic analysis
   translator.lua # phase 3: code generation
   types.lua      # type definitions and enums

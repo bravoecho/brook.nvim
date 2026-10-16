@@ -2,7 +2,7 @@
 
 --- Type definitions for the pattern translation pipeline.
 ---
---- Defines token types, classifications, and enums used across tokenise, parse
+--- Defines token types, classifications, and enums used across tokenize, parse
 --- and translate phases. Token types are aligned with the rust regex crate's
 --- lexical grammar.
 ---
@@ -81,11 +81,11 @@ M.cc_token_type = {
 --- Group Kinds ----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---- Group kinds recognised by the tokeniser.
+--- Group kinds recognised by the tokenizer.
 ---
---- The tokeniser identifies the syntactic form of each group opener. Some
+--- The tokenizer identifies the syntactic form of each group opener. Some
 --- kinds (lookarounds, atomic) are not supported by default Rust regex but
---- are supported by ripgrep with PCRE2. The tokeniser recognises them all;
+--- are supported by ripgrep with PCRE2. The tokenizer recognises them all;
 --- the parser decides what to reject.
 ---
 ---@enum brook.pattern.GroupKind
@@ -116,7 +116,7 @@ M.group_kind = {
 --------------------------------------------------------------------------------
 
 --- Semantic classifications for escape sequences.
---- These are assigned by the parser, not the tokeniser.
+--- These are assigned by the parser, not the tokenizer.
 ---
 ---@enum brook.pattern.EscapeClass
 M.escape_class = {
