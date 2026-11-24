@@ -6,7 +6,7 @@ This file provides context for Claude Code sessions working on this repository.
 
 brook.nvim is a Neovim plugin that wraps ripgrep (`rg`) and streams results into Neovim's native quickfix list. It translates ripgrep regex patterns to Vim `\\v`-mode regex so that `n`/`N` navigation works after a search.
 
-**Requirements:** Neovim >= 0.10.0, ripgrep must be in `$PATH`.
+**Requirements:** Neovim >= 0.10.0, ripgrep >= 13.0.0 must be in `$PATH`. The base command in `rg/exec.lua` uses only flags ripgrep 13 accepts (`--no-byte-offset` and `--no-invert-match` arrived in 14).
 
 ---
 

@@ -261,21 +261,32 @@ function M._build_rg_cmd(ctx)
     '--engine', 'default',
     '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
+
+    -- Result line format, set in full so that a flag in the user's ripgrep
+    -- config file can't change it: ripgrep reads that file first, and the
+    -- last flag wins.
+    --
+    -- The same flags typed in :Rg are rejected (OUTPUT_FORMAT_FLAGS in
+    -- args/parser.lua). A flag without a negation in ripgrep 13 can't be
+    -- overridden here, such as --null or --byte-offset.
     '--color', 'never',
     '--field-match-separator', ASCII_UNIT_SEPARATOR,
-    -- Every result line needs its file name, and ripgrep leaves it out when
-    -- it searches a single file.
+    -- ripgrep leaves the file name out when it searches a single file.
     '--with-filename',
+    -- ripgrep adds line numbers only when writing to a terminal.
+    '--line-number',
+    '--no-heading',
+    '--no-stats',
+    '--no-json',
   }
 
   -- Unique-lines mode uses ripgrep's standard output in place of --vimgrep,
   -- so each matching line appears once, however many matches it holds.
-  -- --line-number is needed because ripgrep adds line numbers only when
-  -- writing to a terminal.
   if ctx.cfg.output_format == args_types.output_format.unique_lines then
-    table.insert(cmd, '--line-number')
+    table.insert(cmd, '--no-column')
   else
-    table.insert(cmd, '--vimgrep')
+    -- --vimgrep leaves the column out after --no-column, even an earlier one.
+    vim.list_extend(cmd, { '--vimgrep', '--column' })
   end
 
   if ctx.parsed_args.word then

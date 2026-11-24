@@ -69,7 +69,7 @@ configuration.
 **Requirements:**
 
 - Neovim >= 0.10.0
-- ripgrep (available in path)
+- ripgrep >= 13.0.0 (available in path)
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
@@ -265,6 +265,9 @@ Brook by design is restricted to ripgrep's defaults in three important ways:
   column and text, so it aborts with an error on flags that change or stop that
   output, such as `--json`, `-c`, `-l`, `--heading`, `--color`, `-v` or `-q`.
   The full list is `OUTPUT_FORMAT_FLAGS` in `lua/brook/args/parser.lua`.
+  Brook overrides most of them in your `~/.ripgreprc`, but not those that
+  can't be switched off on the command line, such as `-0`, `-b`, `-c`, `-l`,
+  `-q` or `-v`: keep those out of the config file.
 
 ---
 
