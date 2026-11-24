@@ -262,7 +262,10 @@ function M._build_rg_cmd(ctx)
     '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
     '--color', 'never',
-    '--field-match-separator', ASCII_UNIT_SEPARATOR
+    '--field-match-separator', ASCII_UNIT_SEPARATOR,
+    -- Every result line needs its file name, and ripgrep leaves it out when
+    -- it searches a single file.
+    '--with-filename',
   }
 
   -- Unique-lines mode uses ripgrep's standard output in place of --vimgrep,
