@@ -42,9 +42,16 @@ M.search_case = {
 
 --------------------------------------------------------------------------------
 
+--- How ripgrep's results map to quickfix entries.
 ---@enum brook.args.OutputFormat
 M.output_format = {
+  --- One entry per match, from `rg --vimgrep`, so a line with two matches
+  --- appears twice.
   one_line_per_match = 'one-line-per-match',
+
+  --- One entry per matching line, from ripgrep's standard output with line
+  --- numbers. `:Rg -n` selects it for one search, because it is what `rg -n`
+  --- prints.
   unique_lines = 'unique-lines',
 }
 

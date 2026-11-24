@@ -125,7 +125,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     qf_auto_resize = true,
     qf_win_height  = 10,
 
-    -- 'one-line-per-match' (default) or 'unique-lines'
+    -- 'one-line-per-match' (default): one entry per match, like `rg --vimgrep`
+    -- 'unique-lines': one entry per matching line, like `rg -n`
     output_format = 'one-line-per-match',
 
     -- Populate search register for n/N navigation and :cfdo substitutions
@@ -235,7 +236,9 @@ including the caveat above.
 * **Multiple patterns** – `:Rg -e TODO -e FIXME` searches and navigates both, and
   combines with other flags like `-w` (whole-word) and `-F` (literal)
 * **Case control** – `:Rg -s MyClass` (sensitive) or `:Rg -i error` (insensitive)
-* **Unique lines** – Use the `-n` flag to enable it for a single search
+* **Unique lines** – `:Rg -n mypattern` lists each matching line once, as
+  `rg -n` prints it, where by default a line with two matches is listed twice
+  (as `rg --vimgrep` prints it)
 * **Search path** – Press `<Tab>` in the command to autocomplete relative paths
 * **Report each file only once** – `:Rg mypattern -n -m1`
 * **Open all files with matches** – `:cfdo edit`

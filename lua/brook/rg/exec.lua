@@ -265,9 +265,10 @@ function M._build_rg_cmd(ctx)
     '--field-match-separator', ASCII_UNIT_SEPARATOR
   }
 
-  -- When output_format is 'unique-lines', use --line-number instead of --vimgrep.
-  -- This omits the column number, causing ripgrep to emit each line only once
-  -- regardless of how many matches it contains.
+  -- Unique-lines mode uses ripgrep's standard output in place of --vimgrep,
+  -- so each matching line appears once, however many matches it holds.
+  -- --line-number is needed because ripgrep adds line numbers only when
+  -- writing to a terminal.
   if ctx.cfg.output_format == args_types.output_format.unique_lines then
     table.insert(cmd, '--line-number')
   else
