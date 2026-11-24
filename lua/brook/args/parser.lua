@@ -18,19 +18,43 @@ local rg_options = rg_named_args.options
 
 local POSITIONAL_SEPARATOR = '--'
 
---- Flags that change the format of ripgrep's result lines, which exec.lua
---- parses as file, line, column (one-per-match mode only) and text.
+--- Flags that stop ripgrep printing the result lines exec.lua parses: file,
+--- line, column (one-per-match mode only) and text.
 local OUTPUT_FORMAT_FLAGS = {
-  -- no file name
+  -- no search, or no output
+  ['-q'] = true,
+  ['--quiet'] = true,
+  ['-h'] = true,
+  ['--help'] = true,
+  ['-V'] = true,
+  ['--version'] = true,
+  ['--pcre2-version'] = true,
+  ['--type-list'] = true,
+  ['--generate'] = true,
+
+  -- no lines to print in one-per-match mode, where every line is a match
+  ['-v'] = true,
+  ['--invert-match'] = true,
+
+  -- no file name or line number
   ['-I'] = true,
   ['--no-filename'] = true,
+  ['-N'] = true,
+  ['--no-line-number'] = true,
 
-  -- file name on its own line
+  -- file name on its own line, or summary lines after the results
   ['--heading'] = true,
+  ['--stats'] = true,
 
-  -- other separators
+  -- colour codes (--color with any value, since brook already sets never)
+  ['--color'] = true,
+  ['-p'] = true,
+  ['--pretty'] = true,
+
+  -- other separators or line terminators
   ['-0'] = true,
   ['--null'] = true,
+  ['--null-data'] = true,
   ['--field-match-separator'] = true,
 
   -- extra fields (--column only in unique-lines mode)
@@ -76,6 +100,7 @@ function M.parse_args(tokens, raw)
     word = false,
     case = nil,
     output_format = nil,
+    output_format_flag = nil,
     multiline = false,
     pcre2 = false,
     raw = raw,
@@ -148,6 +173,9 @@ function M.parse_args(tokens, raw)
       result.pcre2 = false
       i = i + 1
     elseif OUTPUT_FORMAT_FLAGS[token] then
+      -- Keep only the first, so the error names it. Its presence alone
+      -- rejects the search, even when a later flag (--no-heading) would undo
+      -- it in ripgrep.
       result.output_format_flag = result.output_format_flag or token
       i = i + 1
     elseif token == '--engine' then

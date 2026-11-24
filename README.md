@@ -262,11 +262,9 @@ Brook by design is restricted to ripgrep's defaults in three important ways:
   performance and more accurate search pattern translation.
 
 * **No output format changes** – Brook reads each result line as file, line,
-  column and text, so it aborts with an error on flags that change that
-  format: `-I`/`--no-filename`, `--heading`, `-0`/`--null`,
-  `--field-match-separator`, `--column`, `-b`/`--byte-offset`, `-c`/`--count`,
-  `--count-matches`, `-l`/`--files-with-matches`, `--files-without-match`,
-  `--files` and `--json`.
+  column and text, so it aborts with an error on flags that change or stop that
+  output, such as `--json`, `-c`, `-l`, `--heading`, `--color`, `-v` or `-q`.
+  The full list is `OUTPUT_FORMAT_FLAGS` in `lua/brook/args/parser.lua`.
 
 ---
 

@@ -137,12 +137,12 @@ function M.raw(opts, cfg)
     return nil
   end
 
-  -- 6. Enforce the result format the quickfix parsers read
-  ---------------------------------------------------------
+  -- 6. Enforce the output the quickfix parsers read
+  --------------------------------------------------
   if parsed_args.output_format_flag then
     vim.notify(
       'rg: ' .. parsed_args.output_format_flag
-      .. ' not supported: it changes the format of result lines',
+      .. ' not supported: it changes the output brook reads',
       vim.log.levels.ERROR
     )
     return nil

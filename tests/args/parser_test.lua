@@ -66,12 +66,12 @@ test('flag: pattern immediately after boolean flag', function()
 end)
 
 test('flag: pattern after multiple boolean flags', function()
-  deep_eq(parse_args({ '-v', '-H', 'pattern' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-u', '-H', 'pattern' }, raw), result({ 'pattern' }))
 end)
 
 test('flag: pattern after combined short flags', function()
   -- rg allows -iH as shorthand for -i -H
-  deep_eq(parse_args({ '-vH', 'pattern' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-uH', 'pattern' }, raw), result({ 'pattern' }))
 end)
 
 --------------------------------------------------------------------------------
@@ -116,7 +116,7 @@ end)
 --------------------------------------------------------------------------------
 
 test('option: flag with = value before pattern', function()
-  deep_eq(parse_args({ '--color=never', 'pattern' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '--sort=path', 'pattern' }, raw), result({ 'pattern' }))
 end)
 
 test('option: flag with separate value before pattern', function()
@@ -174,7 +174,7 @@ end)
 
 test('full: complex command with pattern containing special chars', function()
   local tokens = {
-    '-g', '*.lua', '--color=never', '--no-unicode', '--hidden',
+    '-g', '*.lua', '--sort=path', '--no-unicode', '--hidden',
     'my-special (pattern|here)', 'a/path/in side/the/repo'
   }
   deep_eq(parse_args(tokens, raw), result({ 'my-special (pattern|here)' }))
@@ -309,11 +309,11 @@ test('regexp: -e with value and path', function()
 end)
 
 test('regexp: -e with options before', function()
-  deep_eq(parse_args({ '-v', '-H', '-e', 'pattern' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-u', '-H', '-e', 'pattern' }, raw), result({ 'pattern' }))
 end)
 
 test('regexp: -e with options before and after', function()
-  deep_eq(parse_args({ '-v', '-e', 'pattern', '-H' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-u', '-e', 'pattern', '-H' }, raw), result({ 'pattern' }))
 end)
 
 test('regexp: -e=value syntax', function()
@@ -325,7 +325,7 @@ test('regexp: -e=value with spaces', function()
 end)
 
 test('regexp: -e=value with other options', function()
-  deep_eq(parse_args({ '-v', '-e=pattern', 'src/' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-u', '-e=pattern', 'src/' }, raw), result({ 'pattern' }))
 end)
 
 -- -e with attached value (no separator)
@@ -334,7 +334,7 @@ test('regexp: -evalue syntax (attached)', function()
 end)
 
 test('regexp: -evalue with other options and path', function()
-  deep_eq(parse_args({ '-v', '-epattern', 'src/' }, raw), result({ 'pattern' }))
+  deep_eq(parse_args({ '-u', '-epattern', 'src/' }, raw), result({ 'pattern' }))
 end)
 
 -- --regexp variants
@@ -372,7 +372,7 @@ test('regexp: mixed -e and --regexp returns all patterns', function()
 end)
 
 test('regexp: -e with other options interspersed returns all patterns', function()
-  deep_eq(parse_args({ '-e', 'foo', '-v', '-e', 'bar', '-H' }, raw), result({ 'foo', 'bar' }))
+  deep_eq(parse_args({ '-e', 'foo', '-u', '-e', 'bar', '-H' }, raw), result({ 'foo', 'bar' }))
 end)
 
 -- -e takes precedence over positional pattern
@@ -669,8 +669,9 @@ test('edge: pattern containing dashes but not an option', function()
 end)
 
 test('edge: pattern starting with dash needs -- separator', function()
-  -- Without --, -pattern is an unknown stacked arg, can't be expanded
-  deep_eq(parse_args({ '-pattern' }, raw), empty_result())
+  -- Without --, -pattern expands to -p -a -t tern, and -p (--pretty) is an
+  -- output format flag
+  deep_eq(parse_args({ '-pattern' }, raw), empty_result({ output_format_flag = '-p' }))
 end)
 
 test('edge: pattern with special regex characters', function()
@@ -775,9 +776,12 @@ end)
 --------------------------------------------------------------------------------
 
 for _, flag in ipairs({
-  '-I', '--no-filename', '--heading', '-0', '--null', '--column', '-b',
-  '--byte-offset', '-c', '--count', '--count-matches', '-l',
-  '--files-with-matches', '--files-without-match', '--files', '--json',
+  '-q', '--quiet', '-h', '--help', '-V', '--version', '--pcre2-version',
+  '--type-list', '-v', '--invert-match', '-I', '--no-filename', '-N',
+  '--no-line-number', '--heading', '--stats', '-p', '--pretty', '-0', '--null',
+  '--null-data', '--column', '-b', '--byte-offset', '-c', '--count',
+  '--count-matches', '-l', '--files-with-matches', '--files-without-match',
+  '--files', '--json',
 }) do
   test('output format flag: ' .. flag .. ' is reported', function()
     local got = parse_args({ flag, 'pattern' }, raw)
@@ -786,11 +790,13 @@ for _, flag in ipairs({
   end)
 end
 
-test('output format flag: --field-match-separator is reported', function()
-  local got = parse_args({ '--field-match-separator', ':', 'pattern' }, raw)
-  local want = result({ 'pattern' }, { output_format_flag = '--field-match-separator' })
-  deep_eq(got, want)
-end)
+for _, option in ipairs({ '--field-match-separator', '--color', '--generate' }) do
+  test('output format flag: ' .. option .. ' is reported', function()
+    local got = parse_args({ option, 'value', 'pattern' }, raw)
+    local want = result({ 'pattern' }, { output_format_flag = option })
+    deep_eq(got, want)
+  end)
+end
 
 test('output format flag: reported in a stack', function()
   local got = parse_args({ '-nI', 'pattern' }, raw)
