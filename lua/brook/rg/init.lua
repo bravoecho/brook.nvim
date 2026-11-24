@@ -137,6 +137,17 @@ function M.raw(opts, cfg)
     return nil
   end
 
+  -- 6. Enforce the result format the quickfix parsers read
+  ---------------------------------------------------------
+  if parsed_args.output_format_flag then
+    vim.notify(
+      'rg: ' .. parsed_args.output_format_flag
+      .. ' not supported: it changes the format of result lines',
+      vim.log.levels.ERROR
+    )
+    return nil
+  end
+
   if #parsed_args.patterns == 0
       and opts.fallback_word
       and opts.fallback_word ~= ''
@@ -148,7 +159,7 @@ function M.raw(opts, cfg)
     table.insert(rg_args, opts.fallback_word)
   end
 
-  -- 6. Run the search
+  -- 7. Run the search
   --------------------
 
   -- Give precedence to output format specified in the command, if present.

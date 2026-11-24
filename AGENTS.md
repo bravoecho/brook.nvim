@@ -128,7 +128,7 @@ The full translation spec (all supported/unsupported constructs, edge cases) liv
 
 - **tokenizer.lua** — Splits input string on whitespace while respecting single quotes, double quotes, backslash escapes (including `\'`/`\"` inside their matching quotes), and the POSIX `'it'\\''s'` idiom. Quotes and escapes are *preserved* in output.
 - **unquoter.lua** — Interprets quoted tokens into plain strings. By default, single- and double-quoted strings behave identically: only the matching quote character (`\'`, `\"`) is a recognised escape, everything else (including `\\`, `\$`, `` \` ``) passes through literally. An opt-in `quoting_mode = 'posix'` restores full POSIX escaping (`\\`, `\"`, `\$`, `` \` `` in double quotes; no escapes at all in single quotes).
-- **parser.lua** — Extracts ripgrep search pattern (first positional or `-e`/`--regexp`), interprets a minimal subset of ripgrep flags (`-F`, `-w`, `-s`, `-i`, `-S`, `-n`, `--vimgrep`, `-P`, `--multiline`, `--engine`) to support Neovim features (search register, n/N navigation).
+- **parser.lua** — Extracts ripgrep search pattern (first positional or `-e`/`--regexp`), interprets a minimal subset of ripgrep flags (`-F`, `-w`, `-s`, `-i`, `-S`, `-n`, `--vimgrep`, `-P`, `--multiline`, `--engine`) to support Neovim features (search register, n/N navigation), and reports the first flag that changes the result line format.
 
 ---
 
@@ -162,6 +162,7 @@ Tests live in `tests/` and are plain Lua scripts using assertion helpers from `t
 
 - **Single-line search only.** Multiline search is explicitly rejected with a notification.
 - **PCRE2 not supported.** `-P` / `--pcre2` / `--engine=pcre2` are blocked. The plugin targets ripgrep's default Rust regex engine.
+- **Output format flags are rejected.** Flags that change the format of ripgrep's result lines (`-I`, `--heading`, `--json`, …) are listed in `OUTPUT_FORMAT_FLAGS` in `args/parser.lua`, and `:Rg` aborts with an error on any of them. A new ripgrep flag that changes the format goes in that table.
 - **Visual selections containing newlines are rejected.**
 - **No word under cursor** — `:Rg` with no arguments calls `expand('<cword>')`; if empty, shows an error.
 - **The `rg_named_args.lua` file is generated** by `bin/generate-rg-named-args` from ripgrep's `--help` output. Do not edit it by hand.

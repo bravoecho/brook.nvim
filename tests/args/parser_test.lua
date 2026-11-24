@@ -771,6 +771,61 @@ test('combined: all boolean flags', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Output format flags --------------------------------------------------------
+--------------------------------------------------------------------------------
+
+for _, flag in ipairs({
+  '-I', '--no-filename', '--heading', '-0', '--null', '--column', '-b',
+  '--byte-offset', '-c', '--count', '--count-matches', '-l',
+  '--files-with-matches', '--files-without-match', '--files', '--json',
+}) do
+  test('output format flag: ' .. flag .. ' is reported', function()
+    local got = parse_args({ flag, 'pattern' }, raw)
+    local want = result({ 'pattern' }, { output_format_flag = flag })
+    deep_eq(got, want)
+  end)
+end
+
+test('output format flag: --field-match-separator is reported', function()
+  local got = parse_args({ '--field-match-separator', ':', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { output_format_flag = '--field-match-separator' })
+  deep_eq(got, want)
+end)
+
+test('output format flag: reported in a stack', function()
+  local got = parse_args({ '-nI', 'pattern' }, raw)
+  local want = result({ 'pattern' }, {
+    output_format = 'unique-lines',
+    output_format_flag = '-I',
+  })
+  deep_eq(got, want)
+end)
+
+test('output format flag: reported with an attached value', function()
+  local got = parse_args({ '--field-match-separator=:', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { output_format_flag = '--field-match-separator' })
+  deep_eq(got, want)
+end)
+
+test('output format flag: the first one is reported', function()
+  local got = parse_args({ '--json', '-I', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { output_format_flag = '--json' })
+  deep_eq(got, want)
+end)
+
+test('output format flag: not reported after the separator', function()
+  local got = parse_args({ '--', '-I' }, raw)
+  local want = result({ '-I' })
+  deep_eq(got, want)
+end)
+
+test('output format flag: not reported as an -e pattern', function()
+  local got = parse_args({ '-e', '-l' }, raw)
+  local want = result({ '-l' })
+  deep_eq(got, want)
+end)
+
+--------------------------------------------------------------------------------
 --- Summary --------------------------------------------------------------------
 --------------------------------------------------------------------------------
 

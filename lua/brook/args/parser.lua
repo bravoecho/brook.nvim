@@ -18,6 +18,39 @@ local rg_options = rg_named_args.options
 
 local POSITIONAL_SEPARATOR = '--'
 
+--- Flags that change the format of ripgrep's result lines, which exec.lua
+--- parses as file, line, column (one-per-match mode only) and text.
+local OUTPUT_FORMAT_FLAGS = {
+  -- no file name
+  ['-I'] = true,
+  ['--no-filename'] = true,
+
+  -- file name on its own line
+  ['--heading'] = true,
+
+  -- other separators
+  ['-0'] = true,
+  ['--null'] = true,
+  ['--field-match-separator'] = true,
+
+  -- extra fields (--column only in unique-lines mode)
+  ['--column'] = true,
+  ['-b'] = true,
+  ['--byte-offset'] = true,
+
+  -- counts or file names in place of matching lines
+  ['-c'] = true,
+  ['--count'] = true,
+  ['--count-matches'] = true,
+  ['-l'] = true,
+  ['--files-with-matches'] = true,
+  ['--files-without-match'] = true,
+  ['--files'] = true,
+
+  -- JSON objects
+  ['--json'] = true,
+}
+
 --- Extracts search patterns and search-related flags from a list of ripgrep
 --- command-line tokens.
 ---
@@ -113,6 +146,9 @@ function M.parse_args(tokens, raw)
       i = i + 1
     elseif token == '--no-pcre2' then
       result.pcre2 = false
+      i = i + 1
+    elseif OUTPUT_FORMAT_FLAGS[token] then
+      result.output_format_flag = result.output_format_flag or token
       i = i + 1
     elseif token == '--engine' then
       local engine = tokens[i + 1]

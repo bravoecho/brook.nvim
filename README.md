@@ -252,7 +252,7 @@ including the caveat above.
 
 ### Unsupported search modes
 
-Brook by design is restricted to ripgrep's defaults in two important ways:
+Brook by design is restricted to ripgrep's defaults in three important ways:
 
 * **No multiline search** – Brook aborts with a warning if you use `-U` or
   search a multiline selection. The quickfix format is inherently line-based.
@@ -260,6 +260,13 @@ Brook by design is restricted to ripgrep's defaults in two important ways:
 * **No PCRE2** – only ripgrep's default regexp engine is supported. Commands
   setting it to PCRE2 will result in an error. This guarantees predictable
   performance and more accurate search pattern translation.
+
+* **No output format changes** – Brook reads each result line as file, line,
+  column and text, so it aborts with an error on flags that change that
+  format: `-I`/`--no-filename`, `--heading`, `-0`/`--null`,
+  `--field-match-separator`, `--column`, `-b`/`--byte-offset`, `-c`/`--count`,
+  `--count-matches`, `-l`/`--files-with-matches`, `--files-without-match`,
+  `--files` and `--json`.
 
 ---
 
