@@ -75,7 +75,7 @@ function M.deep_eq(got, want, msg)
 end
 
 function M._display_string(s)
-  if s == nil then return 'nil' end
+  if type(s) ~= 'string' then return tostring(s) end
   -- Only escape control characters and non-printables
   return (s:gsub('[%c]', function(c)
     local b = string.byte(c)
