@@ -252,10 +252,13 @@ including the caveat above.
 
 ### Unsupported search modes
 
-Brook by design is restricted to ripgrep's defaults in three important ways:
+Multiline search isn't supported yet: Brook aborts with an error if you use
+`-U` or search a multiline selection.
+
+Brook by design is restricted to ripgrep's defaults in a few important ways:
 
 * **No multiline search** – Brook aborts with a warning if you use `-U` or
-  search a multiline selection. The quickfix format is inherently line-based.
+  search a multiline selection. Support might be added in the future.
 
 * **No PCRE2** – only ripgrep's default regexp engine is supported. Commands
   setting it to PCRE2 will result in an error. This guarantees predictable

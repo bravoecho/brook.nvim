@@ -510,19 +510,21 @@ The ripgrep documentation specifically advises programmatic clients not to use
 `--vimgrep` and to prefer `--json` instead. This is worth investigating as a
 potential improvement to the parsing phase.
 
-**Current approach (`--vimgrep`).** The `--vimgrep` flag produces
-colon-delimited lines (`file:line:col:text`). The parser uses
-`result:find(':(%d+):(%d+):')` to locate the line:col boundary and
-`string:sub()` to extract components. This works but is a heuristic —
-filenames containing colons in specific patterns could theoretically confuse
-it.
+**Current approach (`--vimgrep`).** Brook passes `--field-match-separator`
+with the ASCII unit separator (`\x1f`), and `M._parse_vimgrep` splits each line
+on it into file, line, column and text. A file name holding `\x1f` would still
+split wrongly.
 
 **What `--json` offers.** The `--json` flag emits one JSON object per line
 with structured fields: filename, line number, column number, match text,
 byte offsets, and submatches, all unambiguously separated. Potential benefits:
 
-- **No colon ambiguity.** Eliminates an entire class of edge-case bugs around
-  filenames with colons.
+- **No separator ambiguity.** File name and text are separate JSON fields.
+- **Multiline matches.** Under `-U`, `--vimgrep` prints only the first line of
+  a match. JSON carries the full text and each match's byte offsets, which give
+  the end line and column.
+- **Typed context lines.** `-A`/`-B`/`-C` lines arrive as `"type":"context"`
+  objects, with no `--` separator line to drop.
 - **Richer data.** Byte offsets, submatches, and normalised paths could enable
   features like precise match highlighting in the quickfix preview.
 - **`vim.json.decode` is C-backed.** It calls `cjson` under the hood, which
@@ -549,10 +551,25 @@ JSON, there are two options:
   producer would be low. This adds some work back to `on_stdout` but avoids
   storing large JSON strings in the queue.
 
-**Recommendation.** Benchmark the same search with `--json`, decoding in
-`_parse_batch`, and compare total wall time and `setqflist()` cost against
-the current `--vimgrep` path. If performance is comparable or better, the
-correctness and extensibility benefits make JSON a clear win.
+**Measured cost.** On 100,000 results of `rg -w data` over the Homebrew
+Cellar and `~/ws` (macOS, Neovim 0.12.6, ripgrep 16.0.0), verified:
+
+- `M._parse_vimgrep`: 88 ms.
+- `vim.json.decode` plus flattening, one quickfix item per submatch: 240 ms.
+- One `setqflist()` call with the parsed items: 2,900 ms.
+- Ripgrep alone: 0.96 s in both formats, writing 17 MB as `--vimgrep` and
+  45 MB as JSON.
+
+Decoding adds about 1.5 µs per result: about 1.5 ms per search at the default
+`max_results` of 1,000, and about 5% of the `setqflist()` cost.
+
+**Caveats found.** `--json` ignores `--max-columns` and
+`--max-columns-preview`, so Brook would truncate `text` itself, and a minified
+line arrives whole (the longest for this search was 1.5 MB). A line or path
+that isn't valid UTF-8 arrives base64-encoded under `bytes` in place of `text`.
+
+The full set of verified multiline and JSON behaviour is in
+`docs/plans/multiline.md`, "Verified behaviour".
 
 ### Unify phase 2 and phase 3
 
