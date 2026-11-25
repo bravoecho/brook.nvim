@@ -267,7 +267,8 @@ Brook by design is restricted to ripgrep's defaults in three important ways:
   terminal still works. It aborts with an error on flags whose output can't
   fill a quickfix list, such as `-c`, `-l`, `-v` or `-q`. The full list is
   `UNSUPPORTED_FLAGS` in `lua/brook/args/parser.lua`: keep those flags out of
-  your `~/.ripgreprc` as well.
+  your `~/.ripgreprc` as well. Keep `--vimgrep` out of it too, because no flag
+  undoes it, so `:Rg -n` could no longer list unique lines.
 
 ---
 

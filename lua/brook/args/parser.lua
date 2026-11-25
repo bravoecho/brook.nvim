@@ -137,7 +137,9 @@ function M.parse_args(tokens, raw)
       result.case = nil
       i = i + 1
     elseif token == '-n' or token == '--line-number' then
-      result.output_format = types.output_format.unique_lines
+      -- After --vimgrep, ripgrep keeps one line per match, because no flag
+      -- undoes --vimgrep.
+      result.output_format = result.output_format or types.output_format.unique_lines
       i = i + 1
     elseif token == '--vimgrep' then
       result.output_format = types.output_format.one_line_per_match

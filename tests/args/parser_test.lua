@@ -527,8 +527,12 @@ test('output-format: --vimgrep overrides -n', function()
   deep_eq(parse_args({ '-n', '--vimgrep', 'pattern' }, raw), result({ 'pattern' }, { output_format = 'one-line-per-match' }))
 end)
 
-test('output-format: -n overrides --vimgrep', function()
-  deep_eq(parse_args({ '--vimgrep', '-n', 'pattern' }, raw), result({ 'pattern' }, { output_format = 'unique-lines' }))
+test('output-format: -n after --vimgrep keeps one-line-per-match', function()
+  deep_eq(parse_args({ '--vimgrep', '-n', 'pattern' }, raw), result({ 'pattern' }, { output_format = 'one-line-per-match' }))
+end)
+
+test('output-format: repeated -n', function()
+  deep_eq(parse_args({ '-n', '-n', 'pattern' }, raw), result({ 'pattern' }, { output_format = 'unique-lines' }))
 end)
 
 test('output-format: stacked -n with other flags', function()
