@@ -18,6 +18,16 @@ local rg_options = rg_named_args.options
 
 local POSITIONAL_SEPARATOR = '--'
 
+--- Whether an expanded token ends with an option that has no value attached,
+--- so the next token is its value.
+---
+---@param expanded string[] One token after expansion
+---@return boolean
+local function takes_next_token(expanded)
+  local last, before = expanded[#expanded], expanded[#expanded - 1]
+  return rg_options[last] ~= nil and rg_options[before] == nil
+end
+
 --- Flags whose output brook can't list in the quickfix list.
 ---
 --- _build_rg_cmd() in rg/exec.lua overrides every other flag that changes the
@@ -168,6 +178,9 @@ function M.parse_args(tokens, raw)
         result.pcre2 = false
       end
       i = i + 2
+    elseif rg_options[token] then
+      -- Skip the value, which can look like a flag or the separator.
+      i = i + 2
     else
       i = i + 1
     end
@@ -229,11 +242,7 @@ function M.separator_index(tokens)
       return i
     end
 
-    -- An option that ends the token, with no value attached, takes the next
-    -- token as its value.
-    local expanded = M._expand_token(tokens[i])
-    local last, before = expanded[#expanded], expanded[#expanded - 1]
-    if rg_options[last] and not rg_options[before] then
+    if takes_next_token(M._expand_token(tokens[i])) then
       i = i + 2
     else
       i = i + 1
@@ -265,14 +274,21 @@ end
 ---   - `-Hcefoo` becomes `-H`, `-c`, `-e`, `foo`
 ---   - `--regexp=pattern` becomes `--regexp`, `pattern`
 ---
---- Tokens after the positional separator (`--`) are not expanded.
+--- Tokens left as they are:
+---
+---   - an option's value, even when it looks like a flag or the separator,
+---     such as `-ie` in `-g -ie`
+---
+---   - every token after the positional separator (`--`)
 ---
 ---@param tokens string[] Input tokens
 ---@return string[] expanded Expanded tokens
 function M._expand_all(tokens)
   local result = {}
 
-  for i, token in ipairs(tokens) do
+  local i = 1
+  while i <= #tokens do
+    local token = tokens[i]
     if token == POSITIONAL_SEPARATOR then
       -- any argument after the separator must not be split, because it's
       -- positional, collect them all and return
@@ -285,6 +301,13 @@ function M._expand_all(tokens)
     local expanded = M._expand_token(token)
     for _, val in ipairs(expanded) do
       table.insert(result, val)
+    end
+
+    if takes_next_token(expanded) and tokens[i + 1] then
+      table.insert(result, tokens[i + 1])
+      i = i + 2
+    else
+      i = i + 1
     end
   end
 

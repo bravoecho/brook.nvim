@@ -775,6 +775,31 @@ test('combined: all boolean flags', function()
 end)
 
 --------------------------------------------------------------------------------
+--- Option values --------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+-- ripgrep reads the token after an option as its value, even when it looks like
+-- a flag or the separator.
+for _, case in ipairs({
+  { tokens = { '-g', '--', '-e', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '-g', '--', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '-g', '-F', 'a.F' }, want = result({ 'a.F' }) },
+  { tokens = { '-g', '-ie', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '-g', '-l', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '--glob', '-n', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '--glob=-n', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '-g-n', 'foo' }, want = result({ 'foo' }) },
+  { tokens = { '-ig', '-F', 'foo' }, want = result({ 'foo' }, { case = 'case-insensitive' }) },
+  { tokens = { '-e', '-foo' }, want = result({ '-foo' }) },
+  { tokens = { '-e', '--', '-e', 'bar' }, want = result({ '--', 'bar' }) },
+  { tokens = { 'foo', '-g' }, want = result({ 'foo' }) },
+}) do
+  test('option value: ' .. table.concat(case.tokens, ' '), function()
+    deep_eq(parse_args(case.tokens, raw), case.want)
+  end)
+end
+
+--------------------------------------------------------------------------------
 --- Unsupported flags ----------------------------------------------------------
 --------------------------------------------------------------------------------
 
