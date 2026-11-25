@@ -162,7 +162,7 @@ Tests live in `tests/` and are plain Lua scripts using assertion helpers from `t
 
 - **Single-line search only.** Multiline search is explicitly rejected with a notification.
 - **PCRE2 not supported.** `-P` / `--pcre2` / `--engine=pcre2` are blocked. The plugin targets ripgrep's default Rust regex engine.
-- **Output format flags are rejected.** Flags that change or stop ripgrep's result lines (`-I`, `--heading`, `--json`, `-q`, …) are listed in `OUTPUT_FORMAT_FLAGS` in `args/parser.lua`, and `:Rg` aborts with an error on any of them. A new ripgrep flag that changes or stops them goes in that table.
+- **Output format flags are overridden or rejected.** `_build_rg_cmd()` in `rg/exec.lua` sets the result line format after the user's named arguments (before their `--`), so a flag such as `-I`, `--heading` or `--json` in `:Rg` or the config file is undone. `:Rg` aborts with an error on the flags a later one can't undo in ripgrep 13 (`-l`, `-c`, `-v`, `-q`, `-0`, `-b`, …), listed in `UNSUPPORTED_FLAGS` in `args/parser.lua`. A new ripgrep flag that changes the result lines gets a negation in `_output_format_args()`, or goes in that table if it has none.
 - **Visual selections containing newlines are rejected.**
 - **No word under cursor** — `:Rg` with no arguments calls `expand('<cword>')`; if empty, shows an error.
 - **The `rg_named_args.lua` file is generated** by `bin/generate-rg-named-args` from ripgrep's `--help` output. Do not edit it by hand.

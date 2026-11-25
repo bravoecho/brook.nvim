@@ -669,9 +669,8 @@ test('edge: pattern containing dashes but not an option', function()
 end)
 
 test('edge: pattern starting with dash needs -- separator', function()
-  -- Without --, -pattern expands to -p -a -t tern, and -p (--pretty) is an
-  -- output format flag
-  deep_eq(parse_args({ '-pattern' }, raw), empty_result({ output_format_flag = '-p' }))
+  -- Without --, -pattern expands to the flags -p -a and the option -t tern.
+  deep_eq(parse_args({ '-pattern' }, raw), empty_result())
 end)
 
 test('edge: pattern with special regex characters', function()
@@ -772,64 +771,97 @@ test('combined: all boolean flags', function()
 end)
 
 --------------------------------------------------------------------------------
---- Output format flags --------------------------------------------------------
+--- Unsupported flags ----------------------------------------------------------
 --------------------------------------------------------------------------------
 
 for _, flag in ipairs({
   '-q', '--quiet', '-h', '--help', '-V', '--version', '--pcre2-version',
-  '--type-list', '-v', '--invert-match', '-I', '--no-filename', '-N',
-  '--no-line-number', '--heading', '--stats', '-p', '--pretty', '-0', '--null',
-  '--null-data', '--column', '-b', '--byte-offset', '-c', '--count',
-  '--count-matches', '-l', '--files-with-matches', '--files-without-match',
-  '--files', '--json',
+  '--type-list', '-v', '--invert-match', '-c', '--count', '--count-matches',
+  '-l', '--files-with-matches', '--files-without-match', '--files', '-0',
+  '--null', '--null-data', '-b', '--byte-offset',
 }) do
-  test('output format flag: ' .. flag .. ' is reported', function()
+  test('unsupported flag: ' .. flag .. ' is reported', function()
     local got = parse_args({ flag, 'pattern' }, raw)
-    local want = result({ 'pattern' }, { output_format_flag = flag })
+    local want = result({ 'pattern' }, { unsupported_flag = flag })
     deep_eq(got, want)
   end)
 end
 
-for _, option in ipairs({ '--field-match-separator', '--color', '--generate' }) do
-  test('output format flag: ' .. option .. ' is reported', function()
-    local got = parse_args({ option, 'value', 'pattern' }, raw)
-    local want = result({ 'pattern' }, { output_format_flag = option })
+test('unsupported flag: --generate is reported', function()
+  local got = parse_args({ '--generate', 'man', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { unsupported_flag = '--generate' })
+  deep_eq(got, want)
+end)
+
+-- _build_rg_cmd() overrides these, so they pass through.
+for _, flag in ipairs({
+  '-I', '--no-filename', '-N', '--no-line-number', '--heading', '--stats',
+  '-p', '--pretty', '--column', '--json',
+}) do
+  test('unsupported flag: ' .. flag .. ' is not reported', function()
+    local got = parse_args({ flag, 'pattern' }, raw)
+    local want = result({ 'pattern' })
     deep_eq(got, want)
   end)
 end
 
-test('output format flag: reported in a stack', function()
-  local got = parse_args({ '-nI', 'pattern' }, raw)
+test('unsupported flag: reported in a stack', function()
+  local got = parse_args({ '-nl', 'pattern' }, raw)
   local want = result({ 'pattern' }, {
     output_format = 'unique-lines',
-    output_format_flag = '-I',
+    unsupported_flag = '-l',
   })
   deep_eq(got, want)
 end)
 
-test('output format flag: reported with an attached value', function()
-  local got = parse_args({ '--field-match-separator=:', 'pattern' }, raw)
-  local want = result({ 'pattern' }, { output_format_flag = '--field-match-separator' })
+test('unsupported flag: reported with an attached value', function()
+  local got = parse_args({ '--generate=man', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { unsupported_flag = '--generate' })
   deep_eq(got, want)
 end)
 
-test('output format flag: the first one is reported', function()
-  local got = parse_args({ '--json', '-I', 'pattern' }, raw)
-  local want = result({ 'pattern' }, { output_format_flag = '--json' })
+test('unsupported flag: the first one is reported', function()
+  local got = parse_args({ '-c', '-l', 'pattern' }, raw)
+  local want = result({ 'pattern' }, { unsupported_flag = '-c' })
   deep_eq(got, want)
 end)
 
-test('output format flag: not reported after the separator', function()
-  local got = parse_args({ '--', '-I' }, raw)
-  local want = result({ '-I' })
+test('unsupported flag: not reported after the separator', function()
+  local got = parse_args({ '--', '-l' }, raw)
+  local want = result({ '-l' })
   deep_eq(got, want)
 end)
 
-test('output format flag: not reported as an -e pattern', function()
+test('unsupported flag: not reported as an -e pattern', function()
   local got = parse_args({ '-e', '-l' }, raw)
   local want = result({ '-l' })
   deep_eq(got, want)
 end)
+
+--------------------------------------------------------------------------------
+--- separator_index ------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+local separator_index = require('brook.args.parser').separator_index
+
+for _, case in ipairs({
+  { name = 'no tokens', tokens = {}, want = 1 },
+  { name = 'no separator', tokens = { '-i', 'foo', 'src' }, want = 4 },
+  { name = 'separator first', tokens = { '--', '-foo' }, want = 1 },
+  { name = 'separator after flags', tokens = { '-i', '--', 'foo' }, want = 2 },
+  { name = 'the first of two', tokens = { '--', '--' }, want = 1 },
+  { name = 'value of a short option', tokens = { '-e', '--', 'src' }, want = 4 },
+  { name = 'value of a long option', tokens = { '--regexp', '--', '--', 'x' }, want = 3 },
+  { name = 'value of a stacked option', tokens = { '-ie', '--', 'src' }, want = 4 },
+  { name = 'attached value', tokens = { '-gfoo', '--', 'x' }, want = 2 },
+  { name = 'attached value naming an option', tokens = { '-g-e', '--', 'x' }, want = 2 },
+  { name = 'long attached value', tokens = { '--glob=-e', '--', 'x' }, want = 2 },
+  { name = 'dangling option', tokens = { 'foo', '--glob' }, want = 3 },
+}) do
+  test('separator_index: ' .. case.name, function()
+    deep_eq(separator_index(case.tokens), case.want)
+  end)
+end
 
 --------------------------------------------------------------------------------
 --- Summary --------------------------------------------------------------------

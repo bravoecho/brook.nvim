@@ -33,6 +33,7 @@
 local pattern = require('brook.pattern')
 local fifo = require('brook.lib.fifo')
 local args_types = require('brook.args.types')
+local args_parser = require('brook.args.parser')
 
 local M = {}
 
@@ -261,33 +262,7 @@ function M._build_rg_cmd(ctx)
     '--engine', 'default',
     '--max-columns', tostring(ctx.cfg.max_preview_chars),
     '--max-columns-preview',
-
-    -- Result line format, set in full so that a flag in the user's ripgrep
-    -- config file can't change it: ripgrep reads that file first, and the
-    -- last flag wins.
-    --
-    -- The same flags typed in :Rg are rejected (OUTPUT_FORMAT_FLAGS in
-    -- args/parser.lua). A flag without a negation in ripgrep 13 can't be
-    -- overridden here, such as --null or --byte-offset.
-    '--color', 'never',
-    '--field-match-separator', ASCII_UNIT_SEPARATOR,
-    -- ripgrep leaves the file name out when it searches a single file.
-    '--with-filename',
-    -- ripgrep adds line numbers only when writing to a terminal.
-    '--line-number',
-    '--no-heading',
-    '--no-stats',
-    '--no-json',
   }
-
-  -- Unique-lines mode uses ripgrep's standard output in place of --vimgrep,
-  -- so each matching line appears once, however many matches it holds.
-  if ctx.cfg.output_format == args_types.output_format.unique_lines then
-    table.insert(cmd, '--no-column')
-  else
-    -- --vimgrep leaves the column out after --no-column, even an earlier one.
-    vim.list_extend(cmd, { '--vimgrep', '--column' })
-  end
 
   if ctx.parsed_args.word then
     table.insert(cmd, '--word-regexp')
@@ -303,11 +278,51 @@ function M._build_rg_cmd(ctx)
     table.insert(cmd, '--ignore-case')
   end
 
-  for _, arg in ipairs(ctx.args) do
-    table.insert(cmd, arg)
-  end
+  -- The result line format goes after the user's named arguments, so that
+  -- neither the ripgrep config file nor :Rg can change it, because ripgrep
+  -- reads the config file first and the last flag wins.
+  --
+  -- It goes before the user's separator, which makes every later token
+  -- positional.
+  local sep = args_parser.separator_index(ctx.args)
+  vim.list_extend(cmd, ctx.args, 1, sep - 1)
+  vim.list_extend(cmd, M._output_format_args(ctx.cfg.output_format))
+  vim.list_extend(cmd, ctx.args, sep, #ctx.args)
 
   return cmd
+end
+
+--- Returns the flags that set every part of the result line format.
+---
+--- A flag without a negation in ripgrep 13, such as --null or --byte-offset,
+--- can't be overridden here, so :Rg rejects it (UNSUPPORTED_FLAGS in
+--- args/parser.lua).
+---
+---@param output_format brook.args.OutputFormat
+---@return string[] args
+function M._output_format_args(output_format)
+  local args = {
+    '--color', 'never',
+    '--field-match-separator', ASCII_UNIT_SEPARATOR,
+    -- ripgrep leaves the file name out when it searches a single file.
+    '--with-filename',
+    -- ripgrep adds line numbers only when writing to a terminal.
+    '--line-number',
+    '--no-heading',
+    '--no-stats',
+    '--no-json',
+  }
+
+  -- Unique-lines mode uses ripgrep's standard output in place of --vimgrep,
+  -- so each matching line appears once, however many matches it holds.
+  if output_format == args_types.output_format.unique_lines then
+    table.insert(args, '--no-column')
+  else
+    -- --vimgrep leaves the column out after --no-column, even an earlier one.
+    vim.list_extend(args, { '--vimgrep', '--column' })
+  end
+
+  return args
 end
 
 --- Parses a vimgrep-format result line into a quickfix entry.

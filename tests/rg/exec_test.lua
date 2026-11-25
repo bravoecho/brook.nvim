@@ -9,27 +9,29 @@ local deep_eq = h.deep_eq
 local exec = require('brook.rg.exec')
 local args_types = require('brook.args.types')
 
---- Searches a single file with the command brook builds, and parses each output
---- line with the output format's parser.
+--- Runs the command brook builds in a directory holding a.txt and b.lua, and
+--- parses each output line with the output format's parser.
 ---
 ---@param output_format brook.args.OutputFormat
 ---@param config string[] Lines of the ripgrep config file
+---@param args string[] Arguments typed in :Rg
 ---@return table[] entries Quickfix entries, or the raw line where parsing fails
-local function search(output_format, config)
+local function search(output_format, config, args)
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir)
   vim.fn.writefile({ 'x', 'hello there' }, dir .. '/a.txt')
+  vim.fn.writefile({ 'x', '-- hello' }, dir .. '/b.lua')
   vim.fn.writefile(config, dir .. '/rgrc')
 
   local cmd = exec._build_rg_cmd({
-    args = { 'hello', 'a.txt' },
+    args = args,
     parsed_args = {
-      patterns = { 'hello' },
+      patterns = {},
       fixed = false,
       word = false,
       multiline = false,
       pcre2 = false,
-      raw = 'hello a.txt',
+      raw = table.concat(args, ' '),
     },
     cfg = { max_preview_chars = 200, output_format = output_format },
   })
@@ -54,8 +56,8 @@ end
 --- _build_rg_cmd --------------------------------------------------------------
 --------------------------------------------------------------------------------
 
--- Flags in the ripgrep config file that the base command overrides.
-local configs = {
+-- Flags that the base command overrides, in the ripgrep config file or in :Rg.
+local overridden = {
   {},
   { '--no-filename' },
   { '--no-line-number' },
@@ -69,15 +71,33 @@ local configs = {
   { '--field-match-separator=:' },
 }
 
+local a_txt = { { filename = 'a.txt', lnum = 2, col = 1, text = 'hello there' } }
+
 for _, output_format in pairs(args_types.output_format) do
-  for _, config in ipairs(configs) do
-    local name = #config == 0 and 'no config' or table.concat(config, ' ')
-    test('build_rg_cmd: single file, ' .. output_format .. ', ' .. name, function()
-      local got = search(output_format, config)
-      local want = { { filename = 'a.txt', lnum = 2, col = 1, text = 'hello there' } }
-      deep_eq(got, want)
+  for _, flags in ipairs(overridden) do
+    local name = #flags == 0 and 'no flags' or table.concat(flags, ' ')
+
+    test('build_rg_cmd: ' .. output_format .. ', config ' .. name, function()
+      local got = search(output_format, flags, { 'hello', 'a.txt' })
+      deep_eq(got, a_txt)
+    end)
+
+    test('build_rg_cmd: ' .. output_format .. ', :Rg ' .. name, function()
+      local got = search(output_format, {}, vim.list_extend(vim.deepcopy(flags), { 'hello', 'a.txt' }))
+      deep_eq(got, a_txt)
     end)
   end
+
+  test('build_rg_cmd: ' .. output_format .. ', overrides before the separator', function()
+    local got = search(output_format, {}, { '--heading', '--', 'hello', 'a.txt' })
+    deep_eq(got, a_txt)
+  end)
+
+  test('build_rg_cmd: ' .. output_format .. ', -- as an option value', function()
+    local got = search(output_format, {}, { '--heading', '-e', '--', 'b.lua' })
+    local want = { { filename = 'b.lua', lnum = 2, col = 1, text = '-- hello' } }
+    deep_eq(got, want)
+  end)
 end
 
 --------------------------------------------------------------------------------

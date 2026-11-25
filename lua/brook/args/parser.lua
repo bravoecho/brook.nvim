@@ -18,9 +18,11 @@ local rg_options = rg_named_args.options
 
 local POSITIONAL_SEPARATOR = '--'
 
---- Flags that stop ripgrep printing the result lines exec.lua parses: file,
---- line, column (one-per-match mode only) and text.
-local OUTPUT_FORMAT_FLAGS = {
+--- Flags whose output brook can't list in the quickfix list.
+---
+--- _build_rg_cmd() in rg/exec.lua overrides every other flag that changes the
+--- result lines, so these are the flags a later one can't undo in ripgrep 13.
+local UNSUPPORTED_FLAGS = {
   -- no search, or no output
   ['-q'] = true,
   ['--quiet'] = true,
@@ -32,35 +34,9 @@ local OUTPUT_FORMAT_FLAGS = {
   ['--type-list'] = true,
   ['--generate'] = true,
 
-  -- no lines to print in one-per-match mode, where every line is a match
+  -- lines without a match, where the search register finds nothing
   ['-v'] = true,
   ['--invert-match'] = true,
-
-  -- no file name or line number
-  ['-I'] = true,
-  ['--no-filename'] = true,
-  ['-N'] = true,
-  ['--no-line-number'] = true,
-
-  -- file name on its own line, or summary lines after the results
-  ['--heading'] = true,
-  ['--stats'] = true,
-
-  -- colour codes (--color with any value, since brook already sets never)
-  ['--color'] = true,
-  ['-p'] = true,
-  ['--pretty'] = true,
-
-  -- other separators or line terminators
-  ['-0'] = true,
-  ['--null'] = true,
-  ['--null-data'] = true,
-  ['--field-match-separator'] = true,
-
-  -- extra fields (--column only in unique-lines mode)
-  ['--column'] = true,
-  ['-b'] = true,
-  ['--byte-offset'] = true,
 
   -- counts or file names in place of matching lines
   ['-c'] = true,
@@ -71,8 +47,14 @@ local OUTPUT_FORMAT_FLAGS = {
   ['--files-without-match'] = true,
   ['--files'] = true,
 
-  -- JSON objects
-  ['--json'] = true,
+  -- NUL separators or line terminators, which have no negation
+  ['-0'] = true,
+  ['--null'] = true,
+  ['--null-data'] = true,
+
+  -- byte offsets, which ripgrep 13 can't switch off
+  ['-b'] = true,
+  ['--byte-offset'] = true,
 }
 
 --- Extracts search patterns and search-related flags from a list of ripgrep
@@ -100,7 +82,7 @@ function M.parse_args(tokens, raw)
     word = false,
     case = nil,
     output_format = nil,
-    output_format_flag = nil,
+    unsupported_flag = nil,
     multiline = false,
     pcre2 = false,
     raw = raw,
@@ -172,11 +154,9 @@ function M.parse_args(tokens, raw)
     elseif token == '--no-pcre2' then
       result.pcre2 = false
       i = i + 1
-    elseif OUTPUT_FORMAT_FLAGS[token] then
-      -- Keep only the first, so the error names it. Its presence alone
-      -- rejects the search, even when a later flag (--no-heading) would undo
-      -- it in ripgrep.
-      result.output_format_flag = result.output_format_flag or token
+    elseif UNSUPPORTED_FLAGS[token] then
+      -- Keep only the first, so the error names it.
+      result.unsupported_flag = result.unsupported_flag or token
       i = i + 1
     elseif token == '--engine' then
       local engine = tokens[i + 1]
@@ -231,6 +211,34 @@ function M.parse_args(tokens, raw)
   end
 
   return result
+end
+
+--- Finds the separator that ends ripgrep's named arguments.
+---
+--- That's the first `--` that isn't an option's value, because ripgrep reads
+--- `-e --` as a search for `--`.
+---
+---@param tokens string[] Shell-unquoted command-line tokens
+---@return integer index Index of the separator, or #tokens + 1 without one
+function M.separator_index(tokens)
+  local i = 1
+  while i <= #tokens do
+    if tokens[i] == POSITIONAL_SEPARATOR then
+      return i
+    end
+
+    -- An option that ends the token, with no value attached, takes the next
+    -- token as its value.
+    local expanded = M._expand_token(tokens[i])
+    local last, before = expanded[#expanded], expanded[#expanded - 1]
+    if rg_options[last] and not rg_options[before] then
+      i = i + 2
+    else
+      i = i + 1
+    end
+  end
+
+  return #tokens + 1
 end
 
 --- Checks if the given token looks like a flag or option, but is neither

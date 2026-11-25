@@ -137,12 +137,12 @@ function M.raw(opts, cfg)
     return nil
   end
 
-  -- 6. Enforce the output the quickfix parsers read
-  --------------------------------------------------
-  if parsed_args.output_format_flag then
+  -- 6. Enforce output the quickfix list can hold
+  -----------------------------------------------
+  if parsed_args.unsupported_flag then
     vim.notify(
-      'rg: ' .. parsed_args.output_format_flag
-      .. ' not supported: it changes the output brook reads',
+      'rg: ' .. parsed_args.unsupported_flag
+      .. ' not supported: brook can\'t list its output',
       vim.log.levels.ERROR
     )
     return nil

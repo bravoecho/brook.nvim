@@ -29,9 +29,8 @@ local M = {}
 --- Whether PCRE2 regex engine is enabled (-P, --pcre2, --engine=pcre2, --engine=auto)
 ---@field pcre2 boolean
 ---
---- The first flag found that changes the format of ripgrep's result lines,
---- such as -I or --json
----@field output_format_flag? string
+--- The first flag found whose output brook can't list, such as -l or -v
+---@field unsupported_flag? string
 ---
 --- Original user command, forwarded so it can be echoed back
 ---@field raw string

@@ -262,12 +262,12 @@ Brook by design is restricted to ripgrep's defaults in three important ways:
   performance and more accurate search pattern translation.
 
 * **No output format changes** – Brook reads each result line as file, line,
-  column and text, so it aborts with an error on flags that change or stop that
-  output, such as `--json`, `-c`, `-l`, `--heading`, `--color`, `-v` or `-q`.
-  The full list is `OUTPUT_FORMAT_FLAGS` in `lua/brook/args/parser.lua`.
-  Brook overrides most of them in your `~/.ripgreprc`, but not those that
-  can't be switched off on the command line, such as `-0`, `-b`, `-c`, `-l`,
-  `-q` or `-v`: keep those out of the config file.
+  column and text. It overrides flags that only change how those lines look,
+  such as `--heading`, `--color` or `--json`, so a command copied from the
+  terminal still works. It aborts with an error on flags whose output can't
+  fill a quickfix list, such as `-c`, `-l`, `-v` or `-q`. The full list is
+  `UNSUPPORTED_FLAGS` in `lua/brook/args/parser.lua`: keep those flags out of
+  your `~/.ripgreprc` as well.
 
 ---
 
